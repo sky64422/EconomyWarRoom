@@ -7,10 +7,24 @@ Status: `pending` · `in_progress` · `done` · `blocked`
 
 **MVP code:** implemented and merged to **`main`** (plan Tasks 1–14).  
 **Automated quality:** unit + integration + risk tests; coverage gate ≥85% (~98% business logic).  
-**Windows host (2026-07-22):** toolchain ready (Node, Rust MSVC, VS Build Tools, WebView2); `cargo test --lib` 51/51 green.  
-**Remaining:** manual OS smoke on Windows (P5-2 / P5-3) via `npm run tauri dev`.
+  Last Windows run: `npm test` green (lib **~59** + e2e 4 + risk 7).  
+**Windows host (2026-07-22):** toolchain ready (Node, Rust MSVC, VS Build Tools, WebView2); `npm install` done.  
+**Diagnostics (Mode B):** Copy diagnostics + command/scheduler event hardening on `main` (`d4e9214`).  
+**Remaining (highest priority):** **P5-2 / P5-3** manual smoke on Windows via `npm run tauri dev`.
 
 **New session / Windows clone:** start at [`docs/HANDOFF.md`](HANDOFF.md) and [`docs/windows-dev.md`](windows-dev.md).
+
+---
+
+## Next up (priority order)
+
+1. **P5-2** — Manual checklist below (`npm run tauri dev`).  
+2. **P5-3** — Sustained-run smoke (rate limits / backoff healthy).  
+3. Fix any Windows-only bugs found; update `windows-dev.md` Troubleshooting.  
+4. Only then: Phase 6 product ideas (unless you explicitly prioritize a feature).  
+5. Optional later: **P6-8** rolling file log (hard-crash recovery).
+
+Do **not** start portfolio / P&L / SQLite work without a new design.
 
 ---
 
@@ -80,11 +94,12 @@ Status: `pending` · `in_progress` · `done` · `blocked`
 | ID | Task | Status |
 |----|------|--------|
 | P5-1 | Default sample watchlist (optional, few US + crypto symbols) | done |
-| P5-2 | Manual test checklist: hotkey, hide, DnD, autostart, opacity, theme | pending |
-| P5-3 | Sustained-run smoke (rate limits under default constants) | pending |
+| P5-2 | Manual test checklist: hotkey, hide, DnD, autostart, opacity, theme | **pending** |
+| P5-3 | Sustained-run smoke (rate limits under default constants) | **pending** |
 | P5-4 | Quit path documented (and implemented if missing) | done |
 | P5-5 | Spec/README/TODO updated after MVP | done |
 | P5-6 | Automated coverage ≥85% + integration/risk suites | done |
+| P5-7 | Diagnostics: Copy diagnostics + ring coverage / throttle | done |
 
 ### Manual verification checklist (P5-2 / P5-3)
 
@@ -98,11 +113,12 @@ Run with `npm run tauri dev` on the target OS (**Windows preferred**):
 - [ ] DnD reorder persists  
 - [ ] Remove symbol  
 - [ ] Hide button hides; hotkey shows; polling pauses while hidden  
+- [ ] Settings → **Copy diagnostics** → paste looks complete (version, watchlist, events)  
 - [ ] Settings → Quit exits the process  
 - [ ] Autostart registered when setting true (verify OS-specific)  
 - [ ] Sustained-run smoke: leave open long enough to confirm rate limits / backoff stay healthy under default constants  
 
-## Phase 6 — Post-MVP ideas (not started)
+## Phase 6 — Post-MVP ideas
 
 | ID | Task | Status |
 |----|------|--------|
@@ -112,8 +128,9 @@ Run with `npm run tauri dev` on the target OS (**Windows preferred**):
 | P6-4 | Symbol search API (beyond type-in) | pending |
 | P6-5 | Tray icon / alternate quit affordance | pending |
 | P6-6 | Frontend automated e2e (e.g. Playwright) | pending |
-| P6-7 | Copy diagnostics (Settings → clipboard dump for agents) | done |
+| P6-7 | Copy diagnostics (Settings → clipboard dump for agents) | **done** |
 | P6-8 | Rolling file log for hard-crash recovery | pending |
+| P6-9 | Diagnostics hardening (command notes, scheduler throttle, dump 100 lines) | **done** |
 
 ## Out of scope (do not start without new design approval)
 
@@ -131,10 +148,12 @@ Run with `npm run tauri dev` on the target OS (**Windows preferred**):
 | P2 → P3 | Domain, store, Yahoo, scheduler |
 | P4 | Glass UI |
 | P5 code | Docs, AppCore, tests, coverage gate |
-| P5 manual | Open checklist above |
+| Diagnostics | Mode B Copy diagnostics + event-ring hardening (`main`) |
+| P5 manual | **Open** — checklist above |
 
 Detail task breakdown (historical):  
 [`docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md`](superpowers/plans/2026-07-22-economy-war-room-mvp.md)
 
 Current structure: [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)  
-Testing: [`docs/testing.md`](testing.md)
+Testing: [`docs/testing.md`](testing.md)  
+Defect reporting: [`windows-dev.md` §10](windows-dev.md#10-defect-reporting--agent-visibility)

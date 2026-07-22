@@ -31,11 +31,12 @@ Contrast (do not merge architectures): sibling project **AssetStocker** is a ful
 | Area | Status |
 |------|--------|
 | MVP features | **Done** on `main` |
-| Automated tests | Unit + integration + risk (~62 tests); **51 unit tests green on Windows host** (`cargo test --lib`) |
+| Automated tests | Unit + integration + risk; Windows `npm test` green (~59 lib + e2e + risk) |
 | Coverage gate | ≥85% business logic (**~98%** last measured) |
-| Windows machine toolchain | **Ready** — Node 24, npm, Rust stable-MSVC 1.97, VS Build Tools 2022 (C++), WebView2, `npm install` done |
-| Windows runtime smoke | **Not done** — still need `npm run tauri dev` + P5-2/P5-3 checklist |
-| Open product work | Manual smoke (TODO P5-2/P5-3); optional post-MVP in TODO Phase 6 |
+| Windows machine toolchain | **Ready** — Node 24, npm, Rust stable-MSVC, VS Build Tools 2022, WebView2 |
+| Diagnostics (Mode B) | **Done** — Settings → Copy diagnostics; command/scheduler notes + 30s throttle |
+| Windows runtime smoke | **Not done** — **next:** `npm run tauri dev` + P5-2/P5-3 checklist |
+| Open product work | Manual smoke first; then Phase 6 only if prioritized |
 
 **Do not re-scaffold** Tauri or re-implement domain/scheduler from the MVP plan unless fixing bugs. Plan file is historical.
 
@@ -155,11 +156,12 @@ docs: ...
 Priority for a **Windows handoff session**:
 
 1. **P5-2 / P5-3 manual smoke** on Windows (`npm run tauri dev`) — checklist in [TODO.md](./TODO.md).  
-2. Fix any Windows-only bugs found (hotkey register, transparent window, autostart, path/encoding).  
-3. Document findings back into `windows-dev.md` Troubleshooting.  
-4. Only then: Phase 6 items (remappable hotkey, better symbol search, tray icon, etc.).
+2. While smoking: Settings → **Copy diagnostics** once (sanity).  
+3. Fix any Windows-only bugs found (hotkey register, transparent window, autostart, path/encoding).  
+4. Document findings back into `windows-dev.md` Troubleshooting.  
+5. Only then: Phase 6 items (remappable hotkey, tray, file log P6-8, etc.).
 
-Do **not** start Phase 6 until smoke is green unless the user explicitly prioritizes a feature.
+Do **not** start remaining Phase 6 product features until smoke is green unless the user explicitly prioritizes a feature.
 
 ### Windows host notes (2026-07-22)
 
