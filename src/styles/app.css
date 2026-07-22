@@ -25,13 +25,22 @@ body {
   width: 100%;
   height: 100%;
   padding: 0;
+  /* Top-align glass so tall windows leave true transparency below content. */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
 }
 
 .panel {
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
+  /* Hug content; cap at window height so long lists still scroll. */
+  height: auto;
+  max-height: 100%;
+  flex: 0 1 auto;
+  min-height: 0;
   border-radius: var(--radius);
   /* Opacity slider drives glass fill alpha: 100% = solid (no desktop bleed). */
   background: rgba(var(--bg-glass-rgb-active), var(--panel-opacity, 0.92));
@@ -52,10 +61,15 @@ body {
   padding: 0 10px 0 14px;
   flex-shrink: 0;
   cursor: default;
-  /* Distinct chrome vs list body */
-  background: rgba(var(--bg-glass-rgb-active), 0.22);
-  border-bottom: 1px solid var(--border);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 16px rgba(0, 0, 0, 0.12);
+  /* Stronger chrome vs list body */
+  background: rgba(
+    var(--bg-glass-rgb-active),
+    calc(0.55 + var(--panel-opacity, 0.92) * 0.35)
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 16%, var(--border));
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--text) 8%, transparent),
+    0 8px 18px rgba(0, 0, 0, 0.18);
   z-index: 2;
 }
 
@@ -107,14 +121,14 @@ body {
 
 /* —— Main content —— */
 .content {
-  flex: 1;
+  /* Grow only when needed to fill max panel height for scrolling; don't invent empty glass. */
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* Watchlist always owns leftover vertical space (tall window → more rows). */
 #watchlist-root {
   flex: 1 1 auto;
   min-height: 0;
@@ -148,14 +162,15 @@ body {
 
 /* —— Watchlist —— */
 .watchlist {
-  flex: 1;
+  /* Don't expand past content; when many rows, parent caps height and we scroll. */
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 10px; /* same as .watchlist-rows — space before + Add slot */
-  padding: 10px 10px 4px;
+  padding: 10px 10px 10px;
   scrollbar-width: thin;
   scrollbar-color: var(--text-secondary) transparent;
 }
@@ -649,7 +664,7 @@ body {
 }
 
 .watchlist-view {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
