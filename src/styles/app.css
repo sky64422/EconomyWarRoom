@@ -148,12 +148,18 @@ body {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
   scrollbar-width: thin;
   scrollbar-color: var(--text-secondary) transparent;
 }
 
+.watchlist-rows {
+  flex: 0 0 auto;
+}
+
 .watchlist-empty {
-  padding: 24px 16px;
+  padding: 16px 16px 8px;
   text-align: center;
   color: var(--text-secondary);
   font-size: 12px;
@@ -252,11 +258,11 @@ body {
   color: var(--down);
 }
 
-/* —— Add symbol —— */
+/* —— Add symbol (directly under last row, scrolls with list) —— */
 .watchlist-footer {
-  flex-shrink: 0;
-  padding: 8px 10px 10px;
-  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
+  padding: 8px 10px 12px;
+  border-top: none;
 }
 
 .btn-add {

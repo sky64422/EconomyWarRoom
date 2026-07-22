@@ -58,10 +58,14 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   let adding = false;
   let addError: string | null = null;
 
+  // Scroll region contains rows + add control so "+ Add" sits under the last
+  // symbol (not pinned to the panel bottom on tall windows).
   root.innerHTML = `
     <div class="watchlist-view">
-      <div class="watchlist" id="watchlist-list" role="list"></div>
-      <div class="watchlist-footer" id="watchlist-footer"></div>
+      <div class="watchlist" id="watchlist-scroll">
+        <div class="watchlist-rows" id="watchlist-list" role="list"></div>
+        <div class="watchlist-footer" id="watchlist-footer"></div>
+      </div>
     </div>
   `;
 
@@ -77,6 +81,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   function renderRows(): void {
     if (items.length === 0) {
       listEl.innerHTML = `<div class="watchlist-empty">No symbols yet. Add one below.</div>`;
+      // footer (add) remains a sibling under the empty state
     } else {
       const sorted = [...items].sort((a, b) => a.sort_index - b.sort_index);
       listEl.innerHTML = sorted
