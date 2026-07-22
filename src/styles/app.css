@@ -166,6 +166,11 @@ body {
   gap: 8px;
 }
 
+.watchlist-rows.is-reordering {
+  /* While reordering, avoid scroll jank from transforms. */
+  overflow: visible;
+}
+
 .watchlist-empty {
   padding: 20px 12px 12px;
   text-align: center;
@@ -202,15 +207,34 @@ body {
   border-color: color-mix(in srgb, var(--text) 20%, transparent);
 }
 
-.watchlist-row.dragging {
-  opacity: 0.55;
+/* In-list hole while the floating ghost follows the pointer */
+.watchlist-row.is-dragging {
+  opacity: 0.35;
   cursor: grabbing;
+  border-style: dashed;
+  box-shadow: none;
+  transform: scale(0.98);
 }
 
-.watchlist-row.drag-over {
-  background: var(--bg-row-active);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+/* Floating card under the cursor (appended to body) */
+.drag-ghost {
+  position: fixed;
+  z-index: 10000;
+  margin: 0;
+  pointer-events: none;
+  cursor: grabbing;
+  opacity: 0.96;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius-row);
+  background: rgba(var(--bg-glass-rgb-active), 0.92);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  will-change: transform;
+}
+
+.drag-ghost .row-remove {
+  display: none;
 }
 
 .row-symbol {

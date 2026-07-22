@@ -388,14 +388,8 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     }
   }
 
-  function applyReorder(sourceId: string, targetId: string): void {
-    if (!sourceId || !targetId || sourceId === targetId) return;
+  function syncItemsFromDom(): string[] {
     const ids = orderedIdsFromDom();
-    const from = ids.indexOf(sourceId);
-    const to = ids.indexOf(targetId);
-    if (from < 0 || to < 0) return;
-    ids.splice(from, 1);
-    ids.splice(to, 0, sourceId);
     const byId = new Map(items.map((it) => [it.id, it]));
     items = ids
       .map((id, i) => {
@@ -403,17 +397,79 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         return it ? { ...it, sort_index: i } : null;
       })
       .filter((x): x is WatchlistItem => x != null);
-    dragId = null;
-    pendingFullRender = false;
-    renderRows();
+    return ids;
+  }
+
+  function persistOrder(ids: string[]): void {
     void invoke("reorder_symbols", { ordered_ids: ids }).catch((err) => {
       console.error("reorder_symbols failed", err);
     });
   }
 
+  /** FLIP: animate siblings when the dragged hole moves in the list. */
+  function flipRows(mutate: () => void): void {
+    const rows = Array.from(
+      listEl.querySelectorAll<HTMLElement>(".watchlist-row"),
+    );
+    const first = new Map<HTMLElement, DOMRect>();
+    for (const r of rows) first.set(r, r.getBoundingClientRect());
+    mutate();
+    for (const r of rows) {
+      if (!r.isConnected || r.classList.contains("is-dragging")) continue;
+      const a = first.get(r);
+      if (!a) continue;
+      const b = r.getBoundingClientRect();
+      const dy = a.top - b.top;
+      if (Math.abs(dy) < 0.5) continue;
+      r.style.transition = "none";
+      r.style.transform = `translateY(${dy}px)`;
+      // Force reflow then ease to rest.
+      void r.offsetHeight;
+      r.style.transition = "transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)";
+      r.style.transform = "";
+      const clear = () => {
+        r.style.transition = "";
+        r.removeEventListener("transitionend", clear);
+      };
+      r.addEventListener("transitionend", clear);
+    }
+  }
+
+  function moveDragHole(source: HTMLElement, clientY: number): void {
+    const others = Array.from(
+      listEl.querySelectorAll<HTMLElement>(".watchlist-row:not(.is-dragging)"),
+    );
+    if (others.length === 0) return;
+
+    let insertBefore: HTMLElement | null = null;
+    for (const other of others) {
+      const rect = other.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      if (clientY < mid) {
+        insertBefore = other;
+        break;
+      }
+    }
+
+    const next =
+      insertBefore === null
+        ? source.nextSibling === null && source.parentElement?.lastElementChild === source
+          ? null // already last
+          : "end"
+        : insertBefore;
+
+    if (next === "end") {
+      if (listEl.lastElementChild === source) return;
+      flipRows(() => listEl.appendChild(source));
+    } else if (next instanceof HTMLElement) {
+      if (source.nextElementSibling === next) return;
+      flipRows(() => listEl.insertBefore(source, next));
+    }
+  }
+
   /**
-   * Pointer-based reorder (not HTML5 DnD).
-   * WebView2 + transparent Tauri windows often break native drag/drop.
+   * Pointer reorder with floating ghost + FLIP list animation.
+   * (HTML5 DnD is unreliable on WebView2 transparent windows.)
    */
   function bindRowEvents(): void {
     listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((row) => {
@@ -428,38 +484,71 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         e.preventDefault();
         dragId = sourceId;
         pendingFullRender = false;
-        row.classList.add("dragging");
+
+        const rect = row.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left;
+        const offsetY = e.clientY - rect.top;
+
+        // Floating clone that tracks the pointer.
+        const ghost = row.cloneNode(true) as HTMLElement;
+        ghost.classList.add("drag-ghost");
+        ghost.classList.remove("dragging", "is-dragging", "drag-over");
+        ghost.style.width = `${rect.width}px`;
+        ghost.style.height = `${rect.height}px`;
+        ghost.style.left = "0";
+        ghost.style.top = "0";
+        const placeGhost = (cx: number, cy: number) => {
+          const x = cx - offsetX;
+          const y = cy - offsetY;
+          ghost.style.transform = `translate3d(${x}px, ${y}px, 0) scale(1.03)`;
+        };
+        placeGhost(e.clientX, e.clientY);
+        document.body.appendChild(ghost);
+
+        row.classList.add("is-dragging");
+        listEl.classList.add("is-reordering");
         row.setPointerCapture(e.pointerId);
 
         const onMove = (ev: PointerEvent) => {
           if (!dragId) return;
-          const el = document.elementFromPoint(ev.clientX, ev.clientY);
-          const over = el?.closest?.(".watchlist-row") as HTMLElement | null;
-          listEl.querySelectorAll(".drag-over").forEach((n) => n.classList.remove("drag-over"));
-          if (over && over.dataset.id && over.dataset.id !== dragId) {
-            over.classList.add("drag-over");
-          }
+          placeGhost(ev.clientX, ev.clientY);
+          // Hit-test under ghost (ghost has pointer-events: none).
+          moveDragHole(row, ev.clientY);
         };
 
         const finish = (ev: PointerEvent) => {
-          row.releasePointerCapture(ev.pointerId);
+          try {
+            row.releasePointerCapture(ev.pointerId);
+          } catch {
+            /* already released */
+          }
           row.removeEventListener("pointermove", onMove);
           row.removeEventListener("pointerup", finish);
           row.removeEventListener("pointercancel", finish);
 
-          const el = document.elementFromPoint(ev.clientX, ev.clientY);
-          const over = el?.closest?.(".watchlist-row") as HTMLElement | null;
-          const targetId = over?.dataset.id ?? null;
-          listEl.querySelectorAll(".drag-over").forEach((n) => n.classList.remove("drag-over"));
-          row.classList.remove("dragging");
+          ghost.remove();
+          row.classList.remove("is-dragging");
+          listEl.classList.remove("is-reordering");
+          listEl
+            .querySelectorAll(".drag-over")
+            .forEach((n) => n.classList.remove("drag-over"));
 
           const src = dragId;
           dragId = null;
-          if (src && targetId && src !== targetId) {
-            applyReorder(src, targetId);
-          } else if (pendingFullRender) {
+          if (!src) return;
+
+          const ids = syncItemsFromDom();
+          persistOrder(ids);
+
+          if (pendingFullRender) {
             pendingFullRender = false;
             renderRows();
+          } else {
+            // Clear any leftover inline FLIP styles.
+            listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((r) => {
+              r.style.transform = "";
+              r.style.transition = "";
+            });
           }
         };
 
