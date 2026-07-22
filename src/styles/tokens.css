@@ -1,0 +1,60 @@
+:root {
+  color-scheme: light dark;
+  --bg-glass: rgba(255, 255, 255, 0.55);
+  --bg-glass-dark: rgba(28, 28, 30, 0.55);
+  --bg-row-hover: rgba(0, 0, 0, 0.04);
+  --bg-row-active: rgba(0, 0, 0, 0.08);
+  --border: rgba(0, 0, 0, 0.08);
+  --text: #1d1d1f;
+  --text-secondary: rgba(0, 0, 0, 0.55);
+  --up: #34c759;
+  --down: #ff3b30;
+  --accent: #007aff;
+  --radius: 16px;
+  --blur: 20px;
+  --header-height: 40px;
+  --sparkline-up: #34c759;
+  --sparkline-down: #ff3b30;
+  --sparkline-neutral: rgba(0, 0, 0, 0.35);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html[data-theme="dark"] {
+  --bg-glass: var(--bg-glass-dark);
+  --bg-row-hover: rgba(255, 255, 255, 0.06);
+  --bg-row-active: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #f5f5f7;
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --sparkline-neutral: rgba(255, 255, 255, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] {
+    --bg-glass: var(--bg-glass-dark);
+    --bg-row-hover: rgba(255, 255, 255, 0.06);
+    --bg-row-active: rgba(255, 255, 255, 0.1);
+    --border: rgba(255, 255, 255, 0.1);
+    --text: #f5f5f7;
+    --text-secondary: rgba(255, 255, 255, 0.55);
+    --sparkline-neutral: rgba(255, 255, 255, 0.35);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --bg-glass: rgba(255, 255, 255, 0.92);
+    --bg-glass-dark: rgba(28, 28, 30, 0.95);
+    --blur: 0px;
+  }
+
+  html[data-theme="dark"] {
+    --bg-glass: rgba(28, 28, 30, 0.95);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    html[data-theme="system"] {
+      --bg-glass: rgba(28, 28, 30, 0.95);
+    }
+  }
+}
