@@ -36,11 +36,11 @@ body {
   display: flex;
   flex-direction: column;
   width: 100%;
-  /* Hug content; cap at window height so long lists still scroll. */
-  height: auto;
+  /* Shrink-wrap to content; never force empty glass. Cap + scroll when list is long. */
+  height: fit-content;
   max-height: 100%;
-  flex: 0 1 auto;
   min-height: 0;
+  flex: 0 0 auto;
   border-radius: var(--radius);
   /* Opacity slider drives glass fill alpha: 100% = solid (no desktop bleed). */
   background: rgba(var(--bg-glass-rgb-active), var(--panel-opacity, 0.92));
@@ -61,22 +61,23 @@ body {
   padding: 0 10px 0 14px;
   flex-shrink: 0;
   cursor: default;
-  /* Stronger chrome vs list body */
+  /* Dense bar so title chrome reads separate from cards */
   background: rgba(
     var(--bg-glass-rgb-active),
-    calc(0.55 + var(--panel-opacity, 0.92) * 0.35)
+    calc(0.72 + var(--panel-opacity, 0.92) * 0.22)
   );
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 16%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 18%, var(--border));
   box-shadow:
-    0 1px 0 color-mix(in srgb, var(--text) 8%, transparent),
-    0 8px 18px rgba(0, 0, 0, 0.18);
+    inset 0 -1px 0 color-mix(in srgb, var(--text) 6%, transparent),
+    0 1px 0 color-mix(in srgb, var(--text) 10%, transparent),
+    0 10px 20px rgba(0, 0, 0, 0.2);
   z-index: 2;
 }
 
 .header .title {
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   color: var(--text);
   pointer-events: none;
 }
@@ -121,8 +122,8 @@ body {
 
 /* —— Main content —— */
 .content {
-  /* Grow only when needed to fill max panel height for scrolling; don't invent empty glass. */
-  flex: 1 1 auto;
+  /* Size to children; only stretch/scroll when panel hits max-height. */
+  flex: 0 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -130,7 +131,7 @@ body {
 }
 
 #watchlist-root {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -666,6 +667,7 @@ body {
 .watchlist-view {
   flex: 0 1 auto;
   min-height: 0;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;

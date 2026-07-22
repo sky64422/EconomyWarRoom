@@ -7,7 +7,7 @@ export interface HeaderHandlers {
 export function renderHeader(root: HTMLElement, handlers: HeaderHandlers): void {
   root.innerHTML = `
     <header class="header" data-tauri-drag-region>
-      <span class="title">War Room</span>
+      <span class="title">WarRoom</span>
       <div class="header-actions">
         <button type="button" class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings">⚙</button>
         <button type="button" class="icon-btn" id="btn-hide" aria-label="Hide" title="Hide">−</button>
