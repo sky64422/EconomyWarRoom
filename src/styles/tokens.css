@@ -20,7 +20,8 @@
   --sparkline-up: #34c759;
   --sparkline-down: #ff3b30;
   --sparkline-neutral: rgba(0, 0, 0, 0.35);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: Pretendard, "Pretendard Variable", "SUIT", "Noto Sans KR",
+    "Segoe UI", system-ui, sans-serif;
 }
 
 html[data-theme="dark"] {

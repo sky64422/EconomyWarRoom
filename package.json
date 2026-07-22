@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "run:exe": "node scripts/run-release.mjs",
     "test": "cd src-tauri && cargo test --lib && cargo test --test integration_e2e --test risk_scenarios",
     "test:coverage": "bash scripts/coverage.sh"
   },

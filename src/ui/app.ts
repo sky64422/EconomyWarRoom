@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { renderHeader, setSettingsButtonActive } from "./header";
 import {
   applyPanelOpacity,
@@ -76,13 +76,14 @@ export async function mountApp(root: HTMLElement): Promise<void> {
     /* not ready */
   }
 
-  await setupGeometryPersistence();
+  await setupGeometryPersistence(panel);
 }
 
-async function setupGeometryPersistence(): Promise<void> {
+async function setupGeometryPersistence(panel: HTMLElement): Promise<void> {
   try {
     const win = getCurrentWindow();
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    let minSizeTimer: ReturnType<typeof setTimeout> | null = null;
 
     const persist = async () => {
       try {
@@ -101,15 +102,34 @@ async function setupGeometryPersistence(): Promise<void> {
       }
     };
 
+    const updateMinSize = async () => {
+      try {
+        const rect = panel.getBoundingClientRect();
+        const minWidth = Math.max(260, Math.ceil(rect.width));
+        const minHeight = Math.max(360, Math.ceil(rect.height));
+        await win.setMinSize(new LogicalSize(minWidth, minHeight));
+      } catch (err) {
+        console.error("setMinSize failed", err);
+      }
+    };
+
     const schedule = () => {
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
         void persist();
       }, 250);
+      if (minSizeTimer) clearTimeout(minSizeTimer);
+      minSizeTimer = setTimeout(() => {
+        void updateMinSize();
+      }, 100);
     };
+
+    const observer = new ResizeObserver(() => schedule());
+    observer.observe(panel);
 
     await win.onMoved(() => schedule());
     await win.onResized(() => schedule());
+    schedule();
   } catch (err) {
     console.error("geometry persistence unavailable", err);
   }

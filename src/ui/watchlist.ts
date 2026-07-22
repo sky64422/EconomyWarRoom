@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { sparklinePaths, sparklineTone } from "./sparkline";
+import { sparklineProgress, sparklineSvgMarkup, sparklineTone } from "./sparkline";
 import type {
   AssetKind,
   Quote,
@@ -9,8 +9,9 @@ import type {
   WatchlistItem,
 } from "./types";
 
-const SPARK_W = 72;
-const SPARK_H = 32;
+const SPARK_W = 64;
+const SPARK_H = 36;
+const SPARK_TICK_MS = 1000;
 
 /** Local fallback catalog (substring filter) when network is slow/offline. */
 const LOCAL_SYMBOLS: SymbolSuggestion[] = [
@@ -43,7 +44,7 @@ function guessAssetKind(symbol: string): AssetKind {
 }
 
 function formatPrice(price: number): string {
-  if (!Number.isFinite(price)) return "—";
+  if (!Number.isFinite(price)) return "--";
   if (Math.abs(price) >= 1000) return price.toFixed(2);
   if (Math.abs(price) >= 1) return price.toFixed(2);
   if (Math.abs(price) >= 0.01) return price.toFixed(4);
@@ -51,7 +52,7 @@ function formatPrice(price: number): string {
 }
 
 function formatChange(pct: number | null | undefined): string {
-  if (pct == null || !Number.isFinite(pct)) return "—";
+  if (pct == null || !Number.isFinite(pct)) return "--";
   const sign = pct > 0 ? "+" : "";
   return `${sign}${pct.toFixed(2)}%`;
 }
@@ -73,7 +74,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   const sparks = new Map<string, Sparkline>();
 
   let dragId: string | null = null;
-  /** Full re-render deferred while a row drag is active (tick updates must not kill DnD). */
   let pendingFullRender = false;
   let adding = false;
   let addError: string | null = null;
@@ -82,9 +82,8 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   let activeSuggest = -1;
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let searchSeq = 0;
+  let sparkTickTimer: ReturnType<typeof setInterval> | null = null;
 
-  // Scroll region contains rows + add control so "+ Add" sits under the last
-  // symbol (not pinned to the panel bottom on tall windows).
   root.innerHTML = `
     <div class="watchlist-view">
       <div class="watchlist" id="watchlist-scroll">
@@ -106,7 +105,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   function renderRows(): void {
     if (items.length === 0) {
       listEl.innerHTML = `<div class="watchlist-empty">No symbols yet. Add one below.</div>`;
-      // footer (add) remains a sibling under the empty state
     } else {
       const sorted = [...items].sort((a, b) => a.sort_index - b.sort_index);
       listEl.innerHTML = sorted
@@ -114,20 +112,41 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           const q = quotes.get(item.symbol);
           const sp = sparks.get(item.symbol);
           const points = sp?.points ?? [];
-          const { line, area, height: gh } = sparklinePaths(points, SPARK_W, SPARK_H);
           const tone = sparklineTone(points);
           const stroke = strokeForTone(tone);
+          const progress = sparklineProgress(points, item.asset_kind);
           const pct = q?.change_percent ?? null;
-          const gradId = `spark-fill-${escapeAttr(item.id)}`;
+          const subtitle = item.display_name ?? item.asset_kind;
+          const sparkMarkup = sparklineSvgMarkup(
+            points,
+            SPARK_W,
+            SPARK_H,
+            {
+              id: `spark-${escapeAttr(item.id)}`,
+              assetKind: item.asset_kind,
+              stroke,
+              progress,
+            },
+            sp?.previous_close ?? null,
+          );
           return `
             <div class="watchlist-row" role="listitem" data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}" title="Drag to reorder">
-              <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
-              <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="${SPARK_W}" height="${SPARK_H}" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
-                ${sparkSvgInner(line, area, gh, stroke, gradId)}
-              </svg>
-              <span class="row-price" data-price="${escapeAttr(item.symbol)}">${q ? escapeHtml(formatPrice(q.price)) : "—"}</span>
-              <span class="row-change ${changeClass(pct)}" data-change="${escapeAttr(item.symbol)}">${escapeHtml(formatChange(pct))}</span>
-              <button type="button" class="row-remove" data-remove="${escapeAttr(item.id)}" aria-label="Remove ${escapeAttr(item.symbol)}" title="Remove">×</button>
+              <div class="row-sparkline-wrap">
+                <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="${SPARK_W}" height="${SPARK_H}" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
+                  ${sparkMarkup}
+                </svg>
+              </div>
+              <div class="row-main">
+                <div class="row-topline">
+                  <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
+                  <span class="row-price" data-price="${escapeAttr(item.symbol)}">${q ? escapeHtml(formatPrice(q.price)) : "--"}</span>
+                </div>
+                <div class="row-bottombar">
+                  <span class="row-subtitle" title="${escapeAttr(subtitle)}">${escapeHtml(subtitle)}</span>
+                  <span class="row-change ${changeClass(pct)}" data-change="${escapeAttr(item.symbol)}">${escapeHtml(formatChange(pct))}</span>
+                </div>
+              </div>
+              <button type="button" class="row-remove" data-remove="${escapeAttr(item.id)}" aria-label="Remove ${escapeAttr(item.symbol)}" title="Remove">x</button>
             </div>
           `;
         })
@@ -136,35 +155,19 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     bindRowEvents();
   }
 
-  function sparkSvgInner(
-    line: string,
-    area: string,
-    gh: number,
-    stroke: string,
-    gradId: string,
-  ): string {
-    if (!line) return "";
-    return `<defs>
-      <linearGradient id="${gradId}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="${gh}">
-        <stop offset="0%" stop-color="${stroke}" stop-opacity="0.62"/>
-        <stop offset="45%" stop-color="${stroke}" stop-opacity="0.34"/>
-        <stop offset="100%" stop-color="${stroke}" stop-opacity="0.08"/>
-      </linearGradient>
-    </defs>
-    <path d="${area}" fill="url(#${gradId})" stroke="none" />
-    <path d="${line}" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />`;
-  }
-
   /** Update price / change / sparkline without rebuilding rows (preserves DnD). */
   function patchMarketCells(): void {
+    const byId = new Map(items.map((item) => [item.id, item]));
     listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((row) => {
       const symbol = row.dataset.symbol;
       if (!symbol) return;
+      const item = row.dataset.id ? byId.get(row.dataset.id) : undefined;
       const q = quotes.get(symbol);
+
       const priceEl = row.querySelector<HTMLElement>("[data-price]");
       const changeEl = row.querySelector<HTMLElement>("[data-change]");
       if (priceEl) {
-        priceEl.textContent = q ? formatPrice(q.price) : "—";
+        priceEl.textContent = q ? formatPrice(q.price) : "--";
       }
       if (changeEl) {
         const pct = q?.change_percent ?? null;
@@ -173,23 +176,37 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         const cls = changeClass(pct);
         if (cls) changeEl.classList.add(cls);
       }
+
       const sp = sparks.get(symbol);
       const svg = row.querySelector<SVGElement>("[data-spark]");
-      if (svg && sp) {
+      if (svg && sp && item) {
         const points = sp.points ?? [];
-        const { line, area, height: gh } = sparklinePaths(points, SPARK_W, SPARK_H);
         const tone = sparklineTone(points);
         const stroke = strokeForTone(tone);
-        const id = row.dataset.id ?? symbol;
-        svg.innerHTML = sparkSvgInner(
-          line,
-          area,
-          gh,
-          stroke,
-          `spark-fill-${escapeAttr(id)}`,
+        const progress = sparklineProgress(points, item.asset_kind);
+        svg.innerHTML = sparklineSvgMarkup(
+          points,
+          SPARK_W,
+          SPARK_H,
+          {
+            id: `spark-${escapeAttr(item.id)}`,
+            assetKind: item.asset_kind,
+            stroke,
+            progress,
+          },
+          sp.previous_close ?? null,
         );
       }
     });
+  }
+
+  function startSparklineTicker(): void {
+    if (sparkTickTimer) clearInterval(sparkTickTimer);
+    sparkTickTimer = setInterval(() => {
+      if (listEl.querySelector(".watchlist-row")) {
+        patchMarketCells();
+      }
+    }, SPARK_TICK_MS);
   }
 
   function localSuggestions(q: string): SymbolSuggestion[] {
@@ -199,8 +216,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     return LOCAL_SYMBOLS.filter(
       (s) =>
         !owned.has(s.symbol) &&
-        (s.symbol.includes(u) ||
-          (s.name ?? "").toUpperCase().includes(u)),
+        (s.symbol.includes(u) || (s.name ?? "").toUpperCase().includes(u)),
     ).slice(0, 8);
   }
 
@@ -248,7 +264,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           renderFooter(true);
         } catch {
           if (seq !== searchSeq) return;
-          // Keep local substring results on network failure.
           suggestions = localSuggestions(addQuery);
           activeSuggest = suggestions.length > 0 ? 0 : -1;
           renderFooter(true);
@@ -266,7 +281,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
       footerEl.innerHTML = `
         <div class="add-wrap">
           <form class="add-card add-card--active" id="add-form" autocomplete="off">
-            <input type="text" id="add-symbol-input" class="add-card-input" placeholder="Symbol…" maxlength="32" spellcheck="false" value="${escapeAttr(addQuery)}" aria-autocomplete="list" aria-controls="add-suggest" />
+            <input type="text" id="add-symbol-input" class="add-card-input" placeholder="Symbol..." maxlength="32" spellcheck="false" value="${escapeAttr(addQuery)}" aria-autocomplete="list" aria-controls="add-suggest" />
             <button type="submit" class="add-card-btn primary">Add</button>
             <button type="button" class="add-card-btn" id="add-cancel">Cancel</button>
           </form>
@@ -406,11 +421,8 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     });
   }
 
-  /** FLIP: animate siblings when the dragged hole moves in the list. */
   function flipRows(mutate: () => void): void {
-    const rows = Array.from(
-      listEl.querySelectorAll<HTMLElement>(".watchlist-row"),
-    );
+    const rows = Array.from(listEl.querySelectorAll<HTMLElement>(".watchlist-row"));
     const first = new Map<HTMLElement, DOMRect>();
     for (const r of rows) first.set(r, r.getBoundingClientRect());
     mutate();
@@ -423,7 +435,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
       if (Math.abs(dy) < 0.5) continue;
       r.style.transition = "none";
       r.style.transform = `translateY(${dy}px)`;
-      // Force reflow then ease to rest.
       void r.offsetHeight;
       r.style.transition = "transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)";
       r.style.transform = "";
@@ -454,7 +465,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     const next =
       insertBefore === null
         ? source.nextSibling === null && source.parentElement?.lastElementChild === source
-          ? null // already last
+          ? null
           : "end"
         : insertBefore;
 
@@ -467,10 +478,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     }
   }
 
-  /**
-   * Pointer reorder with floating ghost + FLIP list animation.
-   * (HTML5 DnD is unreliable on WebView2 transparent windows.)
-   */
   function bindRowEvents(): void {
     listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((row) => {
       row.addEventListener("pointerdown", (e) => {
@@ -489,7 +496,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         const offsetX = e.clientX - rect.left;
         const offsetY = e.clientY - rect.top;
 
-        // Floating clone that tracks the pointer.
         const ghost = row.cloneNode(true) as HTMLElement;
         ghost.classList.add("drag-ghost");
         ghost.classList.remove("dragging", "is-dragging", "drag-over");
@@ -512,7 +518,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         const onMove = (ev: PointerEvent) => {
           if (!dragId) return;
           placeGhost(ev.clientX, ev.clientY);
-          // Hit-test under ghost (ghost has pointer-events: none).
           moveDragHole(row, ev.clientY);
         };
 
@@ -529,9 +534,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           ghost.remove();
           row.classList.remove("is-dragging");
           listEl.classList.remove("is-reordering");
-          listEl
-            .querySelectorAll(".drag-over")
-            .forEach((n) => n.classList.remove("drag-over"));
+          listEl.querySelectorAll(".drag-over").forEach((n) => n.classList.remove("drag-over"));
 
           const src = dragId;
           dragId = null;
@@ -544,7 +547,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
             pendingFullRender = false;
             renderRows();
           } else {
-            // Clear any leftover inline FLIP styles.
             listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((r) => {
               r.style.transform = "";
               r.style.transition = "";
@@ -582,7 +584,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   function setQuotes(next: Quote[]): void {
     for (const q of next) quotes.set(q.symbol, q);
     if (dragId) {
-      // Still patch numbers if DOM is intact; never rebuild rows mid-drag.
       patchMarketCells();
       return;
     }
@@ -608,6 +609,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
 
   renderRows();
   renderFooter();
+  startSparklineTicker();
 
   const unlisteners: Array<() => void> = [];
 
@@ -628,6 +630,8 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     setQuotes,
     setSparklines,
     destroy: () => {
+      if (searchTimer) clearTimeout(searchTimer);
+      if (sparkTickTimer) clearInterval(sparkTickTimer);
       for (const u of unlisteners) u();
     },
   };

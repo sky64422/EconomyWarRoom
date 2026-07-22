@@ -13,7 +13,7 @@ body {
   overflow: hidden;
   background: transparent;
   color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: inherit;
   font-size: 13px;
   line-height: 1.35;
   -webkit-font-smoothing: antialiased;
@@ -199,11 +199,11 @@ body {
 .watchlist-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px auto auto;
+  grid-template-columns: 64px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  min-height: 52px;
-  padding: 10px 12px 10px 12px;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 34px 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-row);
   background: var(--bg-row-hover);
@@ -217,6 +217,30 @@ body {
 .watchlist-row > *:not(.row-remove) {
   pointer-events: none;
   user-select: none;
+}
+
+.row-sparkline-wrap {
+  width: 64px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.row-topline,
+.row-bottombar {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .watchlist-row:hover {
@@ -258,36 +282,44 @@ body {
   min-width: 0;
   font-weight: 700;
   font-size: 14px;
-  letter-spacing: -0.02em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .row-sparkline {
-  width: 72px;
-  height: 32px;
+  width: 64px;
+  height: 36px;
   display: block;
   overflow: visible;
+  opacity: var(--panel-opacity, 0.92);
+  transition: opacity 0.12s ease;
 }
 
 .row-price {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   font-size: 13px;
-  text-align: right;
   min-width: 3.75em;
-  padding-right: 2px;
+  text-align: right;
 }
 
 .row-change {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 600;
-  text-align: right;
   min-width: 3.6em;
-  padding-right: 2px;
+  text-align: right;
   color: var(--text-secondary);
+}
+
+.row-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 11px;
 }
 
 .row-change.up {
