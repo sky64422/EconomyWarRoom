@@ -25,22 +25,20 @@ body {
   width: 100%;
   height: 100%;
   padding: 0;
-  /* Top-align glass so tall windows leave true transparency below content. */
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
+  /* Do not stretch children to fill the window — glass hugs content. */
+  display: block;
+  overflow: hidden;
+  background: transparent;
 }
 
 .panel {
   display: flex;
   flex-direction: column;
   width: 100%;
-  /* Shrink-wrap to content; never force empty glass. Cap + scroll when list is long. */
-  height: fit-content;
+  /* Content-sized glass; window may be taller (true transparency below). */
+  height: max-content;
   max-height: 100%;
   min-height: 0;
-  flex: 0 0 auto;
   border-radius: var(--radius);
   /* Opacity slider drives glass fill alpha: 100% = solid (no desktop bleed). */
   background: rgba(var(--bg-glass-rgb-active), var(--panel-opacity, 0.92));
@@ -49,6 +47,7 @@ body {
   border: 1px solid var(--border);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 /* —— Header —— */
@@ -122,7 +121,6 @@ body {
 
 /* —— Main content —— */
 .content {
-  /* Size to children; only stretch/scroll when panel hits max-height. */
   flex: 0 1 auto;
   min-height: 0;
   display: flex;
@@ -163,9 +161,11 @@ body {
 
 /* —— Watchlist —— */
 .watchlist {
-  /* Don't expand past content; when many rows, parent caps height and we scroll. */
+  /* Hug rows + Add; scroll only when content exceeds viewport-based cap. */
   flex: 0 1 auto;
   min-height: 0;
+  /* Leave room for header (+ optional settings). 100% of webview ≈ window. */
+  max-height: calc(100vh - var(--header-height) - 8px);
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
