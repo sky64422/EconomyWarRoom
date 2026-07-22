@@ -50,15 +50,19 @@ body {
   height: var(--header-height);
   min-height: var(--header-height);
   padding: 0 10px 0 14px;
-  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   cursor: default;
+  /* Distinct chrome vs list body */
+  background: rgba(var(--bg-glass-rgb-active), 0.22);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 16px rgba(0, 0, 0, 0.12);
+  z-index: 2;
 }
 
 .header .title {
   font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text);
   pointer-events: none;
 }
@@ -150,36 +154,45 @@ body {
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  padding: 10px 10px 4px;
   scrollbar-width: thin;
   scrollbar-color: var(--text-secondary) transparent;
 }
 
 .watchlist-rows {
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .watchlist-empty {
-  padding: 16px 16px 8px;
+  padding: 20px 12px 12px;
   text-align: center;
   color: var(--text-secondary);
   font-size: 12px;
 }
 
+/* Per-symbol cards — denser, less “hairline list” when few rows */
 .watchlist-row {
   position: relative;
   display: grid;
-  /* Remove is absolutely positioned — no permanent gap after change %. */
-  grid-template-columns: minmax(0, 1fr) 64px auto auto;
+  grid-template-columns: minmax(0, 1fr) 72px auto auto;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px 8px 14px;
-  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  min-height: 52px;
+  padding: 10px 12px 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-row);
+  background: var(--bg-row-hover);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
   cursor: grab;
-  transition: background 0.1s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .watchlist-row:hover {
-  background: var(--bg-row-hover);
+  background: var(--bg-row-active);
+  border-color: color-mix(in srgb, var(--text) 20%, transparent);
 }
 
 .watchlist-row.dragging {
@@ -188,29 +201,30 @@ body {
 
 .watchlist-row.drag-over {
   background: var(--bg-row-active);
-  box-shadow: inset 0 2px 0 var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .row-symbol {
   min-width: 0;
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.02em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .row-sparkline {
-  width: 64px;
-  height: 28px;
+  width: 72px;
+  height: 32px;
   display: block;
   overflow: visible;
 }
 
 .row-price {
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 13px;
   text-align: right;
   min-width: 3.75em;
@@ -220,7 +234,7 @@ body {
 .row-change {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   text-align: right;
   min-width: 3.6em;
   padding-right: 2px;
@@ -272,7 +286,7 @@ body {
 /* —— Add symbol (directly under last row, scrolls with list) —— */
 .watchlist-footer {
   flex: 0 0 auto;
-  padding: 8px 10px 12px;
+  padding: 8px 0 10px;
   border-top: none;
 }
 
@@ -282,16 +296,16 @@ body {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  height: 32px;
+  height: 40px;
   margin: 0;
   padding: 0 12px;
   border: 1px dashed var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-row);
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
@@ -373,7 +387,8 @@ body {
   flex-direction: column;
   gap: 14px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-row-hover);
+  background: rgba(var(--bg-glass-rgb-active), 0.18);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.1);
 }
 
 .settings-panel.hidden {

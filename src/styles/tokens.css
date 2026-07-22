@@ -14,8 +14,9 @@
   --down: #ff3b30;
   --accent: #007aff;
   --radius: 16px;
+  --radius-row: 12px;
   --blur: 20px;
-  --header-height: 40px;
+  --header-height: 44px;
   --sparkline-up: #34c759;
   --sparkline-down: #ff3b30;
   --sparkline-neutral: rgba(0, 0, 0, 0.35);

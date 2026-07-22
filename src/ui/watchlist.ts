@@ -8,8 +8,8 @@ import type {
   WatchlistItem,
 } from "./types";
 
-const SPARK_W = 64;
-const SPARK_H = 28;
+const SPARK_W = 72;
+const SPARK_H = 32;
 
 export interface WatchlistController {
   setItems: (items: WatchlistItem[]) => void;
@@ -102,12 +102,13 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
                   line
                     ? `<defs>
                   <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="${stroke}" stop-opacity="0.32"/>
+                    <stop offset="0%" stop-color="${stroke}" stop-opacity="0.55"/>
+                    <stop offset="55%" stop-color="${stroke}" stop-opacity="0.18"/>
                     <stop offset="100%" stop-color="${stroke}" stop-opacity="0"/>
                   </linearGradient>
                 </defs>
                 <path d="${area}" fill="url(#${gradId})" stroke="none" />
-                <path d="${line}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />`
+                <path d="${line}" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />`
                     : ""
                 }
               </svg>
