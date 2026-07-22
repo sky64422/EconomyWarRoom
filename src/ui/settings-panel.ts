@@ -52,8 +52,10 @@ export function mountSettingsPanel(
           <span class="opacity-value" id="opacity-value">${Math.round(opacity * 100)}%</span>
         </div>
       </div>
-      <button type="button" class="btn-diag" id="btn-diag">Copy diagnostics</button>
-      <button type="button" class="btn-quit" id="btn-quit">Quit</button>
+      <div class="settings-actions">
+        <button type="button" class="btn-diag" id="btn-diag">Copy diagnostics</button>
+        <button type="button" class="btn-quit" id="btn-quit">Quit</button>
+      </div>
     `;
 
     root.querySelectorAll<HTMLButtonElement>("[data-theme]").forEach((btn) => {

@@ -131,10 +131,13 @@ Do these once after first successful launch — update [TODO.md](./TODO.md) when
 - [ ] Theme: light / dark / system  
 - [ ] Opacity slider changes panel transparency  
 - [ ] Seed quotes + sparklines for AAPL / BTC-USD  
-- [ ] **+** add symbol (e.g. `MSFT`); appears at bottom  
+- [ ] **+** add symbol (e.g. `MSFT`); try several symbols for density  
 - [ ] Drag reorder; restart → order kept  
 - [ ] Remove symbol  
 - [ ] Header hide; `Ctrl+Shift+Space` shows again; no network thrash while hidden  
+- [ ] Settings = compact sheet **above** watchlist (list remains usable)  
+- [ ] Max height: extra space goes to quote list, not a hollow settings panel  
+- [ ] Settings → Copy diagnostics works  
 - [ ] Settings → Quit fully exits  
 - [ ] Autostart: enable, reboot or check Task Manager / Startup apps  
 

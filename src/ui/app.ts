@@ -14,8 +14,8 @@ export async function mountApp(root: HTMLElement): Promise<void> {
     <div class="panel" id="glass-panel">
       <div id="header-root"></div>
       <div class="content" id="content-root">
-        <div id="watchlist-root"></div>
         <div id="settings-root"></div>
+        <div id="watchlist-root"></div>
       </div>
     </div>
   `;
@@ -48,12 +48,14 @@ export async function mountApp(root: HTMLElement): Promise<void> {
 
   function toggleSettings(): void {
     settingsOpen = !settingsOpen;
+    // Keep watchlist visible; settings is a compact sheet above the list so tall
+    // windows still grow the quote area (not empty settings chrome).
     if (settingsOpen) {
       settings.show();
-      watchlistRoot.style.display = "none";
+      panel.classList.add("settings-open");
     } else {
       settings.hide();
-      watchlistRoot.style.display = "";
+      panel.classList.remove("settings-open");
     }
     setSettingsButtonActive(headerRoot, settingsOpen);
   }

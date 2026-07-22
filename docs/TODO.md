@@ -109,10 +109,13 @@ Run with `npm run tauri dev` on the target OS (**Windows preferred**):
 - [ ] Drag move + size persist after restart  
 - [ ] Opacity + theme light / dark / system  
 - [ ] Seed AAPL + BTC-USD load quotes and sparklines  
-- [ ] Add symbol at bottom via **+**  
+- [ ] Add symbol at bottom via **+** (try 5–8 symbols)  
 - [ ] DnD reorder persists  
 - [ ] Remove symbol  
-- [ ] Hide button hides; hotkey shows; polling pauses while hidden  
+- [ ] Hide button hides; **hotkey** `Ctrl+Shift+Space` shows again; polling pauses while hidden  
+- [ ] Settings opens as **compact sheet above list** (watchlist still visible / scrollable)  
+- [ ] **Tall window:** stretch height — extra space goes to the list, not empty settings chrome  
+- [ ] Settings closed: list + `+` footer density looks good at default and max height  
 - [ ] Settings → **Copy diagnostics** → paste looks complete (version, watchlist, events)  
 - [ ] Settings → Quit exits the process  
 - [ ] Autostart registered when setting true (verify OS-specific)  
