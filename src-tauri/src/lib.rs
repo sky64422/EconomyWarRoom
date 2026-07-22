@@ -197,6 +197,7 @@ pub fn run() {
             commands::get_sparklines,
             commands::quit_app,
             commands::get_diagnostics,
+            commands::search_symbols,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

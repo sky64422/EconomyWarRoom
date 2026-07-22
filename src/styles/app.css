@@ -316,10 +316,65 @@ body {
   border-color: var(--text-secondary);
 }
 
+.add-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .add-form {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+.add-suggest {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  border-radius: var(--radius-row);
+  border: 1px solid var(--border);
+  background: rgba(var(--bg-glass-rgb-active), 0.55);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
+.add-suggest-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.add-suggest-item:hover,
+.add-suggest-item.active {
+  background: var(--bg-row-active);
+}
+
+.suggest-symbol {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: -0.02em;
+}
+
+.suggest-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  min-width: 0;
+}
+
+.add-suggest-empty {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 .add-form input {

@@ -5,11 +5,29 @@ import type {
   AssetKind,
   Quote,
   Sparkline,
+  SymbolSuggestion,
   WatchlistItem,
 } from "./types";
 
 const SPARK_W = 72;
 const SPARK_H = 32;
+
+/** Local fallback catalog (substring filter) when network is slow/offline. */
+const LOCAL_SYMBOLS: SymbolSuggestion[] = [
+  { symbol: "AAPL", name: "Apple Inc.", asset_kind: "equity", exchange: "NASDAQ" },
+  { symbol: "MSFT", name: "Microsoft Corporation", asset_kind: "equity", exchange: "NASDAQ" },
+  { symbol: "GOOGL", name: "Alphabet Inc.", asset_kind: "equity", exchange: "NASDAQ" },
+  { symbol: "AMZN", name: "Amazon.com Inc.", asset_kind: "equity", exchange: "NASDAQ" },
+  { symbol: "NVDA", name: "NVIDIA Corporation", asset_kind: "equity", exchange: "NASDAQ" },
+  { symbol: "META", name: "Meta Platforms Inc.", asset_kind: "equity", exchange: "NASDAQ" },
+  { symbol: "TSLA", name: "Tesla Inc.", asset_kind: "equity", exchange: "NASDAQ" },
+  { symbol: "SPY", name: "SPDR S&P 500 ETF", asset_kind: "equity", exchange: "NYSE" },
+  { symbol: "QQQ", name: "Invesco QQQ Trust", asset_kind: "equity", exchange: "NASDAQ" },
+  { symbol: "IWM", name: "iShares Russell 2000 ETF", asset_kind: "equity", exchange: "NYSE" },
+  { symbol: "BTC-USD", name: "Bitcoin USD", asset_kind: "crypto", exchange: "CCC" },
+  { symbol: "ETH-USD", name: "Ethereum USD", asset_kind: "crypto", exchange: "CCC" },
+  { symbol: "SOL-USD", name: "Solana USD", asset_kind: "crypto", exchange: "CCC" },
+];
 
 export interface WatchlistController {
   setItems: (items: WatchlistItem[]) => void;
@@ -57,6 +75,11 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   let dragId: string | null = null;
   let adding = false;
   let addError: string | null = null;
+  let addQuery = "";
+  let suggestions: SymbolSuggestion[] = [];
+  let activeSuggest = -1;
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  let searchSeq = 0;
 
   // Scroll region contains rows + add control so "+ Add" sits under the last
   // symbol (not pinned to the panel bottom on tall windows).
@@ -89,7 +112,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           const q = quotes.get(item.symbol);
           const sp = sparks.get(item.symbol);
           const points = sp?.points ?? [];
-          const { line, area } = sparklinePaths(points, SPARK_W, SPARK_H);
+          const { line, area, height: gh } = sparklinePaths(points, SPARK_W, SPARK_H);
           const tone = sparklineTone(points);
           const stroke = strokeForTone(tone);
           const pct = q?.change_percent ?? null;
@@ -101,10 +124,10 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
                 ${
                   line
                     ? `<defs>
-                  <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="${stroke}" stop-opacity="0.55"/>
-                    <stop offset="55%" stop-color="${stroke}" stop-opacity="0.18"/>
-                    <stop offset="100%" stop-color="${stroke}" stop-opacity="0"/>
+                  <linearGradient id="${gradId}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="${gh}">
+                    <stop offset="0%" stop-color="${stroke}" stop-opacity="0.62"/>
+                    <stop offset="45%" stop-color="${stroke}" stop-opacity="0.34"/>
+                    <stop offset="100%" stop-color="${stroke}" stop-opacity="0.08"/>
                   </linearGradient>
                 </defs>
                 <path d="${area}" fill="url(#${gradId})" stroke="none" />
@@ -123,27 +146,163 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     bindRowEvents();
   }
 
-  function renderFooter(): void {
+  function localSuggestions(q: string): SymbolSuggestion[] {
+    const u = q.trim().toUpperCase();
+    if (!u) return [];
+    const owned = new Set(items.map((i) => i.symbol.toUpperCase()));
+    return LOCAL_SYMBOLS.filter(
+      (s) =>
+        !owned.has(s.symbol) &&
+        (s.symbol.includes(u) ||
+          (s.name ?? "").toUpperCase().includes(u)),
+    ).slice(0, 8);
+  }
+
+  function mergeSuggestions(
+    remote: SymbolSuggestion[],
+    local: SymbolSuggestion[],
+  ): SymbolSuggestion[] {
+    const owned = new Set(items.map((i) => i.symbol.toUpperCase()));
+    const out: SymbolSuggestion[] = [];
+    const seen = new Set<string>();
+    for (const s of [...local, ...remote]) {
+      const sym = s.symbol.toUpperCase();
+      if (owned.has(sym) || seen.has(sym)) continue;
+      seen.add(sym);
+      out.push({ ...s, symbol: sym });
+      if (out.length >= 8) break;
+    }
+    return out;
+  }
+
+  function scheduleSearch(q: string): void {
+    addQuery = q;
+    suggestions = localSuggestions(q);
+    activeSuggest = suggestions.length > 0 ? 0 : -1;
+    renderFooter(true);
+    if (searchTimer) clearTimeout(searchTimer);
+    const trimmed = q.trim();
+    if (!trimmed) {
+      suggestions = [];
+      activeSuggest = -1;
+      renderFooter(true);
+      return;
+    }
+    const seq = ++searchSeq;
+    searchTimer = setTimeout(() => {
+      void (async () => {
+        try {
+          const remote = await invoke<SymbolSuggestion[]>("search_symbols", {
+            query: trimmed,
+            limit: 8,
+          });
+          if (seq !== searchSeq) return;
+          suggestions = mergeSuggestions(remote ?? [], localSuggestions(addQuery));
+          activeSuggest = suggestions.length > 0 ? 0 : -1;
+          renderFooter(true);
+        } catch {
+          if (seq !== searchSeq) return;
+          // Keep local substring results on network failure.
+          suggestions = localSuggestions(addQuery);
+          activeSuggest = suggestions.length > 0 ? 0 : -1;
+          renderFooter(true);
+        }
+      })();
+    }, 180);
+  }
+
+  function renderFooter(keepFocus = false): void {
     if (adding) {
+      const caret = keepFocus
+        ? (footerEl.querySelector("#add-symbol-input") as HTMLInputElement | null)
+            ?.selectionStart ?? addQuery.length
+        : addQuery.length;
       footerEl.innerHTML = `
-        <form class="add-form" id="add-form" autocomplete="off">
-          <input type="text" id="add-symbol-input" placeholder="Symbol (e.g. AAPL, BTC-USD)" maxlength="32" spellcheck="false" />
-          <button type="submit">Add</button>
-          <button type="button" class="secondary" id="add-cancel">Cancel</button>
-        </form>
-        ${addError ? `<div class="add-error">${escapeHtml(addError)}</div>` : ""}
+        <div class="add-wrap">
+          <form class="add-form" id="add-form" autocomplete="off">
+            <input type="text" id="add-symbol-input" placeholder="Search symbol…" maxlength="32" spellcheck="false" value="${escapeAttr(addQuery)}" aria-autocomplete="list" aria-controls="add-suggest" />
+            <button type="submit">Add</button>
+            <button type="button" class="secondary" id="add-cancel">Cancel</button>
+          </form>
+          ${
+            suggestions.length > 0
+              ? `<ul class="add-suggest" id="add-suggest" role="listbox">
+            ${suggestions
+              .map(
+                (s, i) => `
+              <li role="option" class="add-suggest-item ${i === activeSuggest ? "active" : ""}" data-suggest-idx="${i}" data-symbol="${escapeAttr(s.symbol)}" data-kind="${escapeAttr(s.asset_kind)}">
+                <span class="suggest-symbol">${escapeHtml(s.symbol)}</span>
+                <span class="suggest-meta">${escapeHtml(s.name ?? s.exchange ?? s.asset_kind)}</span>
+              </li>`,
+              )
+              .join("")}
+          </ul>`
+              : addQuery.trim()
+                ? `<div class="add-suggest-empty">No matches</div>`
+                : ""
+          }
+          ${addError ? `<div class="add-error">${escapeHtml(addError)}</div>` : ""}
+        </div>
       `;
       const form = footerEl.querySelector("#add-form") as HTMLFormElement;
       const input = footerEl.querySelector("#add-symbol-input") as HTMLInputElement;
       const cancel = footerEl.querySelector("#add-cancel") as HTMLButtonElement;
       input.focus();
+      try {
+        input.setSelectionRange(caret, caret);
+      } catch {
+        /* ignore */
+      }
       form.addEventListener("submit", (e) => {
         e.preventDefault();
-        void onAdd(input.value);
+        if (activeSuggest >= 0 && suggestions[activeSuggest]) {
+          void onAdd(
+            suggestions[activeSuggest].symbol,
+            suggestions[activeSuggest].asset_kind,
+          );
+        } else {
+          void onAdd(input.value);
+        }
+      });
+      input.addEventListener("input", () => {
+        addError = null;
+        scheduleSearch(input.value);
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown" && suggestions.length > 0) {
+          e.preventDefault();
+          activeSuggest = (activeSuggest + 1) % suggestions.length;
+          renderFooter(true);
+        } else if (e.key === "ArrowUp" && suggestions.length > 0) {
+          e.preventDefault();
+          activeSuggest =
+            activeSuggest <= 0 ? suggestions.length - 1 : activeSuggest - 1;
+          renderFooter(true);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          adding = false;
+          addError = null;
+          addQuery = "";
+          suggestions = [];
+          activeSuggest = -1;
+          renderFooter();
+        }
+      });
+      footerEl.querySelectorAll<HTMLElement>("[data-suggest-idx]").forEach((el) => {
+        el.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          const idx = Number(el.dataset.suggestIdx);
+          const s = suggestions[idx];
+          if (s) void onAdd(s.symbol, s.asset_kind);
+        });
       });
       cancel.addEventListener("click", () => {
         adding = false;
         addError = null;
+        addQuery = "";
+        suggestions = [];
+        activeSuggest = -1;
+        if (searchTimer) clearTimeout(searchTimer);
         renderFooter();
       });
     } else {
@@ -153,27 +312,33 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
       footerEl.querySelector("#btn-add")!.addEventListener("click", () => {
         adding = true;
         addError = null;
+        addQuery = "";
+        suggestions = [];
+        activeSuggest = -1;
         renderFooter();
       });
     }
   }
 
-  async function onAdd(raw: string): Promise<void> {
+  async function onAdd(raw: string, kind?: AssetKind): Promise<void> {
     const symbol = raw.trim().toUpperCase();
     if (!symbol) {
       addError = "Enter a symbol";
-      renderFooter();
+      renderFooter(true);
       return;
     }
-    const asset_kind = guessAssetKind(symbol);
+    const asset_kind = kind ?? guessAssetKind(symbol);
     try {
       await invoke("add_symbol", { symbol, asset_kind });
       adding = false;
       addError = null;
+      addQuery = "";
+      suggestions = [];
+      activeSuggest = -1;
       renderFooter();
     } catch (err) {
       addError = String(err);
-      renderFooter();
+      renderFooter(true);
     }
   }
 

@@ -2,8 +2,10 @@
 
 use crate::application::diagnostics::DiagLevel;
 use crate::domain::types::{
-    AssetKind, PersistedState, Quote, Sparkline, ThemeMode, WatchlistItem, WindowGeometry,
+    AssetKind, PersistedState, Quote, Sparkline, SymbolSuggestion, ThemeMode, WatchlistItem,
+    WindowGeometry,
 };
+use crate::infrastructure::yahoo::YahooProvider;
 use crate::infrastructure::window_ctl;
 use crate::state::AppHandleState;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -210,4 +212,32 @@ pub async fn get_diagnostics(state: State<'_, AppHandleState>) -> Result<String,
         note_err(&state, "format_diagnostics", &e);
         e
     })
+}
+
+/// Symbol autocomplete for the add flow (Yahoo search + substring filter).
+#[tauri::command]
+pub async fn search_symbols(
+    state: State<'_, AppHandleState>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<SymbolSuggestion>, String> {
+    let limit = limit.unwrap_or(8).clamp(1, 20);
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(vec![]);
+    }
+    let provider = YahooProvider::new().map_err(|e| {
+        note_err(&state, "search_symbols provider", &e);
+        e
+    })?;
+    match provider.search_symbols(q, limit).await {
+        Ok(hits) => Ok(hits),
+        Err(e) => {
+            state.core.note_throttled_default(
+                DiagLevel::Warn,
+                format!("search_symbols failed: {e}"),
+            );
+            Err(e)
+        }
+    }
 }

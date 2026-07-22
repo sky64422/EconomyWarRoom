@@ -58,6 +58,15 @@ pub struct WindowGeometry {
     pub height: f64,
 }
 
+/// Symbol search hit for add-flow autocomplete.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SymbolSuggestion {
+    pub symbol: String,
+    pub name: Option<String>,
+    pub asset_kind: AssetKind,
+    pub exchange: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppSettings {
     pub theme: ThemeMode,

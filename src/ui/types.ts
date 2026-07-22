@@ -52,3 +52,11 @@ export interface PersistedState {
   watchlist: WatchlistItem[];
   settings: AppSettings;
 }
+
+/** Result of `search_symbols` (Yahoo autocomplete). */
+export interface SymbolSuggestion {
+  symbol: string;
+  name: string | null;
+  asset_kind: AssetKind;
+  exchange: string | null;
+}

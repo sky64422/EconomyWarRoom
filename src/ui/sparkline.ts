@@ -5,25 +5,35 @@ export interface SparklinePaths {
   line: string;
   /** Closed path under the line for gradient fill. */
   area: string;
+  /** SVG height used as gradient end (userSpaceOnUse). */
+  height: number;
 }
 
-/** Build SVG line + area path `d` strings from sparkline close prices. */
+/**
+ * Build SVG line + area path `d` strings from sparkline close prices.
+ *
+ * The plot uses the upper ~72% of the viewBox so there is always room under the
+ * lowest point for a visible under-curve gradient (not crushed to the bottom edge).
+ */
 export function sparklinePaths(
   points: SparklinePoint[],
   width: number,
   height: number,
   padding = 1,
 ): SparklinePaths {
-  if (points.length === 0) return { line: "", area: "" };
+  if (points.length === 0) return { line: "", area: "", height };
   const closes = points.map((p) => p.close);
   const min = Math.min(...closes);
   const max = Math.max(...closes);
   const span = max - min || 1;
+  const topPad = padding;
+  // Reserve space below the lowest plotted point so fill is always visible.
+  const bottomReserve = Math.max(height * 0.32, 8);
+  const plotH = Math.max(height - topPad - bottomReserve, 4);
   const w = width - padding * 2;
-  const h = height - padding * 2;
   const coords = points.map((p, i) => {
     const x = padding + (i / Math.max(points.length - 1, 1)) * w;
-    const y = padding + h - ((p.close - min) / span) * h;
+    const y = topPad + plotH - ((p.close - min) / span) * plotH;
     return { x, y };
   });
   const line = coords
@@ -31,12 +41,12 @@ export function sparklinePaths(
     .join(" ");
   const first = coords[0];
   const last = coords[coords.length - 1];
-  const baseY = (padding + h).toFixed(2);
+  const baseY = (height - padding).toFixed(2);
   const area = `${line} L${last.x.toFixed(2)} ${baseY} L${first.x.toFixed(2)} ${baseY} Z`;
-  return { line, area };
+  return { line, area, height };
 }
 
-/** @deprecated Prefer {@link sparklinePaths}; kept for call sites that only need the line. */
+/** @deprecated Prefer {@link sparklinePaths}. */
 export function sparklinePath(
   points: SparklinePoint[],
   width: number,

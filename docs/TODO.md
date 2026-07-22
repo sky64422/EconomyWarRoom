@@ -128,7 +128,7 @@ Run with `npm run tauri dev` on the target OS (**Windows preferred**):
 | P6-1 | Remappable hotkey UI | pending |
 | P6-2 | Dedicated crypto exchange provider (WebSocket optional) | pending |
 | P6-3 | Commodities / KR equity providers | pending |
-| P6-4 | Symbol search API (beyond type-in) | pending |
+| P6-4 | Symbol search API (Yahoo autocomplete + substring) | done |
 | P6-5 | Tray icon / alternate quit affordance | pending |
 | P6-6 | Frontend automated e2e (e.g. Playwright) | pending |
 | P6-7 | Copy diagnostics (Settings → clipboard dump for agents) | **done** |

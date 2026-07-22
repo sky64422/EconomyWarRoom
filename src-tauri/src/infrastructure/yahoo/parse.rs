@@ -1,7 +1,70 @@
 use crate::domain::constants::SparklinePolicy;
 use crate::domain::sparkline_math::downsample;
-use crate::domain::types::{Quote, Sparkline, SparklinePoint};
+use crate::domain::types::{AssetKind, Quote, Sparkline, SparklinePoint, SymbolSuggestion};
 use serde_json::Value;
+
+fn quote_type_to_kind(qt: &str) -> AssetKind {
+    let u = qt.to_ascii_uppercase();
+    if u.contains("CRYPTO") {
+        AssetKind::Crypto
+    } else if u.contains("EQUITY") || u.contains("ETF") || u.contains("MUTUAL") {
+        AssetKind::Equity
+    } else if u.contains("FUTURE") || u.contains("COMMODITY") {
+        AssetKind::Commodity
+    } else {
+        AssetKind::Other
+    }
+}
+
+/// Parse Yahoo `/v1/finance/search` JSON into suggestions (quotes only).
+pub fn parse_search_results(json: &Value, query: &str, limit: usize) -> Vec<SymbolSuggestion> {
+    let q = query.trim().to_ascii_uppercase();
+    let Some(quotes) = json.get("quotes").and_then(|v| v.as_array()) else {
+        return vec![];
+    };
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for item in quotes {
+        let Some(symbol) = item.get("symbol").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let symbol = symbol.trim().to_ascii_uppercase();
+        if symbol.is_empty() || !seen.insert(symbol.clone()) {
+            continue;
+        }
+        // Prefer substring match on symbol or name when query present.
+        let name = item
+            .get("shortname")
+            .or_else(|| item.get("longname"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        if !q.is_empty() {
+            let name_u = name.as_deref().unwrap_or("").to_ascii_uppercase();
+            if !symbol.contains(&q) && !name_u.contains(&q) {
+                continue;
+            }
+        }
+        let qt = item
+            .get("quoteType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("EQUITY");
+        let exchange = item
+            .get("exchDisp")
+            .or_else(|| item.get("exchange"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        out.push(SymbolSuggestion {
+            symbol,
+            name,
+            asset_kind: quote_type_to_kind(qt),
+            exchange,
+        });
+        if out.len() >= limit {
+            break;
+        }
+    }
+    out
+}
 
 pub fn parse_quote_from_chart(json: &Value) -> Result<Quote, String> {
     let result = json
@@ -158,5 +221,24 @@ mod tests {
         let s = parse_sparkline_from_chart(&v).unwrap();
         assert_eq!(s.points.len(), 2);
         assert_eq!(s.points[1].close, 3.0);
+    }
+
+    #[test]
+    fn parse_search_filters_substring_and_maps_crypto() {
+        let v: Value = serde_json::json!({
+          "quotes": [
+            { "symbol": "AAPL", "shortname": "Apple Inc.", "quoteType": "EQUITY", "exchDisp": "NASDAQ" },
+            { "symbol": "BTC-USD", "shortname": "Bitcoin USD", "quoteType": "CRYPTOCURRENCY", "exchDisp": "CCC" },
+            { "symbol": "MSFT", "shortname": "Microsoft", "quoteType": "EQUITY", "exchDisp": "NASDAQ" }
+          ]
+        });
+        let hits = parse_search_results(&v, "btc", 10);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].symbol, "BTC-USD");
+        assert_eq!(hits[0].asset_kind, AssetKind::Crypto);
+
+        let apple = parse_search_results(&v, "app", 10);
+        assert_eq!(apple.len(), 1);
+        assert_eq!(apple[0].symbol, "AAPL");
     }
 }

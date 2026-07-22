@@ -1,6 +1,6 @@
-use super::parse::{parse_quote_from_chart, parse_sparkline_from_chart};
+use super::parse::{parse_quote_from_chart, parse_search_results, parse_sparkline_from_chart};
 use crate::domain::constants::SparklinePolicy;
-use crate::domain::types::{AssetKind, Quote, Sparkline};
+use crate::domain::types::{AssetKind, Quote, Sparkline, SymbolSuggestion};
 use crate::ports::market_data::{MarketDataProvider, ProviderLimits};
 use async_trait::async_trait;
 use std::time::Duration;
@@ -52,6 +52,41 @@ impl YahooProvider {
             return Err(format!("http {}", resp.status()));
         }
         resp.json().await.map_err(|e| e.to_string())
+    }
+
+    /// Yahoo symbol lookup (`/v1/finance/search`) — used for add-flow autocomplete.
+    pub async fn search_symbols(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SymbolSuggestion>, String> {
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(vec![]);
+        }
+        let limit = limit.clamp(1, 20);
+        let url = format!("{}/v1/finance/search", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[
+                ("q", q),
+                ("quotesCount", &limit.to_string()),
+                ("newsCount", "0"),
+                ("listsCount", "0"),
+                ("enableFuzzyQuery", "false"),
+            ])
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if resp.status().as_u16() == 429 {
+            return Err("rate_limited".into());
+        }
+        if !resp.status().is_success() {
+            return Err(format!("http {}", resp.status()));
+        }
+        let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        Ok(parse_search_results(&json, q, limit))
     }
 }
 
@@ -200,5 +235,27 @@ mod tests {
             .unwrap();
         assert_eq!(spark.symbol, "BTC-USD");
         assert_eq!(spark.points.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn search_symbols_ok_from_mock() {
+        let server = MockServer::start().await;
+        let body = r#"{
+          "quotes": [
+            { "symbol": "AAPL", "shortname": "Apple Inc.", "quoteType": "EQUITY", "exchDisp": "NASDAQ" },
+            { "symbol": "AAPB", "shortname": "GraniteShares 2x Long AAPL", "quoteType": "EQUITY", "exchDisp": "NASDAQ" }
+          ]
+        }"#;
+        Mock::given(method("GET"))
+            .and(path("/v1/finance/search"))
+            .and(query_param("q", "AAP"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let provider = YahooProvider::with_base_url(server.uri()).unwrap();
+        let hits = provider.search_symbols("AAP", 8).await.unwrap();
+        assert!(hits.len() >= 1);
+        assert!(hits.iter().any(|h| h.symbol == "AAPL"));
     }
 }
