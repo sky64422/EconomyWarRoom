@@ -222,7 +222,7 @@ While the widget is still running:
 2. Click **Copy diagnostics** (label becomes `Copied`).  
 3. Paste into chat (optionally add steps / expected / actual / screenshot).
 
-The dump includes version, OS, visibility, settings, watchlist, quote cache summary, scheduler backoff/last error, and recent in-process events (hotkey/autostart/add failures, etc.). It is **not** a native crash minidump and is **not** written to disk by default.
+The dump includes version, OS, visibility, settings, watchlist, quote cache summary, scheduler backoff/last error, and up to **100** recent in-process events (command failures, hotkey/autostart issues, throttled provider errors, etc.). Identical scheduler errors are throttled (≈30s) so the ring is not flooded by 429 storms. It is **not** a native crash minidump and is **not** written to disk by default.
 
 ### Other artifacts (optional)
 

@@ -3,7 +3,9 @@
 //! Command handlers and integration tests call into this layer so business logic stays
 //! unit-testable without a live WebView.
 
-use crate::application::diagnostics::{DiagLevel, EventRing};
+use crate::application::diagnostics::{
+    DiagLevel, EventRing, DIAGNOSTICS_DUMP_LINES, NOTE_THROTTLE,
+};
 use crate::application::scheduler::QuoteScheduler;
 use crate::domain::constants::clamp_opacity;
 use crate::domain::types::{
@@ -15,6 +17,7 @@ use crate::domain::constants::clamp_geometry;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::sync::Mutex as AsyncMutex;
 
 /// Shared core state used by commands and tests.
@@ -24,6 +27,8 @@ pub struct AppCore {
     pub scheduler: Arc<AsyncMutex<QuoteScheduler>>,
     pub visible: AtomicBool,
     events: Mutex<EventRing>,
+    /// Last throttled note: (message, when) — suppresses identical spam.
+    throttle: Mutex<Option<(String, Instant)>>,
 }
 
 impl AppCore {
@@ -39,6 +44,7 @@ impl AppCore {
             scheduler: Arc::new(AsyncMutex::new(scheduler)),
             visible: AtomicBool::new(visible),
             events: Mutex::new(EventRing::default()),
+            throttle: Mutex::new(None),
         }
     }
 
@@ -47,6 +53,31 @@ impl AppCore {
         if let Ok(mut ring) = self.events.lock() {
             ring.push(level, message);
         }
+    }
+
+    /// Like [`note`], but skips if the same message was logged within `cooldown`
+    /// (default [`NOTE_THROTTLE`]). Prevents scheduler 429 spam from filling the ring.
+    pub fn note_throttled(
+        &self,
+        level: DiagLevel,
+        message: impl Into<String>,
+        cooldown: Duration,
+    ) {
+        let message = message.into();
+        if let Ok(mut slot) = self.throttle.lock() {
+            if let Some((prev, at)) = slot.as_ref() {
+                if prev == &message && at.elapsed() < cooldown {
+                    return;
+                }
+            }
+            *slot = Some((message.clone(), Instant::now()));
+        }
+        self.note(level, message);
+    }
+
+    /// Throttle with [`NOTE_THROTTLE`].
+    pub fn note_throttled_default(&self, level: DiagLevel, message: impl Into<String>) {
+        self.note_throttled(level, message, NOTE_THROTTLE);
     }
 
     pub fn app_data_dir(&self) -> &Path {
@@ -223,7 +254,7 @@ impl AppCore {
             .events
             .lock()
             .map_err(|_| "events lock poisoned".to_string())?
-            .last_lines(50);
+            .last_lines(DIAGNOSTICS_DUMP_LINES);
 
         let mut out = String::new();
         out.push_str("### EWR diagnostics\n");
@@ -433,5 +464,19 @@ mod tests {
         assert!(text.contains("settings:"));
         assert!(text.contains("hotkey collide test"));
         assert!(text.contains("scheduler:"));
+    }
+
+    #[test]
+    fn note_throttled_suppresses_identical_message() {
+        let (_dir, core) = core_empty();
+        core.note_throttled(DiagLevel::Warn, "rate_limited", Duration::from_secs(60));
+        core.note_throttled(DiagLevel::Warn, "rate_limited", Duration::from_secs(60));
+        core.note_throttled(DiagLevel::Warn, "other", Duration::from_secs(60));
+        let lines = core.events.lock().unwrap().lines();
+        assert_eq!(
+            lines.iter().filter(|l| l.contains("rate_limited")).count(),
+            1
+        );
+        assert_eq!(lines.iter().filter(|l| l.contains("other")).count(), 1);
     }
 }

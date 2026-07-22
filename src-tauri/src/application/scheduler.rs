@@ -77,6 +77,8 @@ pub struct QuoteScheduler {
     backoff: Duration,
     /// Last quote/sparkline provider error message (for diagnostics).
     last_error: Option<String>,
+    /// Provider errors since last [`drain_diag_notes`] (for ring buffer, not spammy success logs).
+    pending_diag: Vec<String>,
 }
 
 impl QuoteScheduler {
@@ -94,7 +96,13 @@ impl QuoteScheduler {
             backoff_until: None,
             backoff: RefreshPolicy::BACKOFF_INITIAL,
             last_error: None,
+            pending_diag: Vec::new(),
         }
+    }
+
+    /// Take diagnostics lines produced by recent ticks (usually 0–1).
+    pub fn drain_diag_notes(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.pending_diag)
     }
 
     /// One-line scheduler status for diagnostics dumps.
@@ -208,7 +216,9 @@ impl QuoteScheduler {
                 }
                 Err(err) => {
                     // Keep existing cache; back off network work.
-                    self.last_error = Some(format!("quotes: {err}"));
+                    let msg = format!("quotes: {err}");
+                    self.last_error = Some(msg.clone());
+                    self.pending_diag.push(msg);
                     self.backoff_until = Some(Instant::now() + self.backoff);
                     self.backoff = (self.backoff * 2).min(RefreshPolicy::BACKOFF_MAX);
                     return;
@@ -252,7 +262,9 @@ impl QuoteScheduler {
                 }
                 Err(err) => {
                     // Same backoff path as quote errors to protect the provider.
-                    self.last_error = Some(format!("sparkline {sym}: {err}"));
+                    let msg = format!("sparkline {sym}: {err}");
+                    self.last_error = Some(msg.clone());
+                    self.pending_diag.push(msg);
                     self.backoff_until = Some(Instant::now() + self.backoff);
                     self.backoff = (self.backoff * 2).min(RefreshPolicy::BACKOFF_MAX);
                     return;
@@ -428,6 +440,19 @@ mod tests {
         assert_eq!(provider.call_count(), 1);
         assert_eq!(sched.quote_cache().get("A").map(|q| q.price), Some(10.0));
         assert_eq!(sched.quote_cache().get("B").map(|q| q.price), Some(20.0));
+    }
+
+    #[tokio::test]
+    async fn provider_error_queues_diag_note() {
+        let provider = Arc::new(MockProvider::new(vec![quote("MSFT", 1.0)]));
+        provider.set_fail_quotes(true);
+        let mut sched = QuoteScheduler::new(provider);
+        sched.set_watchlist(vec![item("MSFT", 0)]);
+        sched.tick_once().await;
+        let notes = sched.drain_diag_notes();
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].contains("quotes:"));
+        assert!(sched.drain_diag_notes().is_empty());
     }
 
     #[tokio::test]

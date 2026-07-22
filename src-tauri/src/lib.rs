@@ -37,9 +37,7 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir).map_err(|e| e.to_string())?;
             let persisted = load_state(&app_data_dir);
             // Ensure a valid file exists on first run.
-            if let Err(e) = save_state(&app_data_dir, &persisted) {
-                eprintln!("initial save_state: {e}");
-            }
+            let initial_save_err = save_state(&app_data_dir, &persisted).err();
 
             // --- market data + scheduler ---
             let provider = YahooProvider::new().map_err(|e| e.to_string())?;
@@ -50,6 +48,12 @@ pub fn run() {
             let handle_state =
                 AppHandleState::new(persisted.clone(), app_data_dir, scheduler, true);
             handle_state.core.note(DiagLevel::Info, "app setup starting");
+            if let Some(e) = initial_save_err {
+                eprintln!("initial save_state: {e}");
+                handle_state
+                    .core
+                    .note(DiagLevel::Error, format!("initial save_state: {e}"));
+            }
 
             // --- window policy from settings ---
             if let Some(window) = app.get_webview_window("main") {
@@ -164,6 +168,11 @@ pub fn run() {
                     {
                         let mut sched = state.core.scheduler.lock().await;
                         sched.tick_once().await;
+                        for msg in sched.drain_diag_notes() {
+                            state
+                                .core
+                                .note_throttled_default(DiagLevel::Warn, msg);
+                        }
                     }
                     let quotes = state.core.get_quotes().await;
                     let sparks = state.core.get_sparklines().await;

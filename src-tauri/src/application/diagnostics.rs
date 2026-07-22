@@ -5,6 +5,12 @@ use std::collections::VecDeque;
 /// Default capacity for recent events kept in memory.
 pub const DEFAULT_EVENT_CAPACITY: usize = 100;
 
+/// How many ring lines to include in a diagnostics dump (matches capacity).
+pub const DIAGNOSTICS_DUMP_LINES: usize = DEFAULT_EVENT_CAPACITY;
+
+/// Minimum interval before re-logging an identical throttled message.
+pub const NOTE_THROTTLE: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Severity for a diagnostics event line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagLevel {

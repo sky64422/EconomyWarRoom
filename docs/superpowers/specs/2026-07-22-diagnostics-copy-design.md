@@ -49,8 +49,15 @@ Plain text (markdown-friendly):
 - watchlist: ordered lines `sort_index symbol kind id`
 - quotes: per cached quote `symbol price change% as_of` or `(none)`
 - scheduler: visible-flag, backoff_active, last_error if any
-- recent_events: up to 50 lines `timestamp level message` (oldest→newest)
+- recent_events: up to 100 lines (`DIAGNOSTICS_DUMP_LINES` = ring capacity) `timestamp level message` (oldest→newest)
 ```
+
+### Follow-up (implemented)
+
+- Command failures (`remove`/`reorder`/`theme`/`opacity`/`geometry`/`hide`/…) call `note`.
+- Scheduler quote/sparkline errors → `pending_diag` → tick loop `note_throttled` (30s identical-message cooldown).
+- Initial `save_state` failure recorded on the ring after `AppCore` exists.
+
 
 No API keys exist in MVP; watchlist symbols are included intentionally.
 
