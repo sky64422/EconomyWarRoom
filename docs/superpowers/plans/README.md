@@ -2,8 +2,14 @@
 
 | Plan | Status |
 |------|--------|
-| [2026-07-22-economy-war-room-mvp.md](./2026-07-22-economy-war-room-mvp.md) | **Implemented** on branch `feat/mvp-widget` (Tasks 1–13 code; Task 14 docs). Manual OS smoke still open — see [docs/TODO.md](../../TODO.md) P5-2 / P5-3. |
+| [2026-07-22-economy-war-room-mvp.md](./2026-07-22-economy-war-room-mvp.md) | **Done** — implemented and merged to **`main`** (Tasks 1–14). Follow-up: automated tests/coverage (2026-07-22). Manual OS smoke still optional — [TODO](../../TODO.md) P5-2 / P5-3. |
 
-Phased checklist (high level): [docs/TODO.md](../../TODO.md)  
-Design spec: [2026-07-22-economy-war-room-design.md](../specs/2026-07-22-economy-war-room-design.md)  
-Product runbook: [README.md](../../../README.md)
+## Related
+
+| Doc | Purpose |
+|-----|---------|
+| [Design spec](../specs/2026-07-22-economy-war-room-design.md) | Product decisions |
+| [ARCHITECTURE.md](../../ARCHITECTURE.md) | Current code layout |
+| [testing.md](../../testing.md) | Tests & coverage gate |
+| [TODO.md](../../TODO.md) | Phase checklist |
+| [README.md](../../../README.md) | Runbook |

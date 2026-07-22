@@ -1,50 +1,93 @@
 # Testing & Coverage
 
+**Updated:** 2026-07-22
+
+## Snapshot
+
+| Metric | Value |
+|--------|--------|
+| Unit tests (`cargo test --lib`) | ~51 |
+| Integration (`integration_e2e`) | 4 |
+| Risk scenarios (`risk_scenarios`) | 7 |
+| Coverage gate | **≥ 85%** business logic |
+| Last measured | **~98.4%** (424/431 lines) via tarpaulin |
+
 ## Layers
 
 | Layer | Location | Purpose |
 |-------|----------|---------|
-| Unit | `src-tauri/src/**` `#[cfg(test)]` | Domain, scheduler, parse, store, service |
-| HTTP mock | `yahoo/client` + wiremock | 200 / 429 / 5xx without live Yahoo |
-| Integration | `src-tauri/tests/integration_e2e.rs` | Store + AppCore + scheduler + mock/Yahoo HTTP |
+| Unit | `src-tauri/src/**` `#[cfg(test)]` | Domain, scheduler, queue, parse, store, **AppCore**, Yahoo wiremock |
+| HTTP mock | `yahoo/client` + **wiremock** | 200 / 429 / 5xx without live Yahoo |
+| Integration | `src-tauri/tests/integration_e2e.rs` | Store + AppCore + scheduler + mock Yahoo HTTP pipeline |
 | Risk | `src-tauri/tests/risk_scenarios.rs` | Rate limit, hide pause, corrupt JSON, invalid IDs |
-| GUI smoke | Manual `npm run tauri dev` | Hotkey, window chrome (not in CI coverage) |
+| GUI smoke | Manual `npm run tauri dev` | Hotkey, window chrome (not in automated coverage) |
 
 ## Commands
 
+From repo root:
+
 ```bash
-# Unit + integration
+npm test                 # cargo test --lib + integration_e2e + risk_scenarios
+npm run test:coverage    # scripts/coverage.sh (fail-under 85)
+npm run build            # frontend tsc + vite
+```
+
+Equivalent cargo:
+
+```bash
 cd src-tauri
 cargo test --lib
 cargo test --test integration_e2e --test risk_scenarios
-
-# Coverage gate (≥ 85% business logic)
-./scripts/coverage.sh
+./../scripts/coverage.sh
 ```
+
+HTML report: `src-tauri/target/coverage/tarpaulin-report.html`
 
 ## Coverage policy
 
-**Included:** `domain/`, `application/`, `infrastructure/store`, `infrastructure/yahoo`, `ports/`, `state/`
+**Included in the gate:**
 
-**Excluded from gate (GUI / OS glue):**
+- `domain/`
+- `application/` (`cache`, `queue`, `scheduler`, **`service`**)
+- `infrastructure/store`, `infrastructure/yahoo`
+- `ports/`, `state/`
 
-- `src/main.rs` — binary entry
-- `src/lib.rs` — Tauri `run()` bootstrap, plugins, hotkey registration
-- `src/infrastructure/window_ctl.rs` — requires live `WebviewWindow`
-- `src/commands.rs` — thin adapters over `AppCore` (logic covered via `application/service.rs`)
+**Excluded from the gate (GUI / OS glue):**
 
-Rationale: Tauri WebView APIs cannot run headlessly in this CI shape; business risk is covered by service + integration tests.
+| File | Why |
+|------|-----|
+| `src/main.rs` | Binary entry |
+| `src/lib.rs` | Tauri `run()`, plugins, hotkey registration, tick loop wiring |
+| `src/infrastructure/window_ctl.rs` | Needs live `WebviewWindow` |
+| `src/commands.rs` | Thin adapters over `AppCore` (logic covered in `application/service.rs`) |
+
+Rationale: Tauri WebView APIs do not run headlessly in this CI shape. Product risk for watchlist, rates, and persistence is covered by service + integration + risk tests.
 
 ## Risk scenarios covered
 
-- API rate limit → backoff; cache not wiped
-- Widget hidden → zero provider calls
-- Corrupt / missing state JSON → safe defaults
-- Duplicate / empty symbol rejected
-- Unknown remove id / bad reorder → error, no data loss
-- Geometry / opacity clamp
-- Yahoo 429 / 500 mapping
+- API rate limit → backoff; **cache not wiped**  
+- Widget hidden → **zero** provider calls  
+- Corrupt / missing state JSON → safe defaults  
+- Duplicate / empty symbol rejected  
+- Unknown remove id / bad reorder → error, **list unchanged** (atomic reorder)  
+- Geometry / opacity clamp  
+- Yahoo **429** / **500** status mapping  
+- Save creates missing parent directories  
+
+## Integration scenarios covered
+
+- Watchlist add / reorder / remove + **disk reload** after “restart”  
+- Scheduler refresh while visible; pause when hidden  
+- Yahoo mock HTTP end-to-end into quote + sparkline caches  
+- Seed default state save/load  
 
 ## Frontend
 
-No automated UI e2e yet. Typecheck via `npm run build`. Optional future: Playwright against Vite mock.
+- Automated UI e2e: **not yet**  
+- Typecheck: `npm run build`  
+- Optional future: Playwright against Vite + mocked `invoke`  
+
+## Related
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md)  
+- [TODO.md](./TODO.md) manual smoke (P5-2 / P5-3)  

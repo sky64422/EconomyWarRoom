@@ -1,7 +1,7 @@
 # EconomyWarRoom — Design Spec
 
 **Date:** 2026-07-22  
-**Status:** Draft (approved in brainstorming; UI section included from agreed product decisions)  
+**Status:** **Implemented (MVP on `main`)** — approved in brainstorming; code matches this direction with refinements noted in [ARCHITECTURE.md](../../ARCHITECTURE.md) and [testing.md](../../testing.md).  
 **Product type:** Lightweight floating market-watch widget (not a portfolio app)
 
 ## 1. Problem & product one-liner
@@ -248,17 +248,38 @@ Goals: UI feels 1–5s fresh; network stays under free-API limits.
 - Whether sparkline previousClose for % coloring matches Yahoo meta only (prefer simple).
 ---
 
-## Appendix A — Suggested repo layout (implementation)
+## Appendix A — Repo layout (as implemented)
 
 ```
-src-tauri/          Rust: window, hotkey, store, scheduler, providers
-src/                Web UI
+src-tauri/src/
+  domain/           types, constants, watchlist, sparkline_math
+  ports/            MarketDataProvider
+  application/      cache, queue, scheduler, service (AppCore)
+  infrastructure/   yahoo/, store, window_ctl
+  commands.rs       thin Tauri adapters
+  state.rs, lib.rs, main.rs
+src-tauri/tests/    integration_e2e.rs, risk_scenarios.rs
+src/                Web UI (ui/, styles/)
 docs/
-  superpowers/specs/   this document
+  ARCHITECTURE.md
+  testing.md
   TODO.md
+  superpowers/specs/   this document
+  superpowers/plans/   MVP plan
+scripts/coverage.sh
 README.md
 ```
 
+Authoritative tree and data flow: [docs/ARCHITECTURE.md](../../ARCHITECTURE.md).
+
 ## Appendix B — Brainstorming process notes
 
-Collaborative decisions recorded in session 2026-07-22; this file is the durable source of truth for the approved design direction before implementation planning.
+Collaborative decisions recorded in session 2026-07-22. This file remains the product decision log; implementation details and deviations (e.g. `AppCore` service layer, opacity via CSS event, coverage exclusions for GUI bootstrap) live in ARCHITECTURE and testing docs.
+
+## Appendix C — Implementation outcome (2026-07-22)
+
+| Area | Outcome |
+|------|---------|
+| MVP features | Delivered on `main` |
+| Automated tests | Unit + integration + risk; coverage gate ≥85% (~98% business logic) |
+| Still open | Manual Windows smoke (hotkey/autostart/long run) — TODO P5-2/P5-3 |

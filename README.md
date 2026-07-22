@@ -17,35 +17,45 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | **Toggle** | `Ctrl+Shift+Space` **or** in-UI hide (hide only; app stays running) |
 | **Look** | Light / dark / system · translucent **glass** · adjustable opacity |
 | **Startup** | Autostart on login · widget visible on launch |
-| **Stack** | [Tauri](https://tauri.app/) — Rust core + web UI |
-| **Data** | Free public market APIs with a **rate-limited scheduler/queue** |
+| **Stack** | [Tauri](https://tauri.app/) 2 — Rust core + vanilla TypeScript / Vite UI |
+| **Data** | Free Yahoo-style chart API + **rate-limited scheduler** (backoff on 429) |
 
 ## Status
 
-**MVP implementation on branch `feat/mvp-widget`.** Core widget, Yahoo-backed quotes/sparklines, glass UI, hotkey/hide, settings, and persistence are in place. Manual OS-level checks (sustained run, autostart on Windows) remain.
+**MVP shipped on `main`.** Design, implementation plan (Tasks 1–14), unit/integration/risk tests, and ≥85% business-logic coverage gate are in place.
+
+| Area | State |
+|------|--------|
+| Core widget + glass UI | Done |
+| Yahoo quotes / sparklines + scheduler | Done |
+| Hotkey / hide / settings / JSON persist | Done |
+| Automated tests + coverage gate | Done (~98% business logic) |
+| Manual OS smoke (Windows autostart, long run) | Still recommended — see [TODO](docs/TODO.md) P5-2 / P5-3 |
 
 | Document | Purpose |
 |----------|---------|
-| [Design spec](docs/superpowers/specs/2026-07-22-economy-war-room-design.md) | Goals, architecture, scheduler, UI, non-goals |
-| [TODO](docs/TODO.md) | Phased checklist (P0–P5 progress) |
-| [MVP plan](docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md) | Task breakdown (Tasks 1–14) |
-| [Plans index](docs/superpowers/plans/) | Plan status |
+| [Architecture](docs/ARCHITECTURE.md) | Current module layout and data flow |
+| [Design spec](docs/superpowers/specs/2026-07-22-economy-war-room-design.md) | Goals, decisions, non-goals |
+| [MVP plan](docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md) | Implementation task breakdown |
+| [TODO](docs/TODO.md) | Phase checklist + remaining manual smoke |
+| [Testing](docs/testing.md) | Unit / integration / risk / coverage policy |
 
 ## Architecture (short)
 
 ```
-Web UI  ←→  Tauri  ←→  Rust
-  glass list          window, hotkey, autostart
-  DnD / + / hide      JSON settings + watchlist
-                      QuoteScheduler + RateLimitedQueue
-                      MarketDataProvider (Yahoo-first, …)
+Web UI (src/)          Tauri bridge              Rust (src-tauri/)
+  glass list      ←→   commands / events   ←→   AppCore service
+  DnD / + / hide        invoke + emit            QuoteScheduler + queue
+  theme / opacity                                MarketDataProvider (Yahoo)
+                                                 JSON store (app data dir)
 ```
 
-- **Domain / ports / application / infrastructure** separation; shared constants for refresh and sparkline policy.
-- Network and rate limiting live in **Rust** (avoid webview CORS and centralize quotas).
-- Persistence: **JSON only** for MVP (no SQLite).
+- **Layers:** `domain` → `ports` → `application` (scheduler, queue, **AppCore**) → `infrastructure` (Yahoo, store, window helpers).
+- Commands are thin adapters; business logic lives in `AppCore` (unit-tested).
+- Network and rate limits run in **Rust** (no webview CORS).
+- Persistence: **one JSON file** under Tauri `app_data_dir` (no SQLite).
 
-Design details, scheduling policy, and AssetStocker borrow list: see the [design spec](docs/superpowers/specs/2026-07-22-economy-war-room-design.md).
+More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Non-goals
 
@@ -58,67 +68,62 @@ Design details, scheduling policy, and AssetStocker borrow list: see the [design
 
 **Requirements:**
 
-- **Rust** stable (`rustc`, `cargo`) — install via [rustup](https://rustup.rs/)
+- **Rust** stable (`rustc`, `cargo`) — [rustup](https://rustup.rs/)
 - **Node.js 18+** and npm
-- **Tauri 2** system deps for your OS — see [Tauri prerequisites](https://tauri.app/start/prerequisites/)
-  - **Linux:** WebKitGTK, etc. (e.g. `webkit2gtk`, `libgtk-3`, `librsvg`, build tools)
-  - **Windows:** Microsoft Edge WebView2 (usually preinstalled on Win10/11)
+- **Tauri 2** OS deps — [prerequisites](https://tauri.app/start/prerequisites/)
+  - **Linux:** WebKitGTK, GTK, etc.
+  - **Windows:** Edge WebView2 (usually preinstalled)
 
-**Primary target is Windows** (hotkey, transparent glass, always-on-top, autostart). Linux is fine for development; transparent windows and global hotkeys may be limited depending on compositor / Wayland.
+**Primary target is Windows** (hotkey, glass, always-on-top, autostart). Linux works for development; transparent windows and global hotkeys may vary by compositor / Wayland.
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-Frontend-only (no native shell):
+Frontend-only (no native shell; `invoke` will fail outside Tauri):
 
 ```bash
 npm run dev
 ```
 
-Tests (unit + integration + risk scenarios; no live Yahoo required):
+### Tests & coverage
 
 ```bash
-npm test
-npm run test:coverage   # tarpaulin ≥ 85% business logic (~98% currently)
+npm test                 # unit + integration_e2e + risk_scenarios
+npm run test:coverage    # tarpaulin ≥ 85% business logic (currently ~98%)
+npm run build            # tsc + Vite production bundle
 ```
 
-Details: [docs/testing.md](docs/testing.md)
-
-Frontend typecheck + Vite build:
-
-```bash
-npm run build
-```
+See [docs/testing.md](docs/testing.md).
 
 ### Controls
 
 | Action | How |
 |--------|-----|
 | Toggle visibility | **`Ctrl+Shift+Space`** (global hotkey) |
-| Hide widget | Header **hide** button (app keeps running; polling pauses) |
+| Hide widget | Header **hide** button (process keeps running; polling pauses) |
 | Quit | **Settings → Quit** (hide alone does not exit) |
 | Theme / opacity | Settings panel (light / dark / system; opacity slider) |
-| Watchlist | Bottom **+** to add · drag to reorder · per-row remove |
+| Watchlist | Bottom **+** · drag to reorder · per-row remove |
 
 Default seed watchlist: **AAPL**, **BTC-USD**.
 
 ## Configuration
 
-Stored as JSON under the OS app data directory (Tauri `app_data_dir`), including:
+JSON under the OS app data directory (Tauri `app_data_dir`), file name roughly `economy-war-room-state.json`:
 
 - Watchlist symbols and order  
-- Theme (`light` | `dark` | `system`)  
-- Opacity  
+- Theme (`light` \| `dark` \| `system`)  
+- Opacity (clamped ~0.35–1.0)  
 - Window geometry  
 - Autostart flag  
-- Hotkey (default `Ctrl+Shift+Space`)  
+- Hotkey string (default `Ctrl+Shift+Space`)  
 
 ## Design references
 
 - UI motion/materials: [apple-design skill](https://github.com/emilkowalski/skills/tree/main/skills/apple-design)  
-- Market-data patterns (ideas only): local **AssetStocker** (`YahooFinanceClient`, rate limiter, job queue, sparkline policy)  
+- Market-data patterns (ideas only): **AssetStocker** rate limiter, job queue, Yahoo chart + sparkline policy  
 
 ## License
 

@@ -5,7 +5,9 @@ Living checklist derived from the design spec
 
 Status: `pending` · `in_progress` · `done` · `blocked`
 
-**MVP code path:** implemented on branch `feat/mvp-widget` (see plan Tasks 1–13). Docs/runbook: Task 14.
+**MVP code:** implemented and merged to **`main`** (plan Tasks 1–14).  
+**Automated quality:** unit + integration + risk tests; coverage gate ≥85% (~98% business logic).  
+**Remaining:** optional manual OS smoke on Windows (P5-2 / P5-3).
 
 ---
 
@@ -79,38 +81,55 @@ Status: `pending` · `in_progress` · `done` · `blocked`
 | P5-3 | Sustained-run smoke (rate limits under default constants) | pending |
 | P5-4 | Quit path documented (and implemented if missing) | done |
 | P5-5 | Spec/README/TODO updated after MVP | done |
+| P5-6 | Automated coverage ≥85% + integration/risk suites | done |
 
 ### Manual verification checklist (P5-2 / P5-3)
 
-Run with `npm run tauri dev` on the target OS (Windows preferred):
+Run with `npm run tauri dev` on the target OS (**Windows preferred**):
 
-- [ ] Always-on-top floating glass window
-- [ ] Drag move + size persist after restart
-- [ ] Opacity + theme light / dark / system
-- [ ] Seed AAPL + BTC-USD load quotes and sparklines
-- [ ] Add symbol at bottom via **+**
-- [ ] DnD reorder persists
-- [ ] Remove symbol
-- [ ] Hide button hides; hotkey shows; polling pauses while hidden
-- [ ] Settings → Quit exits the process
-- [ ] Autostart registered when setting true (verify OS-specific)
-- [ ] Sustained-run smoke: leave open long enough to confirm rate limits / backoff stay healthy under default constants
+- [ ] Always-on-top floating glass window  
+- [ ] Drag move + size persist after restart  
+- [ ] Opacity + theme light / dark / system  
+- [ ] Seed AAPL + BTC-USD load quotes and sparklines  
+- [ ] Add symbol at bottom via **+**  
+- [ ] DnD reorder persists  
+- [ ] Remove symbol  
+- [ ] Hide button hides; hotkey shows; polling pauses while hidden  
+- [ ] Settings → Quit exits the process  
+- [ ] Autostart registered when setting true (verify OS-specific)  
+- [ ] Sustained-run smoke: leave open long enough to confirm rate limits / backoff stay healthy under default constants  
+
+## Phase 6 — Post-MVP ideas (not started)
+
+| ID | Task | Status |
+|----|------|--------|
+| P6-1 | Remappable hotkey UI | pending |
+| P6-2 | Dedicated crypto exchange provider (WebSocket optional) | pending |
+| P6-3 | Commodities / KR equity providers | pending |
+| P6-4 | Symbol search API (beyond type-in) | pending |
+| P6-5 | Tray icon / alternate quit affordance | pending |
+| P6-6 | Frontend automated e2e (e.g. Playwright) | pending |
 
 ## Out of scope (do not start without new design approval)
 
-- Portfolio, P&L, transactions, broker APIs
-- SQLite / historical snapshot system
-- Windows 11 official Widgets board
-- Finnhub (or other) API-key-required realtime as MVP dependency
-- Commodities / KR market providers (post-MVP extension slots only)
-- Separate multi-process quote proxy
+- Portfolio, P&L, transactions, broker APIs  
+- SQLite / historical snapshot system  
+- Windows 11 official Widgets board  
+- Finnhub (or other) API-key-required realtime as MVP dependency  
+- Separate multi-process quote proxy  
 
-## Suggested implementation order
+## Implementation history
 
-1. P0 → P1 (see a glass window + hotkey hide before data) — **done**
-2. P2 → P3 (quotes flowing with scheduler) — **done**
-3. P4 (bind UI) — **done**
-4. P5 (harden) — code done; **manual smoke remaining**
+| Phase | Result |
+|-------|--------|
+| P0 → P1 | Scaffold + window / hotkey / autostart |
+| P2 → P3 | Domain, store, Yahoo, scheduler |
+| P4 | Glass UI |
+| P5 code | Docs, AppCore, tests, coverage gate |
+| P5 manual | Open checklist above |
 
-Detail task breakdown:  
-[`docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md`](superpowers/plans/2026-07-22-economy-war-room-mvp.md) (Tasks 1–14, TDD steps).
+Detail task breakdown (historical):  
+[`docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md`](superpowers/plans/2026-07-22-economy-war-room-mvp.md)
+
+Current structure: [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)  
+Testing: [`docs/testing.md`](testing.md)

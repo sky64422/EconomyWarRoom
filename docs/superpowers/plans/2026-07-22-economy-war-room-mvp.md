@@ -1,16 +1,20 @@
 # EconomyWarRoom MVP Implementation Plan
 
+> **Status (2026-07-22):** **COMPLETE** — Tasks 1–14 executed; code merged to **`main`**. Follow-ups: automated tests/coverage suite and docs refresh. Remaining optional work: manual OS smoke (TODO P5-2/P5-3).  
+> Historical plan below kept for audit; prefer [ARCHITECTURE.md](../../ARCHITECTURE.md) and [testing.md](../../testing.md) for current truth.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship a lightweight Windows (and Linux-dev) Tauri floating watchlist widget: glass UI, US equity + crypto quotes/sparklines, DnD reorder, hotkey + in-UI hide, opacity/theme, rate-limited Yahoo-backed scheduler.
 
-**Architecture:** Thin Tauri shell — web UI for glass list/interaction; Rust owns window/hotkey/autostart, JSON persistence, `RateLimitedQueue` + `QuoteScheduler`, and `MarketDataProvider` HTTP (Yahoo-first). Domain types and policy constants live in small focused modules; no SQLite, no portfolio features.
+**Architecture:** Thin Tauri shell — web UI for glass list/interaction; Rust owns window/hotkey/autostart, JSON persistence, `RateLimitedQueue` + `QuoteScheduler`, and `MarketDataProvider` HTTP (Yahoo-first). Domain types and policy constants live in small focused modules; no SQLite, no portfolio features. **As built:** `AppCore` service layer sits under thin Tauri commands for testability.
 
-**Tech Stack:** Tauri 2, Rust (serde, reqwest, tokio, uuid), vanilla TypeScript + CSS (no heavy SPA framework for MVP), global-hotkey / tauri-plugin-global-shortcut, tauri-plugin-autostart, tauri-plugin-store or hand-rolled JSON file.
+**Tech Stack:** Tauri 2, Rust (serde, reqwest, tokio, uuid), vanilla TypeScript + CSS (no heavy SPA framework for MVP), global-hotkey / tauri-plugin-global-shortcut, tauri-plugin-autostart, hand-rolled JSON file (not tauri-plugin-store).
 
 **Spec:** `docs/superpowers/specs/2026-07-22-economy-war-room-design.md`
 
 ---
+
 
 ## File map (create during tasks)
 
