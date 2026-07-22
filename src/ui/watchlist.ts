@@ -265,10 +265,15 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         : addQuery.length;
       footerEl.innerHTML = `
         <div class="add-wrap">
-          <form class="add-form" id="add-form" autocomplete="off">
-            <input type="text" id="add-symbol-input" placeholder="Search symbol…" maxlength="32" spellcheck="false" value="${escapeAttr(addQuery)}" aria-autocomplete="list" aria-controls="add-suggest" />
-            <button type="submit">Add</button>
-            <button type="button" class="secondary" id="add-cancel">Cancel</button>
+          <form class="add-card add-card--active" id="add-form" autocomplete="off">
+            <div class="add-card-main">
+              <span class="add-card-plus" aria-hidden="true">+</span>
+              <input type="text" id="add-symbol-input" class="add-card-input" placeholder="Search symbol to fill this slot…" maxlength="32" spellcheck="false" value="${escapeAttr(addQuery)}" aria-autocomplete="list" aria-controls="add-suggest" />
+            </div>
+            <div class="add-card-actions">
+              <button type="submit" class="add-card-btn primary">Add</button>
+              <button type="button" class="add-card-btn" id="add-cancel">Cancel</button>
+            </div>
           </form>
           ${
             suggestions.length > 0
@@ -352,8 +357,18 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         renderFooter();
       });
     } else {
+      // Empty slot card — same footprint as a watchlist row, “fill this slot” affordance.
       footerEl.innerHTML = `
-        <button type="button" class="btn-add" id="btn-add" aria-label="Add symbol">+ Add</button>
+        <button type="button" class="add-card" id="btn-add" aria-label="Add symbol">
+          <span class="add-card-plus" aria-hidden="true">+</span>
+          <span class="add-card-label">
+            <span class="add-card-title">Add symbol</span>
+            <span class="add-card-hint">Empty slot · tap to fill</span>
+          </span>
+          <span class="add-card-ghost-spark" aria-hidden="true"></span>
+          <span class="add-card-ghost-price" aria-hidden="true">—</span>
+          <span class="add-card-ghost-change" aria-hidden="true">—</span>
+        </button>
       `;
       footerEl.querySelector("#btn-add")!.addEventListener("click", () => {
         adding = true;

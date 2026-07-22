@@ -315,49 +315,206 @@ body {
   color: var(--down);
 }
 
-/* —— Add symbol (directly under last row, scrolls with list) —— */
+/* —— Add slot (same card footprint as a watchlist row) —— */
 .watchlist-footer {
   flex: 0 0 auto;
-  padding: 8px 0 10px;
+  padding: 0 0 10px;
   border-top: none;
 }
 
-.btn-add {
+/* Idle empty card — mirrors .watchlist-row grid */
+.add-card {
+  position: relative;
+  box-sizing: border-box;
   width: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed color-mix(in srgb, var(--text) 22%, transparent);
+  border-radius: var(--radius-row);
+  background: color-mix(in srgb, var(--bg-row-hover) 55%, transparent);
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.add-card:hover {
+  background: var(--bg-row-hover);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--text);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.add-card-plus {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 40px;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--text) 28%, transparent);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.add-card-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  grid-column: 1;
+  margin-left: 36px; /* sit beside absolutely-positioned plus if needed */
+}
+
+/* Re-layout: plus + label share first column */
+.add-card:not(.add-card--active) {
+  grid-template-columns: auto minmax(0, 1fr) 72px auto auto;
+}
+
+.add-card:not(.add-card--active) .add-card-label {
+  margin-left: 0;
+  grid-column: auto;
+}
+
+.add-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: inherit;
+}
+
+.add-card-hint {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.72;
+}
+
+/* Ghost columns matching spark / price / change */
+.add-card-ghost-spark {
+  width: 72px;
+  height: 22px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--text) 6%, transparent),
+    color-mix(in srgb, var(--text) 12%, transparent),
+    color-mix(in srgb, var(--text) 6%, transparent)
+  );
+  opacity: 0.7;
+}
+
+.add-card-ghost-price,
+.add-card-ghost-change {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.35;
+  min-width: 2.5em;
+  text-align: right;
+}
+
+.add-card-ghost-change {
+  min-width: 3em;
+}
+
+/* Active search form — still a card shell */
+.add-card--active {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  cursor: default;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: var(--bg-row-hover);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.add-card-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.add-card--active .add-card-plus {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.add-card-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-glass-rgb-active) 8%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  user-select: text;
+}
+
+.add-card-input:focus {
+  border-color: var(--accent);
+}
+
+.add-card-input::placeholder {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.add-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.add-card-btn {
+  height: 28px;
   margin: 0;
   padding: 0 12px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-row);
-  background: transparent;
-  color: var(--text-secondary);
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-row-active);
+  color: var(--text);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.btn-add:hover {
-  background: var(--bg-row-hover);
-  color: var(--text);
-  border-color: var(--text-secondary);
+.add-card-btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.add-card-btn:hover {
+  filter: brightness(1.08);
 }
 
 .add-wrap {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.add-form {
-  display: flex;
-  gap: 6px;
-  align-items: center;
 }
 
 .add-suggest {
