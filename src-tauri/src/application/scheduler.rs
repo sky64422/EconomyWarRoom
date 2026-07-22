@@ -1,5 +1,5 @@
 use crate::application::cache::{QuoteCache, SparklineCache};
-use crate::domain::constants::RefreshPolicy;
+use crate::domain::constants::{RefreshPolicy, SparklinePolicy};
 use crate::domain::types::WatchlistItem;
 use crate::ports::market_data::MarketDataProvider;
 use std::collections::HashMap;
@@ -57,6 +57,9 @@ pub fn pick_batch(
     out
 }
 
+/// Max sparkline fetches attempted in a single tick (avoid API burst).
+const SPARKLINE_FETCHES_PER_TICK: usize = 1;
+
 /// Quote refresh scheduler: round-robin batches, min interval, pause when hidden.
 pub struct QuoteScheduler {
     visible: bool,
@@ -68,6 +71,10 @@ pub struct QuoteScheduler {
     cursor: usize,
     priority: Option<String>,
     provider: Arc<dyn MarketDataProvider>,
+    /// When set, skip network work until this instant.
+    backoff_until: Option<Instant>,
+    /// Current backoff duration; doubles on each error up to [`RefreshPolicy::BACKOFF_MAX`].
+    backoff: Duration,
 }
 
 impl QuoteScheduler {
@@ -82,10 +89,17 @@ impl QuoteScheduler {
             cursor: 0,
             priority: None,
             provider,
+            backoff_until: None,
+            backoff: RefreshPolicy::BACKOFF_INITIAL,
         }
     }
 
     pub fn set_visible(&mut self, visible: bool) {
+        if visible {
+            // Force-refresh: mark all symbols stale so the next tick fetches immediately.
+            self.last_quote_fetch.clear();
+            self.backoff_until = None;
+        }
         self.visible = visible;
     }
 
@@ -109,7 +123,8 @@ impl QuoteScheduler {
         &self.sparkline_cache
     }
 
-    /// One scheduler tick: no-op when not visible; otherwise pick a batch and fetch quotes.
+    /// One scheduler tick: no-op when not visible or in backoff; otherwise refresh quotes
+    /// and at most one stale sparkline.
     pub async fn tick_once(&mut self) {
         if !self.visible {
             return;
@@ -119,6 +134,12 @@ impl QuoteScheduler {
         }
 
         let now = Instant::now();
+        if let Some(until) = self.backoff_until {
+            if now < until {
+                return;
+            }
+        }
+
         let min_interval = self
             .provider
             .limits()
@@ -134,27 +155,75 @@ impl QuoteScheduler {
             &mut self.cursor,
             priority.as_deref(),
         );
-        if batch.is_empty() {
-            return;
-        }
 
-        match self.provider.fetch_quotes(&batch).await {
-            Ok(quotes) => {
-                let fetched_at = Instant::now();
-                for q in quotes {
-                    self.last_quote_fetch.insert(q.symbol.clone(), fetched_at);
-                    self.quote_cache.put(q);
+        if !batch.is_empty() {
+            match self.provider.fetch_quotes(&batch).await {
+                Ok(quotes) => {
+                    self.backoff = RefreshPolicy::BACKOFF_INITIAL;
+                    self.backoff_until = None;
+
+                    let fetched_at = Instant::now();
+                    for q in quotes {
+                        self.last_quote_fetch.insert(q.symbol.clone(), fetched_at);
+                        self.quote_cache.put(q);
+                    }
+                    // Mark requested symbols as fetched even if provider omitted them,
+                    // so we do not hammer missing symbols every tick.
+                    for sym in &batch {
+                        self.last_quote_fetch
+                            .entry(sym.clone())
+                            .or_insert(fetched_at);
+                    }
                 }
-                // Mark requested symbols as fetched even if provider omitted them,
-                // so we do not hammer missing symbols every tick.
-                for sym in &batch {
-                    self.last_quote_fetch
-                        .entry(sym.clone())
-                        .or_insert(fetched_at);
+                Err(_err) => {
+                    // Keep existing cache; back off network work.
+                    self.backoff_until = Some(Instant::now() + self.backoff);
+                    self.backoff = (self.backoff * 2).min(RefreshPolicy::BACKOFF_MAX);
+                    return;
                 }
             }
-            Err(_err) => {
-                // Backoff wiring lands with the Yahoo provider task.
+        }
+
+        self.maybe_fetch_sparkline().await;
+    }
+
+    /// Fetch up to [`SPARKLINE_FETCHES_PER_TICK`] stale sparklines.
+    async fn maybe_fetch_sparkline(&mut self) {
+        let now = Instant::now();
+        let mut fetched = 0usize;
+        let symbols: Vec<String> = self.watchlist.iter().map(|i| i.symbol.clone()).collect();
+
+        for sym in symbols {
+            if fetched >= SPARKLINE_FETCHES_PER_TICK {
+                break;
+            }
+            let stale = self
+                .last_spark_fetch
+                .get(&sym)
+                .map(|t| now.duration_since(*t) >= RefreshPolicy::SPARKLINE_MIN_INTERVAL)
+                .unwrap_or(true);
+            if !stale {
+                continue;
+            }
+
+            match self
+                .provider
+                .fetch_sparkline(&sym, SparklinePolicy::RANGE, SparklinePolicy::INTERVAL)
+                .await
+            {
+                Ok(spark) => {
+                    let at = Instant::now();
+                    self.last_spark_fetch.insert(sym, at);
+                    self.sparkline_cache.put(spark);
+                    fetched += 1;
+                }
+                Err(err) => {
+                    // Same backoff path as quote errors to protect the provider.
+                    let _ = err;
+                    self.backoff_until = Some(Instant::now() + self.backoff);
+                    self.backoff = (self.backoff * 2).min(RefreshPolicy::BACKOFF_MAX);
+                    return;
+                }
             }
         }
     }
@@ -166,7 +235,7 @@ mod tests {
     use crate::domain::types::{AssetKind, Quote, Sparkline};
     use crate::ports::market_data::{MarketDataProvider, ProviderLimits};
     use async_trait::async_trait;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use tokio::sync::Mutex;
 
     fn item(sym: &str, idx: u32) -> WatchlistItem {
@@ -220,6 +289,8 @@ mod tests {
     struct MockProvider {
         quotes: Mutex<Vec<Quote>>,
         calls: AtomicUsize,
+        spark_calls: AtomicUsize,
+        fail_quotes: AtomicBool,
     }
 
     impl MockProvider {
@@ -227,11 +298,21 @@ mod tests {
             Self {
                 quotes: Mutex::new(quotes),
                 calls: AtomicUsize::new(0),
+                spark_calls: AtomicUsize::new(0),
+                fail_quotes: AtomicBool::new(false),
             }
         }
 
         fn call_count(&self) -> usize {
             self.calls.load(Ordering::SeqCst)
+        }
+
+        fn spark_call_count(&self) -> usize {
+            self.spark_calls.load(Ordering::SeqCst)
+        }
+
+        fn set_fail_quotes(&self, fail: bool) {
+            self.fail_quotes.store(fail, Ordering::SeqCst);
         }
     }
 
@@ -256,6 +337,9 @@ mod tests {
 
         async fn fetch_quotes(&self, symbols: &[String]) -> Result<Vec<Quote>, String> {
             self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail_quotes.load(Ordering::SeqCst) {
+                return Err("rate_limited".into());
+            }
             let all = self.quotes.lock().await;
             Ok(all
                 .iter()
@@ -270,6 +354,7 @@ mod tests {
             _: &str,
             _: &str,
         ) -> Result<Sparkline, String> {
+            self.spark_calls.fetch_add(1, Ordering::SeqCst);
             Ok(Sparkline {
                 symbol: symbol.into(),
                 points: vec![],
@@ -310,5 +395,59 @@ mod tests {
         assert_eq!(provider.call_count(), 1);
         assert_eq!(sched.quote_cache().get("A").map(|q| q.price), Some(10.0));
         assert_eq!(sched.quote_cache().get("B").map(|q| q.price), Some(20.0));
+    }
+
+    #[tokio::test]
+    async fn rate_limited_applies_backoff_and_skips_next_tick() {
+        let provider = Arc::new(MockProvider::new(vec![quote("A", 10.0)]));
+        provider.set_fail_quotes(true);
+        let mut sched = QuoteScheduler::new(provider.clone());
+        sched.set_watchlist(vec![item("A", 0)]);
+        sched.set_visible(true);
+
+        sched.tick_once().await;
+        assert_eq!(provider.call_count(), 1);
+        assert!(sched.backoff_until.is_some());
+        assert_eq!(sched.backoff, RefreshPolicy::BACKOFF_INITIAL * 2);
+
+        // Second tick while still in backoff must not hit the provider.
+        sched.tick_once().await;
+        assert_eq!(provider.call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn sparkline_fetched_when_cache_empty() {
+        let provider = Arc::new(MockProvider::new(vec![quote("A", 10.0)]));
+        let mut sched = QuoteScheduler::new(provider.clone());
+        sched.set_watchlist(vec![item("A", 0)]);
+        sched.set_visible(true);
+
+        assert!(sched.sparkline_cache().get("A").is_none());
+        sched.tick_once().await;
+
+        assert_eq!(provider.spark_call_count(), 1);
+        assert!(sched.sparkline_cache().get("A").is_some());
+        assert_eq!(
+            sched.sparkline_cache().get("A").map(|s| s.symbol.as_str()),
+            Some("A")
+        );
+    }
+
+    #[tokio::test]
+    async fn set_visible_true_marks_quotes_stale() {
+        let provider = Arc::new(MockProvider::new(vec![quote("A", 10.0)]));
+        let mut sched = QuoteScheduler::new(provider.clone());
+        sched.set_watchlist(vec![item("A", 0)]);
+        sched.set_visible(true);
+        sched.tick_once().await;
+        assert_eq!(provider.call_count(), 1);
+
+        // Fresh symbols would not re-fetch without force-stale.
+        sched.tick_once().await;
+        assert_eq!(provider.call_count(), 1);
+
+        sched.set_visible(true);
+        sched.tick_once().await;
+        assert_eq!(provider.call_count(), 2);
     }
 }
