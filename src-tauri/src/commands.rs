@@ -1,4 +1,4 @@
-//! Tauri command handlers — thin adapters over [`crate::application::service::AppCore`].
+//! Tauri command handlers ??thin adapters over [`crate::application::service::AppCore`].
 
 use crate::application::diagnostics::DiagLevel;
 use crate::domain::types::{
@@ -16,7 +16,7 @@ fn note_err(state: &AppHandleState, ctx: &str, e: &str) {
         .note(DiagLevel::Warn, format!("{ctx} failed: {e}"));
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_state(state: State<'_, AppHandleState>) -> Result<PersistedState, String> {
     state.core.get_state().map_err(|e| {
         note_err(&state, "get_state", &e);
@@ -24,7 +24,7 @@ pub fn get_state(state: State<'_, AppHandleState>) -> Result<PersistedState, Str
     })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn add_symbol(
     app: AppHandle,
     state: State<'_, AppHandleState>,
@@ -51,7 +51,7 @@ pub async fn add_symbol(
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn remove_symbol(
     app: AppHandle,
     state: State<'_, AppHandleState>,
@@ -73,7 +73,7 @@ pub async fn remove_symbol(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn reorder_symbols(
     app: AppHandle,
     state: State<'_, AppHandleState>,
@@ -95,7 +95,7 @@ pub async fn reorder_symbols(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn set_theme(state: State<'_, AppHandleState>, theme: ThemeMode) -> Result<(), String> {
     state.core.set_theme(theme).map_err(|e| {
         note_err(&state, "set_theme", &e);
@@ -103,7 +103,7 @@ pub fn set_theme(state: State<'_, AppHandleState>, theme: ThemeMode) -> Result<(
     })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn set_opacity(
     app: AppHandle,
     state: State<'_, AppHandleState>,
@@ -120,7 +120,7 @@ pub fn set_opacity(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn hide_widget(app: AppHandle, state: State<'_, AppHandleState>) -> Result<(), String> {
     set_visibility(&app, &state, false).await.map_err(|e| {
         note_err(&state, "hide_widget", &e);
@@ -128,7 +128,7 @@ pub async fn hide_widget(app: AppHandle, state: State<'_, AppHandleState>) -> Re
     })
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn toggle_widget_visibility(
     app: AppHandle,
     state: State<'_, AppHandleState>,
@@ -175,7 +175,7 @@ pub fn toggle_visibility_from_handle(app: &AppHandle) {
     });
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn save_window_geometry(
     state: State<'_, AppHandleState>,
     geometry: WindowGeometry,
@@ -187,23 +187,23 @@ pub fn save_window_geometry(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_quotes(state: State<'_, AppHandleState>) -> Result<Vec<Quote>, String> {
     Ok(state.core.get_quotes().await)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_sparklines(state: State<'_, AppHandleState>) -> Result<Vec<Sparkline>, String> {
     Ok(state.core.get_sparklines().await)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn quit_app(app: AppHandle) {
     app.exit(0);
 }
 
 /// Build diagnostics text for clipboard (Mode B agent handoff).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_diagnostics(state: State<'_, AppHandleState>) -> Result<String, String> {
     state
         .core
@@ -215,7 +215,7 @@ pub async fn get_diagnostics(state: State<'_, AppHandleState>) -> Result<String,
 }
 
 /// Symbol autocomplete for the add flow (Yahoo search + substring filter).
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn search_symbols(
     state: State<'_, AppHandleState>,
     query: String,
