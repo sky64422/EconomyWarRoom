@@ -3,6 +3,7 @@
 //! Command handlers and integration tests call into this layer so business logic stays
 //! unit-testable without a live WebView.
 
+use crate::application::diagnostics::{DiagLevel, EventRing};
 use crate::application::scheduler::QuoteScheduler;
 use crate::domain::constants::clamp_opacity;
 use crate::domain::types::{
@@ -22,6 +23,7 @@ pub struct AppCore {
     pub app_data_dir: PathBuf,
     pub scheduler: Arc<AsyncMutex<QuoteScheduler>>,
     pub visible: AtomicBool,
+    events: Mutex<EventRing>,
 }
 
 impl AppCore {
@@ -36,6 +38,14 @@ impl AppCore {
             app_data_dir,
             scheduler: Arc::new(AsyncMutex::new(scheduler)),
             visible: AtomicBool::new(visible),
+            events: Mutex::new(EventRing::default()),
+        }
+    }
+
+    /// Record a diagnostics event (best-effort; ignores poisoned lock).
+    pub fn note(&self, level: DiagLevel, message: impl Into<String>) {
+        if let Ok(mut ring) = self.events.lock() {
+            ring.push(level, message);
         }
     }
 
@@ -189,6 +199,87 @@ impl AppCore {
             .map_err(|_| "state lock poisoned".to_string())?;
         Ok(watchlist::sorted_clone(&persisted.watchlist))
     }
+
+    /// Build a pasteable diagnostics report for agents (Mode B).
+    pub async fn format_diagnostics(&self) -> Result<String, String> {
+        let captured_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let version = env!("CARGO_PKG_VERSION");
+        let os = format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH);
+        let visible = self.is_visible();
+        let app_data = self.app_data_dir.display().to_string();
+
+        let state = self.get_state()?;
+        let settings = &state.settings;
+        let watchlist = watchlist::sorted_clone(&state.watchlist);
+
+        let (quotes, sched_line) = {
+            let sched = self.scheduler.lock().await;
+            let quotes = sched.quote_cache().all();
+            let line = sched.diagnostics_summary();
+            (quotes, line)
+        };
+
+        let recent = self
+            .events
+            .lock()
+            .map_err(|_| "events lock poisoned".to_string())?
+            .last_lines(50);
+
+        let mut out = String::new();
+        out.push_str("### EWR diagnostics\n");
+        out.push_str(&format!("- captured_at: {captured_at}\n"));
+        out.push_str(&format!("- app_version: {version}\n"));
+        out.push_str(&format!("- os: {os}\n"));
+        out.push_str(&format!("- visible: {visible}\n"));
+        out.push_str(&format!("- app_data_dir: {app_data}\n"));
+        out.push_str(&format!(
+            "- settings: theme={:?} opacity={} autostart={} hotkey={:?} window={{x:{}, y:{}, w:{}, h:{}}}\n",
+            settings.theme,
+            settings.opacity,
+            settings.autostart,
+            settings.hotkey,
+            settings.window.x,
+            settings.window.y,
+            settings.window.width,
+            settings.window.height,
+        ));
+        out.push_str("- watchlist:\n");
+        if watchlist.is_empty() {
+            out.push_str("  (none)\n");
+        } else {
+            for item in &watchlist {
+                out.push_str(&format!(
+                    "  {} {} {:?} {}\n",
+                    item.sort_index, item.symbol, item.asset_kind, item.id
+                ));
+            }
+        }
+        out.push_str("- quotes:\n");
+        if quotes.is_empty() {
+            out.push_str("  (none)\n");
+        } else {
+            for q in &quotes {
+                let ch = q
+                    .change_percent
+                    .map(|c| format!("{c:.4}"))
+                    .unwrap_or_else(|| "n/a".into());
+                out.push_str(&format!(
+                    "  {} price={} change%={} as_of={} source={}\n",
+                    q.symbol, q.price, ch, q.as_of, q.source
+                ));
+            }
+        }
+        out.push_str(&format!("- scheduler: {sched_line}\n"));
+        out.push_str("- recent_events:\n");
+        if recent.is_empty() {
+            out.push_str("  (none)\n");
+        } else {
+            for line in recent {
+                out.push_str(&format!("  {line}\n"));
+            }
+        }
+        Ok(out)
+    }
 }
 
 #[cfg(test)]
@@ -328,5 +419,19 @@ mod tests {
         let (_dir, core) = core_empty();
         assert!(core.get_quotes().await.is_empty());
         assert!(core.get_sparklines().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn format_diagnostics_includes_core_fields() {
+        let (_dir, core) = core_empty();
+        core.note(DiagLevel::Warn, "hotkey collide test");
+        let text = core.format_diagnostics().await.unwrap();
+        assert!(text.contains("### EWR diagnostics"));
+        assert!(text.contains("app_version:"));
+        assert!(text.contains(env!("CARGO_PKG_VERSION")));
+        assert!(text.contains("AAPL") || text.contains("BTC-USD"));
+        assert!(text.contains("settings:"));
+        assert!(text.contains("hotkey collide test"));
+        assert!(text.contains("scheduler:"));
     }
 }

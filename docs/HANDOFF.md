@@ -165,7 +165,8 @@ Do **not** start Phase 6 until smoke is green unless the user explicitly priorit
 
 - Repo path: `C:\dev\EconomyWarRoom` (branch may be `main` or feature; MVP lives on `main`).  
 - First-time setup issues seen: PowerShell blocked `npm.ps1` until `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`; Rust/VS Build Tools installed via winget.  
-- Full agent observability / how to report runtime failures: [windows-dev.md §10](./windows-dev.md#10-defect-reporting--agent-visibility).
+- Full agent observability / how to report runtime failures: [windows-dev.md §10](./windows-dev.md#10-defect-reporting--agent-visibility).  
+- **Mode B:** Settings → **Copy diagnostics** (clipboard dump). Spec: [diagnostics-copy design](./superpowers/specs/2026-07-22-diagnostics-copy-design.md).
 
 ---
 

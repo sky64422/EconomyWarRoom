@@ -112,6 +112,8 @@ Run with `npm run tauri dev` on the target OS (**Windows preferred**):
 | P6-4 | Symbol search API (beyond type-in) | pending |
 | P6-5 | Tray icon / alternate quit affordance | pending |
 | P6-6 | Frontend automated e2e (e.g. Playwright) | pending |
+| P6-7 | Copy diagnostics (Settings → clipboard dump for agents) | done |
+| P6-8 | Rolling file log for hard-crash recovery | pending |
 
 ## Out of scope (do not start without new design approval)
 

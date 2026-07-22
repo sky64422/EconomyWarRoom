@@ -1,5 +1,6 @@
 //! Tauri command handlers — thin adapters over [`crate::application::service::AppCore`].
 
+use crate::application::diagnostics::DiagLevel;
 use crate::domain::types::{
     AssetKind, PersistedState, Quote, Sparkline, ThemeMode, WatchlistItem, WindowGeometry,
 };
@@ -19,11 +20,18 @@ pub async fn add_symbol(
     symbol: String,
     asset_kind: AssetKind,
 ) -> Result<WatchlistItem, String> {
-    let item = state.core.add_symbol(symbol, asset_kind).await?;
-    let payload = state.core.watchlist_snapshot().await?;
-    app.emit("watchlist-updated", payload)
-        .map_err(|e| e.to_string())?;
-    Ok(item)
+    match state.core.add_symbol(symbol, asset_kind).await {
+        Ok(item) => {
+            let payload = state.core.watchlist_snapshot().await?;
+            app.emit("watchlist-updated", payload)
+                .map_err(|e| e.to_string())?;
+            Ok(item)
+        }
+        Err(e) => {
+            state.core.note(DiagLevel::Warn, format!("add_symbol failed: {e}"));
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]
@@ -110,6 +118,9 @@ pub fn toggle_visibility_from_handle(app: &AppHandle) {
         let next = !state.core.is_visible();
         if let Err(e) = set_visibility(&app, &state, next).await {
             eprintln!("toggle_visibility failed: {e}");
+            state
+                .core
+                .note(DiagLevel::Error, format!("toggle_visibility failed: {e}"));
         }
     });
 }
@@ -136,4 +147,11 @@ pub async fn get_sparklines(state: State<'_, AppHandleState>) -> Result<Vec<Spar
 #[tauri::command]
 pub fn quit_app(app: AppHandle) {
     app.exit(0);
+}
+
+/// Build diagnostics text for clipboard (Mode B agent handoff).
+#[tauri::command]
+pub async fn get_diagnostics(state: State<'_, AppHandleState>) -> Result<String, String> {
+    state.core.note(DiagLevel::Info, "diagnostics snapshot requested");
+    state.core.format_diagnostics().await
 }

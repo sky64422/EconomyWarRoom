@@ -75,6 +75,8 @@ pub struct QuoteScheduler {
     backoff_until: Option<Instant>,
     /// Current backoff duration; doubles on each error up to [`RefreshPolicy::BACKOFF_MAX`].
     backoff: Duration,
+    /// Last quote/sparkline provider error message (for diagnostics).
+    last_error: Option<String>,
 }
 
 impl QuoteScheduler {
@@ -91,7 +93,28 @@ impl QuoteScheduler {
             provider,
             backoff_until: None,
             backoff: RefreshPolicy::BACKOFF_INITIAL,
+            last_error: None,
         }
+    }
+
+    /// One-line scheduler status for diagnostics dumps.
+    pub fn diagnostics_summary(&self) -> String {
+        let backoff_active = self
+            .backoff_until
+            .map(|u| Instant::now() < u)
+            .unwrap_or(false);
+        let err = self
+            .last_error
+            .as_deref()
+            .unwrap_or("(none)");
+        format!(
+            "visible={} watchlist_len={} backoff_active={} backoff_secs={} last_error={}",
+            self.visible,
+            self.watchlist.len(),
+            backoff_active,
+            self.backoff.as_secs_f64(),
+            err
+        )
     }
 
     pub fn set_visible(&mut self, visible: bool) {
@@ -168,6 +191,7 @@ impl QuoteScheduler {
                 Ok(quotes) => {
                     self.backoff = RefreshPolicy::BACKOFF_INITIAL;
                     self.backoff_until = None;
+                    self.last_error = None;
 
                     let fetched_at = Instant::now();
                     for q in quotes {
@@ -182,8 +206,9 @@ impl QuoteScheduler {
                             .or_insert(fetched_at);
                     }
                 }
-                Err(_err) => {
+                Err(err) => {
                     // Keep existing cache; back off network work.
+                    self.last_error = Some(format!("quotes: {err}"));
                     self.backoff_until = Some(Instant::now() + self.backoff);
                     self.backoff = (self.backoff * 2).min(RefreshPolicy::BACKOFF_MAX);
                     return;
@@ -222,11 +247,12 @@ impl QuoteScheduler {
                     let at = Instant::now();
                     self.last_spark_fetch.insert(sym, at);
                     self.sparkline_cache.put(spark);
+                    self.last_error = None;
                     fetched += 1;
                 }
                 Err(err) => {
                     // Same backoff path as quote errors to protect the provider.
-                    let _ = err;
+                    self.last_error = Some(format!("sparkline {sym}: {err}"));
                     self.backoff_until = Some(Instant::now() + self.backoff);
                     self.backoff = (self.backoff * 2).min(RefreshPolicy::BACKOFF_MAX);
                     return;

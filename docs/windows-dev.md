@@ -196,49 +196,43 @@ EconomyWarRoom/
 
 ## 10. Defect reporting & agent visibility
 
-### Can an agent “see” a running app fail in real time?
+### Two modes
 
-**No — not automatically.** The coding agent does not attach to your live `tauri dev` process, WebView, or system tray. It only sees:
+| Mode | Who starts the app | How the agent sees problems |
+|------|--------------------|-----------------------------|
+| **A — agent-run** | Agent runs `npm run tauri dev` (or tests) | Live stdout/stderr in the agent session |
+| **B — user-run** | You run dev/release exe | **Settings → Copy diagnostics** → paste into chat |
 
-| What | When |
-|------|------|
-| Files you edit / git state | Always in the workspace |
-| Commands **it** runs (and their stdout/stderr) | During that session |
-| Terminal logs you paste or save into the repo | When you provide them |
-| Screenshots / paths you attach in chat | When you send them |
+The agent does **not** auto-attach to an app you started yourself. Hard process crashes (no UI left) still need Mode A logs or a future file logger.
 
-There is **no crash dump pipeline**, no file logger, and no remote telemetry in MVP. Rust uses sparse `eprintln!` for setup/hotkey/autostart failures; the UI uses `console.error` in the WebView. Neither is persisted to disk by default.
-
-### Best ways to capture a failure (pick one)
-
-#### A. Dev session terminal (preferred for agents)
-
-Run from the repo root in a dedicated terminal and keep the buffer:
+### Mode A — agent-run terminal
 
 ```powershell
 cd C:\dev\EconomyWarRoom
 npm run tauri dev 2>&1 | Tee-Object -FilePath "$env:TEMP\ewr-tauri-dev.log"
 ```
 
-When something breaks:
+Agent watches the process output while you click the UI. Optional: keep the Tee log for later.
 
-1. Stop or leave the process as-is.  
-2. Tell the agent: path of the log (`$env:TEMP\ewr-tauri-dev.log`) **or** paste the last ~50–100 lines.  
-3. Add: what you did, expected vs actual, and whether the window is still open.
+### Mode B — Copy diagnostics (in-app)
 
-#### B. WebView / frontend console
+While the widget is still running:
 
-In `tauri dev`, open WebView DevTools if available (or rely on Vite terminal + `console.error` lines that bubble). Copy any red stack traces. UI-only issues (layout, invoke errors) often appear only here.
+1. Open **Settings**.  
+2. Click **Copy diagnostics** (label becomes `Copied`).  
+3. Paste into chat (optionally add steps / expected / actual / screenshot).
 
-#### C. App state snapshot
+The dump includes version, OS, visibility, settings, watchlist, quote cache summary, scheduler backoff/last error, and recent in-process events (hotkey/autostart/add failures, etc.). It is **not** a native crash minidump and is **not** written to disk by default.
 
-```text
-%APPDATA%\com.economywarroom.app\economy-war-room-state.json
-```
+### Other artifacts (optional)
 
-Copy that file (or paste its JSON) if reorder/theme/geometry/watchlist looks wrong after restart. Do **not** commit secrets; this app stores no API keys today.
+| Artifact | When |
+|----------|------|
+| WebView `console.error` | UI/layout/invoke-only glitches |
+| `%APPDATA%\com.economywarroom.app\economy-war-room-state.json` | Persist/reorder/theme wrong after restart |
+| Tee log from Mode A | Compile/link errors, raw `eprintln` |
 
-#### D. Minimal “bug packet” template (paste into chat)
+### Bug packet template
 
 ```text
 ### Bug
@@ -246,29 +240,14 @@ Copy that file (or paste its JSON) if reorder/theme/geometry/watchlist looks wro
 - Expected:
 - Actual:
 - Repro: always / sometimes
-- Branch / commit:
-- Command: npm run tauri dev | release build
+- Mode: A (agent tauri dev) | B (user exe)
 ### Artifacts
-- Terminal log: (paste or path under repo / TEMP)
-- State JSON: (paste or path)
-- Screenshot: (attach if UI)
+- Diagnostics paste: (Mode B — from Copy diagnostics)
+- Terminal log: (Mode A — optional path/paste)
+- Screenshot: (optional)
 ```
 
-### What helps vs what does not
+### Future (not in v1)
 
-| Helpful | Not enough alone |
-|---------|------------------|
-| Full terminal tail with `eprintln` / compile errors | “It doesn’t work” with no steps |
-| State JSON after bad persist | Screenshot without version/branch |
-| Exact symbol / hotkey / theme at failure | Only Task Manager “not responding” |
-| Whether hidden vs visible when quotes freeze | |
-
-### Optional future improvements (not implemented)
-
-If smoke shows diagnosis is painful, consider (product decision):
-
-1. **Rotating file log** under app data (`tracing` + daily file; redacted).  
-2. **“Copy diagnostics”** settings button (version, last N log lines, state path).  
-3. **Dev-only** verbose scheduler logs behind env flag `EWR_LOG=debug`.
-
-Until then, use **Tee-Object + bug packet** so a new agent session can fix without re-deriving context.
+- Rolling file log under app data (survives hard crash)  
+- `EWR_LOG=debug` verbose scheduler tracing

@@ -52,6 +52,7 @@ export function mountSettingsPanel(
           <span class="opacity-value" id="opacity-value">${Math.round(opacity * 100)}%</span>
         </div>
       </div>
+      <button type="button" class="btn-diag" id="btn-diag">Copy diagnostics</button>
       <button type="button" class="btn-quit" id="btn-quit">Quit</button>
     `;
 
@@ -77,9 +78,31 @@ export function mountSettingsPanel(
       });
     });
 
+    root.querySelector("#btn-diag")!.addEventListener("click", () => {
+      void copyDiagnostics(root.querySelector("#btn-diag") as HTMLButtonElement);
+    });
+
     root.querySelector("#btn-quit")!.addEventListener("click", () => {
       void invoke("quit_app");
     });
+  }
+
+  async function copyDiagnostics(btn: HTMLButtonElement): Promise<void> {
+    const original = "Copy diagnostics";
+    try {
+      const text = await invoke<string>("get_diagnostics");
+      await writeClipboard(text);
+      btn.textContent = "Copied";
+      window.setTimeout(() => {
+        if (btn.isConnected) btn.textContent = original;
+      }, 1600);
+    } catch (err) {
+      console.error("copy diagnostics failed", err);
+      btn.textContent = "Failed";
+      window.setTimeout(() => {
+        if (btn.isConnected) btn.textContent = original;
+      }, 2000);
+    }
   }
 
   async function applyTheme(next: ThemeMode): Promise<void> {
@@ -137,6 +160,30 @@ export function mountSettingsPanel(
       for (const u of unlisteners) u();
     },
   };
+}
+
+/** Copy text to the system clipboard (clipboard API with textarea fallback). */
+async function writeClipboard(text: string): Promise<void> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // fall through
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand("copy");
+  document.body.removeChild(ta);
+  if (!ok) {
+    throw new Error("clipboard copy failed");
+  }
 }
 
 /** Apply theme to documentElement.dataset.theme */

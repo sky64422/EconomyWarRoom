@@ -7,6 +7,7 @@ pub mod infrastructure;
 pub mod ports;
 pub mod state;
 
+use application::diagnostics::DiagLevel;
 use application::scheduler::QuoteScheduler;
 use domain::constants::{HotkeyPolicy, RefreshPolicy};
 use domain::watchlist;
@@ -48,19 +49,29 @@ pub fn run() {
 
             let handle_state =
                 AppHandleState::new(persisted.clone(), app_data_dir, scheduler, true);
+            handle_state.core.note(DiagLevel::Info, "app setup starting");
 
             // --- window policy from settings ---
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window_ctl::apply_always_on_top(&window, true);
                 if let Err(e) = window_ctl::apply_geometry(&window, &persisted.settings.window) {
                     eprintln!("apply_geometry: {e}");
+                    handle_state
+                        .core
+                        .note(DiagLevel::Warn, format!("apply_geometry: {e}"));
                 }
                 if let Err(e) = window_ctl::apply_opacity(app.handle(), persisted.settings.opacity)
                 {
                     eprintln!("apply_opacity: {e}");
+                    handle_state
+                        .core
+                        .note(DiagLevel::Warn, format!("apply_opacity: {e}"));
                 }
             } else {
                 eprintln!("main window not found at setup");
+                handle_state
+                    .core
+                    .note(DiagLevel::Error, "main window not found at setup");
             }
 
             // --- autostart (best-effort) ---
@@ -70,9 +81,15 @@ pub fn run() {
                 if persisted.settings.autostart {
                     if let Err(e) = autostart.enable() {
                         eprintln!("autostart enable failed: {e}");
+                        handle_state
+                            .core
+                            .note(DiagLevel::Warn, format!("autostart enable failed: {e}"));
                     }
                 } else if let Err(e) = autostart.disable() {
                     eprintln!("autostart disable failed: {e}");
+                    handle_state
+                        .core
+                        .note(DiagLevel::Warn, format!("autostart disable failed: {e}"));
                 }
             }
 
@@ -96,12 +113,35 @@ pub fn run() {
                         .build();
                     if let Err(e) = app.handle().plugin(plugin) {
                         eprintln!("global-shortcut plugin failed: {e}");
+                        if let Some(state) = app.handle().try_state::<AppHandleState>() {
+                            state.core.note(
+                                DiagLevel::Error,
+                                format!("global-shortcut plugin failed: {e}"),
+                            );
+                        }
                     } else if let Err(e) = app.global_shortcut().register(shortcut) {
                         eprintln!("global-shortcut register failed: {e}");
+                        if let Some(state) = app.handle().try_state::<AppHandleState>() {
+                            state.core.note(
+                                DiagLevel::Error,
+                                format!("global-shortcut register failed: {e}"),
+                            );
+                        }
+                    } else if let Some(state) = app.handle().try_state::<AppHandleState>() {
+                        state.core.note(
+                            DiagLevel::Info,
+                            format!("hotkey registered: {hotkey_str}"),
+                        );
                     }
                 }
                 Err(e) => {
                     eprintln!("invalid hotkey {hotkey_str:?}: {e}");
+                    if let Some(state) = app.handle().try_state::<AppHandleState>() {
+                        state.core.note(
+                            DiagLevel::Error,
+                            format!("invalid hotkey {hotkey_str:?}: {e}"),
+                        );
+                    }
                     let plugin = tauri_plugin_global_shortcut::Builder::new().build();
                     if let Err(e) = app.handle().plugin(plugin) {
                         eprintln!("global-shortcut plugin failed: {e}");
@@ -147,6 +187,7 @@ pub fn run() {
             commands::get_quotes,
             commands::get_sparklines,
             commands::quit_app,
+            commands::get_diagnostics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
