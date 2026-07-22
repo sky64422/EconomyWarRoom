@@ -55,19 +55,21 @@ Design details, scheduling policy, and AssetStocker borrow list: see the [design
 
 ## Development
 
-Scaffold and run instructions will land here once Tauri is initialized (Phase 0 in [TODO](docs/TODO.md)).
+Scaffolded as **Tauri 2 + Vite + vanilla TypeScript**. Widget features land in later tasks (Phase 0 in [TODO](docs/TODO.md)).
 
-Expected toolchain (planned):
+Expected toolchain:
 
 - Rust stable  
 - Node.js (frontend tooling)  
-- Tauri CLI 2.x  
+- Tauri CLI 2.x (via `@tauri-apps/cli`)  
+- Linux system deps for local GUI dev (`webkit2gtk`, etc.) — see [Tauri prerequisites](https://tauri.app/start/prerequisites/)  
 - Windows target for production widget behavior (hotkey, autostart, always-on-top)
 
 ```bash
-# Placeholder — after scaffold:
-# npm install
-# npm run tauri dev
+npm install
+npm run tauri dev
+# or frontend only:
+npm run dev
 ```
 
 ## Configuration (planned)
