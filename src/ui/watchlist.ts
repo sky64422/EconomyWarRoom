@@ -73,6 +73,8 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   const sparks = new Map<string, Sparkline>();
 
   let dragId: string | null = null;
+  /** Full re-render deferred while a row drag is active (tick updates must not kill DnD). */
+  let pendingFullRender = false;
   let adding = false;
   let addError: string | null = null;
   let addQuery = "";
@@ -120,30 +122,74 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           return `
             <div class="watchlist-row" role="listitem" draggable="true" data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}">
               <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
-              <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="${SPARK_W}" height="${SPARK_H}" aria-hidden="true">
-                ${
-                  line
-                    ? `<defs>
-                  <linearGradient id="${gradId}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="${gh}">
-                    <stop offset="0%" stop-color="${stroke}" stop-opacity="0.62"/>
-                    <stop offset="45%" stop-color="${stroke}" stop-opacity="0.34"/>
-                    <stop offset="100%" stop-color="${stroke}" stop-opacity="0.08"/>
-                  </linearGradient>
-                </defs>
-                <path d="${area}" fill="url(#${gradId})" stroke="none" />
-                <path d="${line}" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />`
-                    : ""
-                }
+              <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="${SPARK_W}" height="${SPARK_H}" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
+                ${sparkSvgInner(line, area, gh, stroke, gradId)}
               </svg>
-              <span class="row-price">${q ? escapeHtml(formatPrice(q.price)) : "—"}</span>
-              <span class="row-change ${changeClass(pct)}">${escapeHtml(formatChange(pct))}</span>
-              <button type="button" class="row-remove" data-remove="${escapeAttr(item.id)}" aria-label="Remove ${escapeAttr(item.symbol)}" title="Remove">×</button>
+              <span class="row-price" data-price="${escapeAttr(item.symbol)}">${q ? escapeHtml(formatPrice(q.price)) : "—"}</span>
+              <span class="row-change ${changeClass(pct)}" data-change="${escapeAttr(item.symbol)}">${escapeHtml(formatChange(pct))}</span>
+              <button type="button" class="row-remove" data-remove="${escapeAttr(item.id)}" aria-label="Remove ${escapeAttr(item.symbol)}" title="Remove" draggable="false">×</button>
             </div>
           `;
         })
         .join("");
     }
     bindRowEvents();
+  }
+
+  function sparkSvgInner(
+    line: string,
+    area: string,
+    gh: number,
+    stroke: string,
+    gradId: string,
+  ): string {
+    if (!line) return "";
+    return `<defs>
+      <linearGradient id="${gradId}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="${gh}">
+        <stop offset="0%" stop-color="${stroke}" stop-opacity="0.62"/>
+        <stop offset="45%" stop-color="${stroke}" stop-opacity="0.34"/>
+        <stop offset="100%" stop-color="${stroke}" stop-opacity="0.08"/>
+      </linearGradient>
+    </defs>
+    <path d="${area}" fill="url(#${gradId})" stroke="none" />
+    <path d="${line}" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />`;
+  }
+
+  /** Update price / change / sparkline without rebuilding rows (preserves DnD). */
+  function patchMarketCells(): void {
+    listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((row) => {
+      const symbol = row.dataset.symbol;
+      if (!symbol) return;
+      const q = quotes.get(symbol);
+      const priceEl = row.querySelector<HTMLElement>("[data-price]");
+      const changeEl = row.querySelector<HTMLElement>("[data-change]");
+      if (priceEl) {
+        priceEl.textContent = q ? formatPrice(q.price) : "—";
+      }
+      if (changeEl) {
+        const pct = q?.change_percent ?? null;
+        changeEl.textContent = formatChange(pct);
+        changeEl.classList.remove("up", "down");
+        const cls = changeClass(pct);
+        if (cls) changeEl.classList.add(cls);
+      }
+      const sp = sparks.get(symbol);
+      const svg = row.querySelector<SVGElement>("[data-spark]");
+      if (svg && sp) {
+        const points = sp.points ?? [];
+        const { line, area, height: gh } = sparklinePaths(points, SPARK_W, SPARK_H);
+        const tone = sparklineTone(points);
+        const stroke = strokeForTone(tone);
+        const id = row.dataset.id ?? symbol;
+        svg.innerHTML = sparkSvgInner(
+          line,
+          area,
+          gh,
+          stroke,
+          `spark-fill-${escapeAttr(id)}`,
+        );
+      }
+    });
   }
 
   function localSuggestions(q: string): SymbolSuggestion[] {
@@ -345,7 +391,14 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   function bindRowEvents(): void {
     listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((row) => {
       row.addEventListener("dragstart", (e) => {
+        // Don't start row drag from the remove control.
+        const t = e.target as HTMLElement | null;
+        if (t?.closest?.(".row-remove")) {
+          e.preventDefault();
+          return;
+        }
         dragId = row.dataset.id ?? null;
+        pendingFullRender = false;
         row.classList.add("dragging");
         e.dataTransfer?.setData("text/plain", dragId ?? "");
         if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
@@ -354,28 +407,38 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         dragId = null;
         row.classList.remove("dragging");
         listEl.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
+        if (pendingFullRender) {
+          pendingFullRender = false;
+          renderRows();
+        }
       });
       row.addEventListener("dragover", (e) => {
         e.preventDefault();
+        e.stopPropagation();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
         listEl.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
         if (row.dataset.id !== dragId) row.classList.add("drag-over");
       });
-      row.addEventListener("dragleave", () => {
+      row.addEventListener("dragleave", (e) => {
+        // Ignore leave when moving onto a child inside this row.
+        const related = e.relatedTarget as Node | null;
+        if (related && row.contains(related)) return;
         row.classList.remove("drag-over");
       });
       row.addEventListener("drop", (e) => {
         e.preventDefault();
+        e.stopPropagation();
         row.classList.remove("drag-over");
         const targetId = row.dataset.id;
-        if (!dragId || !targetId || dragId === targetId) return;
+        const sourceId =
+          dragId ?? e.dataTransfer?.getData("text/plain") ?? null;
+        if (!sourceId || !targetId || sourceId === targetId) return;
         const ids = orderedIdsFromDom();
-        const from = ids.indexOf(dragId);
+        const from = ids.indexOf(sourceId);
         const to = ids.indexOf(targetId);
         if (from < 0 || to < 0) return;
         ids.splice(from, 1);
-        ids.splice(to, 0, dragId);
-        // Optimistic local reorder
+        ids.splice(to, 0, sourceId);
         const byId = new Map(items.map((it) => [it.id, it]));
         items = ids
           .map((id, i) => {
@@ -383,6 +446,8 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
             return it ? { ...it, sort_index: i } : null;
           })
           .filter((x): x is WatchlistItem => x != null);
+        dragId = null;
+        pendingFullRender = false;
         renderRows();
         void invoke("reorder_symbols", { ordered_ids: ids }).catch((err) => {
           console.error("reorder_symbols failed", err);
@@ -404,17 +469,38 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
 
   function setItems(next: WatchlistItem[]): void {
     items = next;
+    if (dragId) {
+      pendingFullRender = true;
+      return;
+    }
     renderRows();
   }
 
   function setQuotes(next: Quote[]): void {
     for (const q of next) quotes.set(q.symbol, q);
-    renderRows();
+    if (dragId) {
+      // Still patch numbers if DOM is intact; never rebuild rows mid-drag.
+      patchMarketCells();
+      return;
+    }
+    if (listEl.querySelector(".watchlist-row")) {
+      patchMarketCells();
+    } else {
+      renderRows();
+    }
   }
 
   function setSparklines(next: Sparkline[]): void {
     for (const s of next) sparks.set(s.symbol, s);
-    renderRows();
+    if (dragId) {
+      patchMarketCells();
+      return;
+    }
+    if (listEl.querySelector(".watchlist-row")) {
+      patchMarketCells();
+    } else {
+      renderRows();
+    }
   }
 
   renderRows();

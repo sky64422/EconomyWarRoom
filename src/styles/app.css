@@ -187,7 +187,15 @@ body {
   background: var(--bg-row-hover);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
   cursor: grab;
+  /* Children must not start their own drag / steal HTML5 DnD in WebView2. */
+  -webkit-user-drag: element;
   transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.watchlist-row > *:not(.row-remove) {
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 .watchlist-row:hover {
@@ -196,7 +204,8 @@ body {
 }
 
 .watchlist-row.dragging {
-  opacity: 0.45;
+  opacity: 0.55;
+  cursor: grabbing;
 }
 
 .watchlist-row.drag-over {
