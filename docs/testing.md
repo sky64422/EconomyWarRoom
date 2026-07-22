@@ -20,7 +20,7 @@
 | HTTP mock | `yahoo/client` + **wiremock** | 200 / 429 / 5xx without live Yahoo |
 | Integration | `src-tauri/tests/integration_e2e.rs` | Store + AppCore + scheduler + mock Yahoo HTTP pipeline |
 | Risk | `src-tauri/tests/risk_scenarios.rs` | Rate limit, hide pause, corrupt JSON, invalid IDs |
-| GUI smoke | Manual `npm run tauri dev` | Hotkey, window chrome (not in automated coverage) |
+| GUI smoke | Manual `npm run run:exe` | Hotkey, window chrome (not in automated coverage) |
 
 ## Commands
 

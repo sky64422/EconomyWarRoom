@@ -35,7 +35,7 @@ Contrast (do not merge architectures): sibling project **AssetStocker** is a ful
 | Coverage gate | ≥85% business logic (**~98%** last measured) |
 | Windows machine toolchain | **Ready** — Node 24, npm, Rust stable-MSVC, VS Build Tools 2022, WebView2 |
 | Diagnostics (Mode B) | **Done** — Settings → Copy diagnostics; command/scheduler notes + 30s throttle |
-| Windows runtime smoke | **Not done** — **next:** `npm run tauri dev` + P5-2/P5-3 checklist |
+| Windows runtime smoke | **Not done** — **next:** `npm run run:exe` + P5-2/P5-3 checklist |
 | Open product work | Manual smoke first; then Phase 6 only if prioritized |
 
 **Do not re-scaffold** Tauri or re-implement domain/scheduler from the MVP plan unless fixing bugs. Plan file is historical.
@@ -71,7 +71,7 @@ git pull
 
 # Prerequisites already installed (Rust MSVC, Node 18+, WebView2, VS Build Tools)
 npm install
-npm run tauri dev
+npm run run:exe
 ```
 
 ### Tests (any OS with Rust)
@@ -155,7 +155,7 @@ docs: ...
 
 Priority for a **Windows handoff session**:
 
-1. **P5-2 / P5-3 manual smoke** on Windows (`npm run tauri dev`) — checklist in [TODO.md](./TODO.md).  
+1. **P5-2 / P5-3 manual smoke** on Windows (`npm run run:exe`) — checklist in [TODO.md](./TODO.md).  
 2. While smoking: Settings → **Copy diagnostics** once (sanity).  
 3. Fix any Windows-only bugs found (hotkey register, transparent window, autostart, path/encoding).  
 4. Document findings back into `windows-dev.md` Troubleshooting.  
@@ -205,7 +205,7 @@ You are synced when you can answer:
 
 1. Product = floating watchlist widget, not AssetStocker.  
 2. Code lives on `main`; AppCore owns business logic.  
-3. `npm run tauri dev` is the app entry; `npm test` validates logic.  
+3. `npm run run:exe` is the release-style app entry; `npm test` validates logic.  
 4. Next human-valuable work = Windows smoke + bugfix, then TODO Phase 6.  
 
 Then implement only what the user asks, using the doc map above.

@@ -44,7 +44,7 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 git clone https://github.com/sky64422/EconomyWarRoom.git
 cd EconomyWarRoom
 npm install
-npm run tauri dev
+npm run run:exe
 ```
 
 | Document | Purpose |
@@ -93,13 +93,19 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```bash
 npm install
-npm run tauri dev
+npm run run:exe
 ```
 
 Frontend-only (no native shell; `invoke` will fail outside Tauri):
 
 ```bash
 npm run dev
+```
+
+Development shell with hot reload:
+
+```bash
+npm run tauri dev
 ```
 
 ### Tests & coverage

@@ -10,7 +10,7 @@ Status: `pending` · `in_progress` · `done` · `blocked`
   Last Windows run: `npm test` green (lib **~59** + e2e 4 + risk 7).  
 **Windows host (2026-07-22):** toolchain ready (Node, Rust MSVC, VS Build Tools, WebView2); `npm install` done.  
 **Diagnostics (Mode B):** Copy diagnostics + command/scheduler event hardening on `main` (`d4e9214`).  
-**Remaining (highest priority):** **P5-2 / P5-3** manual smoke on Windows via `npm run tauri dev`.
+**Remaining (highest priority):** **P5-2 / P5-3** manual smoke on Windows via `npm run run:exe`.
 
 **New session / Windows clone:** start at [`docs/HANDOFF.md`](HANDOFF.md) and [`docs/windows-dev.md`](windows-dev.md).
 
@@ -18,7 +18,7 @@ Status: `pending` · `in_progress` · `done` · `blocked`
 
 ## Next up (priority order)
 
-1. **P5-2** — Manual checklist below (`npm run tauri dev`).  
+1. **P5-2** — Manual checklist below (`npm run run:exe`).  
 2. **P5-3** — Sustained-run smoke (rate limits / backoff healthy).  
 3. Fix any Windows-only bugs found; update `windows-dev.md` Troubleshooting.  
 4. Only then: Phase 6 product ideas (unless you explicitly prioritize a feature).  
@@ -103,7 +103,7 @@ Do **not** start portfolio / P&L / SQLite work without a new design.
 
 ### Manual verification checklist (P5-2 / P5-3)
 
-Run with `npm run tauri dev` on the target OS (**Windows preferred**):
+Run with `npm run run:exe` on the target OS (**Windows preferred**):
 
 - [ ] Always-on-top floating glass window  
 - [ ] Drag move + size persist after restart  

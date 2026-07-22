@@ -55,7 +55,7 @@ git checkout main
 git pull origin main
 
 npm install
-npm run tauri dev
+npm run run:exe
 ```
 
 **Expected:** frameless tall window, glass panel, seed symbols **AAPL** and **BTC-USD**, quotes filling after network calls.
@@ -76,6 +76,12 @@ npm run tauri build
 
 Installer/artifacts under `src-tauri/target/release/` (and bundle output per Tauri config).
 
+To build and launch the release exe in one step:
+
+```powershell
+npm run run:exe
+```
+
 ---
 
 ## 3. Day-to-day commands
@@ -83,6 +89,7 @@ Installer/artifacts under `src-tauri/target/release/` (and bundle output per Tau
 | Goal | Command |
 |------|---------|
 | Dev app | `npm run tauri dev` |
+| Build + launch exe | `npm run run:exe` |
 | Typecheck + web build | `npm run build` |
 | Unit + integration + risk tests | `npm test` |
 | Cargo unit only | `cd src-tauri; cargo test --lib` |
