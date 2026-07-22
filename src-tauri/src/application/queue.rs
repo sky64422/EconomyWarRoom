@@ -172,6 +172,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn priority_orders_jobs() {
+        let q = RateLimitedQueue::new(1);
+        let order = Arc::new(std::sync::Mutex::new(Vec::new()));
+        // Block worker with a long low-priority job first? Enqueue high then low while blocked.
+        let q_block = q.clone();
+        let blocker = tokio::spawn(async move {
+            q_block
+                .enqueue("block", 0, || async {
+                    tokio::time::sleep(Duration::from_millis(80)).await;
+                })
+                .await;
+        });
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let o1 = order.clone();
+        let q1 = q.clone();
+        let h1 = tokio::spawn(async move {
+            q1.enqueue("low", 5, move || {
+                let order = o1;
+                async move {
+                    order.lock().unwrap().push("low");
+                }
+            })
+            .await;
+        });
+        let o2 = order.clone();
+        let q2 = q.clone();
+        let h2 = tokio::spawn(async move {
+            q2.enqueue("high", 1, move || {
+                let order = o2;
+                async move {
+                    order.lock().unwrap().push("high");
+                }
+            })
+            .await;
+        });
+        blocker.await.unwrap();
+        h1.await.unwrap();
+        h2.await.unwrap();
+        let got = order.lock().unwrap().clone();
+        // high (1) should run before low (5)
+        assert_eq!(got, vec!["high", "low"]);
+    }
+
+    #[tokio::test]
     async fn coalesces_while_pending() {
         let q = RateLimitedQueue::new(1);
         // Block the single worker so subsequent jobs stay pending.

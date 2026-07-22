@@ -1,44 +1,15 @@
-//! Tauri command handlers for the widget UI.
+//! Tauri command handlers — thin adapters over [`crate::application::service::AppCore`].
 
-use crate::domain::constants::clamp_opacity;
 use crate::domain::types::{
     AssetKind, PersistedState, Quote, Sparkline, ThemeMode, WatchlistItem, WindowGeometry,
 };
-use crate::domain::watchlist;
-use crate::infrastructure::store::save_state;
 use crate::infrastructure::window_ctl;
 use crate::state::AppHandleState;
-use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, Manager, State};
-
-fn persist(state: &AppHandleState) -> Result<(), String> {
-    let persisted = state
-        .persisted
-        .lock()
-        .map_err(|_| "state lock poisoned".to_string())?;
-    save_state(&state.app_data_dir, &persisted)
-}
-
-async fn sync_scheduler_watchlist(state: &AppHandleState) -> Result<(), String> {
-    let items = {
-        let persisted = state
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        watchlist::sorted_clone(&persisted.watchlist)
-    };
-    let mut sched = state.scheduler.lock().await;
-    sched.set_watchlist(items);
-    Ok(())
-}
 
 #[tauri::command]
 pub fn get_state(state: State<'_, AppHandleState>) -> Result<PersistedState, String> {
-    state
-        .persisted
-        .lock()
-        .map(|g| g.clone())
-        .map_err(|_| "state lock poisoned".into())
+    state.core.get_state()
 }
 
 #[tauri::command]
@@ -48,39 +19,10 @@ pub async fn add_symbol(
     symbol: String,
     asset_kind: AssetKind,
 ) -> Result<WatchlistItem, String> {
-    let item = {
-        let mut persisted = state
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        let item = watchlist::add_item(&mut persisted.watchlist, &symbol, asset_kind, None)?;
-        save_state(&state.app_data_dir, &persisted)?;
-        item
-    };
-
-    {
-        let mut sched = state.scheduler.lock().await;
-        let items = {
-            let persisted = state
-                .persisted
-                .lock()
-                .map_err(|_| "state lock poisoned".to_string())?;
-            watchlist::sorted_clone(&persisted.watchlist)
-        };
-        sched.set_watchlist(items);
-        sched.bump_priority(item.symbol.clone());
-    }
-
-    let watchlist_payload = {
-        let persisted = state
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        watchlist::sorted_clone(&persisted.watchlist)
-    };
-    app.emit("watchlist-updated", watchlist_payload)
+    let item = state.core.add_symbol(symbol, asset_kind).await?;
+    let payload = state.core.watchlist_snapshot().await?;
+    app.emit("watchlist-updated", payload)
         .map_err(|e| e.to_string())?;
-
     Ok(item)
 }
 
@@ -90,26 +32,9 @@ pub async fn remove_symbol(
     state: State<'_, AppHandleState>,
     id: String,
 ) -> Result<(), String> {
-    {
-        let mut persisted = state
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        if !watchlist::remove_item(&mut persisted.watchlist, &id) {
-            return Err(format!("unknown id {id}"));
-        }
-        save_state(&state.app_data_dir, &persisted)?;
-    }
-    sync_scheduler_watchlist(&state).await?;
-
-    let watchlist_payload = {
-        let persisted = state
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        watchlist::sorted_clone(&persisted.watchlist)
-    };
-    app.emit("watchlist-updated", watchlist_payload)
+    state.core.remove_symbol(&id).await?;
+    let payload = state.core.watchlist_snapshot().await?;
+    app.emit("watchlist-updated", payload)
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -120,41 +45,16 @@ pub async fn reorder_symbols(
     state: State<'_, AppHandleState>,
     ordered_ids: Vec<String>,
 ) -> Result<(), String> {
-    {
-        let mut persisted = state
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        watchlist::reorder(&mut persisted.watchlist, &ordered_ids)?;
-        save_state(&state.app_data_dir, &persisted)?;
-    }
-    sync_scheduler_watchlist(&state).await?;
-
-    let watchlist_payload = {
-        let persisted = state
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        watchlist::sorted_clone(&persisted.watchlist)
-    };
-    app.emit("watchlist-updated", watchlist_payload)
+    state.core.reorder_symbols(&ordered_ids).await?;
+    let payload = state.core.watchlist_snapshot().await?;
+    app.emit("watchlist-updated", payload)
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn set_theme(
-    state: State<'_, AppHandleState>,
-    theme: ThemeMode,
-) -> Result<(), String> {
-    {
-        let mut persisted = state
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        persisted.settings.theme = theme;
-    }
-    persist(&state)
+pub fn set_theme(state: State<'_, AppHandleState>, theme: ThemeMode) -> Result<(), String> {
+    state.core.set_theme(theme)
 }
 
 #[tauri::command]
@@ -163,24 +63,13 @@ pub fn set_opacity(
     state: State<'_, AppHandleState>,
     opacity: f64,
 ) -> Result<(), String> {
-    let opacity = clamp_opacity(opacity);
-    {
-        let mut persisted = state
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        persisted.settings.opacity = opacity;
-    }
-    persist(&state)?;
+    let opacity = state.core.set_opacity(opacity)?;
     window_ctl::apply_opacity(&app, opacity)?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn hide_widget(
-    app: AppHandle,
-    state: State<'_, AppHandleState>,
-) -> Result<(), String> {
+pub async fn hide_widget(app: AppHandle, state: State<'_, AppHandleState>) -> Result<(), String> {
     set_visibility(&app, &state, false).await
 }
 
@@ -189,7 +78,7 @@ pub async fn toggle_widget_visibility(
     app: AppHandle,
     state: State<'_, AppHandleState>,
 ) -> Result<bool, String> {
-    let next = !state.visible.load(Ordering::SeqCst);
+    let next = !state.core.is_visible();
     set_visibility(&app, &state, next).await?;
     Ok(next)
 }
@@ -206,11 +95,7 @@ pub async fn set_visibility(
     } else {
         window_ctl::hide_window(&window)?;
     }
-    state.visible.store(visible, Ordering::SeqCst);
-    {
-        let mut sched = state.scheduler.lock().await;
-        sched.set_visible(visible);
-    }
+    state.core.set_visible_state(visible).await;
     Ok(())
 }
 
@@ -222,7 +107,7 @@ pub fn toggle_visibility_from_handle(app: &AppHandle) {
             eprintln!("toggle_visibility: AppHandleState not ready");
             return;
         };
-        let next = !state.visible.load(Ordering::SeqCst);
+        let next = !state.core.is_visible();
         if let Err(e) = set_visibility(&app, &state, next).await {
             eprintln!("toggle_visibility failed: {e}");
         }
@@ -234,26 +119,18 @@ pub fn save_window_geometry(
     state: State<'_, AppHandleState>,
     geometry: WindowGeometry,
 ) -> Result<(), String> {
-    {
-        let mut persisted = state
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        persisted.settings.window = geometry;
-    }
-    persist(&state)
+    state.core.save_window_geometry(geometry)?;
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn get_quotes(state: State<'_, AppHandleState>) -> Result<Vec<Quote>, String> {
-    let sched = state.scheduler.lock().await;
-    Ok(sched.quote_cache().all())
+    Ok(state.core.get_quotes().await)
 }
 
 #[tauri::command]
 pub async fn get_sparklines(state: State<'_, AppHandleState>) -> Result<Vec<Sparkline>, String> {
-    let sched = state.scheduler.lock().await;
-    Ok(sched.sparkline_cache().all())
+    Ok(state.core.get_sparklines().await)
 }
 
 #[tauri::command]

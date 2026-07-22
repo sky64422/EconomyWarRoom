@@ -75,4 +75,41 @@ mod tests {
         assert!((loaded.settings.opacity - 0.77).abs() < 1e-9);
         assert_eq!(loaded.watchlist.len(), 2);
     }
+
+    #[test]
+    fn load_missing_file_returns_defaults() {
+        let dir = tempdir().unwrap();
+        let loaded = load_state(dir.path());
+        assert_eq!(loaded.watchlist.len(), 2);
+        assert!(loaded.settings.autostart);
+    }
+
+    #[test]
+    fn load_corrupt_json_falls_back_to_defaults() {
+        let dir = tempdir().unwrap();
+        let path = state_path(dir.path());
+        std::fs::write(&path, "{not-json").unwrap();
+        let loaded = load_state(dir.path());
+        assert_eq!(loaded.watchlist[0].symbol, "AAPL");
+    }
+
+    #[test]
+    fn save_clamps_out_of_range_opacity() {
+        let dir = tempdir().unwrap();
+        let mut state = default_state();
+        state.settings.opacity = 0.01;
+        save_state(dir.path(), &state).unwrap();
+        let loaded = load_state(dir.path());
+        assert!((loaded.settings.opacity - OpacityPolicy::MIN).abs() < 1e-9);
+    }
+
+    #[test]
+    fn state_path_name() {
+        let dir = tempdir().unwrap();
+        assert!(state_path(dir.path())
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .contains("economy-war-room-state"));
+    }
 }

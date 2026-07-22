@@ -53,6 +53,16 @@ pub fn clamp_opacity(value: f64) -> f64 {
     value.clamp(OpacityPolicy::MIN, OpacityPolicy::MAX)
 }
 
+/// Clamp window size to policy minimums (position unchanged).
+pub fn clamp_geometry(geometry: &crate::domain::types::WindowGeometry) -> crate::domain::types::WindowGeometry {
+    crate::domain::types::WindowGeometry {
+        x: geometry.x,
+        y: geometry.y,
+        width: geometry.width.max(WindowPolicy::MIN_WIDTH),
+        height: geometry.height.max(WindowPolicy::MIN_HEIGHT),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -74,5 +84,19 @@ mod tests {
         assert_eq!(RefreshPolicy::TICK, Duration::from_secs(1));
         assert_eq!(RefreshPolicy::MIN_QUOTE_INTERVAL, Duration::from_secs(10));
         assert_eq!(RefreshPolicy::SPARKLINE_MIN_INTERVAL, Duration::from_secs(300));
+    }
+
+    #[test]
+    fn clamp_geometry_enforces_min_size() {
+        let g = clamp_geometry(&crate::domain::types::WindowGeometry {
+            x: 10.0,
+            y: 20.0,
+            width: 1.0,
+            height: 1.0,
+        });
+        assert_eq!(g.x, 10.0);
+        assert_eq!(g.y, 20.0);
+        assert_eq!(g.width, WindowPolicy::MIN_WIDTH);
+        assert_eq!(g.height, WindowPolicy::MIN_HEIGHT);
     }
 }

@@ -1,11 +1,11 @@
 //! Economy War Room — floating market watchlist widget.
 
-mod application;
+pub mod application;
 mod commands;
-mod domain;
-mod infrastructure;
-mod ports;
-mod state;
+pub mod domain;
+pub mod infrastructure;
+pub mod ports;
+pub mod state;
 
 use application::scheduler::QuoteScheduler;
 use domain::constants::{HotkeyPolicy, RefreshPolicy};
@@ -14,7 +14,6 @@ use infrastructure::store::{load_state, save_state};
 use infrastructure::window_ctl;
 use infrastructure::yahoo::YahooProvider;
 use state::AppHandleState;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::MacosLauncher;
@@ -119,14 +118,15 @@ pub fn run() {
                     let Some(state) = app_handle.try_state::<AppHandleState>() else {
                         continue;
                     };
-                    if !state.visible.load(Ordering::SeqCst) {
+                    if !state.core.is_visible() {
                         continue;
                     }
-                    let mut sched = state.scheduler.lock().await;
-                    sched.tick_once().await;
-                    let quotes = sched.quote_cache().all();
-                    let sparks = sched.sparkline_cache().all();
-                    drop(sched);
+                    {
+                        let mut sched = state.core.scheduler.lock().await;
+                        sched.tick_once().await;
+                    }
+                    let quotes = state.core.get_quotes().await;
+                    let sparks = state.core.get_sparklines().await;
                     let _ = app_handle.emit("quotes-updated", quotes);
                     let _ = app_handle.emit("sparklines-updated", sparks);
                 }

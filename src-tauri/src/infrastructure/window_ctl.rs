@@ -4,7 +4,7 @@
 //! and emitted as `opacity-updated` so the frontend can apply CSS opacity.
 //! Geometry and always-on-top use native window APIs.
 
-use crate::domain::constants::{clamp_opacity, WindowPolicy};
+use crate::domain::constants::{clamp_geometry, clamp_opacity};
 use crate::domain::types::WindowGeometry;
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewWindow};
 
@@ -20,10 +20,9 @@ pub fn apply_always_on_top(window: &WebviewWindow, on_top: bool) -> Result<(), S
 }
 
 pub fn apply_geometry(window: &WebviewWindow, geometry: &WindowGeometry) -> Result<(), String> {
-    let width = geometry.width.max(WindowPolicy::MIN_WIDTH);
-    let height = geometry.height.max(WindowPolicy::MIN_HEIGHT);
+    let geometry = clamp_geometry(geometry);
     window
-        .set_size(LogicalSize::new(width, height))
+        .set_size(LogicalSize::new(geometry.width, geometry.height))
         .map_err(|e| e.to_string())?;
     window
         .set_position(LogicalPosition::new(geometry.x, geometry.y))

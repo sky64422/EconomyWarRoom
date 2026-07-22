@@ -50,19 +50,25 @@ pub fn remove_item(items: &mut Vec<WatchlistItem>, id: &str) -> bool {
 }
 
 /// `ordered_ids` is the full list of ids in the new visual order.
+/// On error, `items` is left unchanged (atomic).
 pub fn reorder(items: &mut Vec<WatchlistItem>, ordered_ids: &[String]) -> Result<(), String> {
     if ordered_ids.len() != items.len() {
         return Err("ordered_ids length mismatch".into());
     }
-    let mut map: std::collections::HashMap<String, WatchlistItem> =
-        items.drain(..).map(|i| (i.id.clone(), i)).collect();
+    let map: std::collections::HashMap<&str, &WatchlistItem> =
+        items.iter().map(|i| (i.id.as_str(), i)).collect();
     let mut next = Vec::with_capacity(ordered_ids.len());
     for id in ordered_ids {
-        let item = map.remove(id).ok_or_else(|| format!("unknown id {id}"))?;
-        next.push(item);
+        let item = map
+            .get(id.as_str())
+            .ok_or_else(|| format!("unknown id {id}"))?;
+        next.push((*item).clone());
     }
-    if !map.is_empty() {
-        return Err("ordered_ids missing some items".into());
+    // Detect duplicates in ordered_ids (same id twice ⇒ map size mismatch).
+    let unique: std::collections::HashSet<&str> =
+        ordered_ids.iter().map(|s| s.as_str()).collect();
+    if unique.len() != ordered_ids.len() {
+        return Err("ordered_ids contains duplicates".into());
     }
     *items = next;
     reindex(items);
@@ -124,5 +130,45 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].sort_index, 0);
         assert_eq!(items[0].symbol, "B");
+    }
+
+    #[test]
+    fn reject_empty_and_whitespace_symbol() {
+        let mut items = vec![];
+        assert!(add_item(&mut items, "   ", AssetKind::Equity, None).is_err());
+        assert!(add_item(&mut items, "", AssetKind::Equity, None).is_err());
+    }
+
+    #[test]
+    fn remove_unknown_returns_false() {
+        let mut items = vec![];
+        add_item(&mut items, "A", AssetKind::Equity, None).unwrap();
+        assert!(!remove_item(&mut items, "missing"));
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn reorder_rejects_length_mismatch_and_unknown_id_atomically() {
+        let mut items = vec![];
+        let a = add_item(&mut items, "A", AssetKind::Equity, None).unwrap();
+        let b = add_item(&mut items, "B", AssetKind::Equity, None).unwrap();
+        assert!(reorder(&mut items, &[a.id.clone()]).is_err());
+        assert_eq!(items.len(), 2);
+        assert!(reorder(&mut items, &[a.id.clone(), "x".into()]).is_err());
+        assert_eq!(items.len(), 2);
+        assert!(reorder(&mut items, &[a.id.clone(), a.id.clone()]).is_err());
+        assert_eq!(items.len(), 2);
+        reorder(&mut items, &[b.id.clone(), a.id.clone()]).unwrap();
+        assert_eq!(sorted_clone(&items)[0].symbol, "B");
+    }
+
+    #[test]
+    fn next_sort_index_empty_is_zero() {
+        assert_eq!(next_sort_index(&[]), 0);
+    }
+
+    #[test]
+    fn normalize_symbol_trims_and_uppercases() {
+        assert_eq!(normalize_symbol("  btc-usd "), "BTC-USD");
     }
 }

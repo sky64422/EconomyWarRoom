@@ -107,6 +107,13 @@ impl QuoteScheduler {
         self.visible
     }
 
+    /// Whether network work is currently suppressed due to error backoff.
+    pub fn is_backing_off(&self) -> bool {
+        self.backoff_until
+            .map(|until| Instant::now() < until)
+            .unwrap_or(false)
+    }
+
     pub fn set_watchlist(&mut self, items: Vec<WatchlistItem>) {
         self.watchlist = items;
     }
@@ -449,5 +456,104 @@ mod tests {
         sched.set_visible(true);
         sched.tick_once().await;
         assert_eq!(provider.call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn empty_watchlist_is_noop() {
+        let provider = Arc::new(MockProvider::new(vec![]));
+        let mut sched = QuoteScheduler::new(provider.clone());
+        sched.set_visible(true);
+        sched.tick_once().await;
+        assert_eq!(provider.call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn bump_priority_fetches_symbol_first() {
+        let provider = Arc::new(MockProvider::new(vec![
+            quote("A", 1.0),
+            quote("B", 2.0),
+            quote("C", 3.0),
+        ]));
+        let mut sched = QuoteScheduler::new(provider.clone());
+        sched.set_watchlist(vec![item("A", 0), item("B", 1), item("C", 2)]);
+        sched.bump_priority("C");
+        sched.tick_once().await;
+        assert!(sched.quote_cache().get("C").is_some());
+    }
+
+    #[tokio::test]
+    async fn is_visible_reflects_flag() {
+        let provider = Arc::new(MockProvider::new(vec![]));
+        let mut sched = QuoteScheduler::new(provider);
+        assert!(sched.is_visible());
+        sched.set_visible(false);
+        assert!(!sched.is_visible());
+    }
+
+    #[test]
+    fn pick_batch_empty_or_zero_size() {
+        let items = vec![item("A", 0)];
+        let last = HashMap::new();
+        let mut cursor = 0;
+        assert!(pick_batch(
+            &items,
+            &last,
+            Instant::now(),
+            Duration::from_secs(1),
+            0,
+            &mut cursor,
+            None
+        )
+        .is_empty());
+        assert!(pick_batch(
+            &[],
+            &last,
+            Instant::now(),
+            Duration::from_secs(1),
+            2,
+            &mut cursor,
+            None
+        )
+        .is_empty());
+    }
+
+    struct FailSparkProvider {
+        inner: MockProvider,
+    }
+
+    #[async_trait]
+    impl MarketDataProvider for FailSparkProvider {
+        fn id(&self) -> &'static str {
+            "fail-spark"
+        }
+        fn supports(&self, k: AssetKind) -> bool {
+            self.inner.supports(k)
+        }
+        fn limits(&self) -> ProviderLimits {
+            self.inner.limits()
+        }
+        async fn fetch_quotes(&self, symbols: &[String]) -> Result<Vec<Quote>, String> {
+            self.inner.fetch_quotes(symbols).await
+        }
+        async fn fetch_sparkline(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<Sparkline, String> {
+            Err("rate_limited".into())
+        }
+    }
+
+    #[tokio::test]
+    async fn sparkline_failure_applies_backoff() {
+        let provider = Arc::new(FailSparkProvider {
+            inner: MockProvider::new(vec![quote("A", 10.0)]),
+        });
+        let mut sched = QuoteScheduler::new(provider);
+        sched.set_watchlist(vec![item("A", 0)]);
+        sched.tick_once().await;
+        assert!(sched.backoff_until.is_some());
+        assert!(sched.sparkline_cache().get("A").is_none());
     }
 }

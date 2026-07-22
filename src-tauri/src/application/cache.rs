@@ -86,5 +86,7 @@ mod tests {
         });
         assert!(cache.get("AAPL").is_some());
         assert!(cache.age("AAPL").is_some());
+        assert_eq!(cache.all().len(), 1);
+        assert_eq!(cache.all()[0].symbol, "AAPL");
     }
 }

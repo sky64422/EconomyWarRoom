@@ -110,4 +110,53 @@ mod tests {
         assert_eq!(s.points[0].t, 1000);
         assert!((s.points[2].close - 190.5).abs() < 1e-9);
     }
+
+    #[test]
+    fn missing_result_is_error() {
+        let v: Value = serde_json::json!({"chart": {"result": [], "error": null}});
+        assert!(parse_quote_from_chart(&v).is_err());
+        assert!(parse_sparkline_from_chart(&v).is_err());
+    }
+
+    #[test]
+    fn missing_price_is_error() {
+        let v: Value = serde_json::json!({
+            "chart": { "result": [{ "meta": { "symbol": "X" } }] }
+        });
+        assert!(parse_quote_from_chart(&v).is_err());
+    }
+
+    #[test]
+    fn previous_close_zero_skips_change_percent() {
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "Z",
+                  "regularMarketPrice": 10.0,
+                  "previousClose": 0.0,
+                  "currency": "USD"
+                }
+              }]
+            }
+        });
+        let q = parse_quote_from_chart(&v).unwrap();
+        assert!(q.change_percent.is_none());
+    }
+
+    #[test]
+    fn sparkline_skips_null_closes() {
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": { "symbol": "N", "previousClose": 1.0 },
+                "timestamp": [1, 2, 3],
+                "indicators": { "quote": [{ "close": [1.0, null, 3.0] }] }
+              }]
+            }
+        });
+        let s = parse_sparkline_from_chart(&v).unwrap();
+        assert_eq!(s.points.len(), 2);
+        assert_eq!(s.points[1].close, 3.0);
+    }
 }
