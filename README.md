@@ -77,11 +77,14 @@ Frontend-only (no native shell):
 npm run dev
 ```
 
-Unit tests (Rust, no live market API):
+Tests (unit + integration + risk scenarios; no live Yahoo required):
 
 ```bash
-cargo test --manifest-path src-tauri/Cargo.toml --lib
+npm test
+npm run test:coverage   # tarpaulin ≥ 85% business logic (~98% currently)
 ```
+
+Details: [docs/testing.md](docs/testing.md)
 
 Frontend typecheck + Vite build:
 
