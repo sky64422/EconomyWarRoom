@@ -11,11 +11,21 @@
   },
   "app": {
     "withGlobalTauri": true,
+    "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "EconomyWarRoom",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "Economy War Room",
+        "width": 320,
+        "height": 640,
+        "minWidth": 260,
+        "minHeight": 360,
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": true,
+        "center": false
       }
     ],
     "security": {

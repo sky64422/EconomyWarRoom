@@ -44,6 +44,10 @@ impl SparklineCache {
     pub fn age(&self, symbol: &str) -> Option<Duration> {
         self.map.get(symbol).map(|(_, t)| t.elapsed())
     }
+
+    pub fn all(&self) -> Vec<Sparkline> {
+        self.map.values().map(|(s, _)| s.clone()).collect()
+    }
 }
 
 #[cfg(test)]
