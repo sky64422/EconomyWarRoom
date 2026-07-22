@@ -154,7 +154,7 @@ body {
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 8px; /* same as .watchlist-rows — space before + Add slot */
+  gap: 10px; /* same as .watchlist-rows — space before + Add slot */
   padding: 10px 10px 4px;
   scrollbar-width: thin;
   scrollbar-color: var(--text-secondary) transparent;
@@ -164,7 +164,7 @@ body {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .watchlist-rows.is-reordering {
