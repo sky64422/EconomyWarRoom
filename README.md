@@ -22,13 +22,14 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 
 ## Status
 
-**Design phase complete (spec written).** Implementation not started yet.
+**MVP implementation on branch `feat/mvp-widget`.** Core widget, Yahoo-backed quotes/sparklines, glass UI, hotkey/hide, settings, and persistence are in place. Manual OS-level checks (sustained run, autostart on Windows) remain.
 
 | Document | Purpose |
 |----------|---------|
 | [Design spec](docs/superpowers/specs/2026-07-22-economy-war-room-design.md) | Goals, architecture, scheduler, UI, non-goals |
-| [TODO](docs/TODO.md) | Phased checklist toward MVP |
-| [Plans](docs/superpowers/plans/) | Implementation plans (after planning step) |
+| [TODO](docs/TODO.md) | Phased checklist (P0–P5 progress) |
+| [MVP plan](docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md) | Task breakdown (Tasks 1–14) |
+| [Plans index](docs/superpowers/plans/) | Plan status |
 
 ## Architecture (short)
 
@@ -53,28 +54,56 @@ Design details, scheduling policy, and AssetStocker borrow list: see the [design
 - Windows 11 Widgets board  
 - API-key-required feeds as MVP hard dependency  
 
-## Development
+## Develop
 
-Scaffolded as **Tauri 2 + Vite + vanilla TypeScript**. Widget features land in later tasks (Phase 0 in [TODO](docs/TODO.md)).
+**Requirements:**
 
-Expected toolchain:
+- **Rust** stable (`rustc`, `cargo`) — install via [rustup](https://rustup.rs/)
+- **Node.js 18+** and npm
+- **Tauri 2** system deps for your OS — see [Tauri prerequisites](https://tauri.app/start/prerequisites/)
+  - **Linux:** WebKitGTK, etc. (e.g. `webkit2gtk`, `libgtk-3`, `librsvg`, build tools)
+  - **Windows:** Microsoft Edge WebView2 (usually preinstalled on Win10/11)
 
-- Rust stable  
-- Node.js (frontend tooling)  
-- Tauri CLI 2.x (via `@tauri-apps/cli`)  
-- Linux system deps for local GUI dev (`webkit2gtk`, etc.) — see [Tauri prerequisites](https://tauri.app/start/prerequisites/)  
-- Windows target for production widget behavior (hotkey, autostart, always-on-top)
+**Primary target is Windows** (hotkey, transparent glass, always-on-top, autostart). Linux is fine for development; transparent windows and global hotkeys may be limited depending on compositor / Wayland.
 
 ```bash
 npm install
 npm run tauri dev
-# or frontend only:
+```
+
+Frontend-only (no native shell):
+
+```bash
 npm run dev
 ```
 
-## Configuration (planned)
+Unit tests (Rust, no live market API):
 
-Stored under the OS app data directory (JSON), including:
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml --lib
+```
+
+Frontend typecheck + Vite build:
+
+```bash
+npm run build
+```
+
+### Controls
+
+| Action | How |
+|--------|-----|
+| Toggle visibility | **`Ctrl+Shift+Space`** (global hotkey) |
+| Hide widget | Header **hide** button (app keeps running; polling pauses) |
+| Quit | **Settings → Quit** (hide alone does not exit) |
+| Theme / opacity | Settings panel (light / dark / system; opacity slider) |
+| Watchlist | Bottom **+** to add · drag to reorder · per-row remove |
+
+Default seed watchlist: **AAPL**, **BTC-USD**.
+
+## Configuration
+
+Stored as JSON under the OS app data directory (Tauri `app_data_dir`), including:
 
 - Watchlist symbols and order  
 - Theme (`light` | `dark` | `system`)  
