@@ -120,14 +120,14 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           const pct = q?.change_percent ?? null;
           const gradId = `spark-fill-${escapeAttr(item.id)}`;
           return `
-            <div class="watchlist-row" role="listitem" draggable="true" data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}">
+            <div class="watchlist-row" role="listitem" data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}" title="Drag to reorder">
               <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
               <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="${SPARK_W}" height="${SPARK_H}" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
                 ${sparkSvgInner(line, area, gh, stroke, gradId)}
               </svg>
               <span class="row-price" data-price="${escapeAttr(item.symbol)}">${q ? escapeHtml(formatPrice(q.price)) : "—"}</span>
               <span class="row-change ${changeClass(pct)}" data-change="${escapeAttr(item.symbol)}">${escapeHtml(formatChange(pct))}</span>
-              <button type="button" class="row-remove" data-remove="${escapeAttr(item.id)}" aria-label="Remove ${escapeAttr(item.symbol)}" title="Remove" draggable="false">×</button>
+              <button type="button" class="row-remove" data-remove="${escapeAttr(item.id)}" aria-label="Remove ${escapeAttr(item.symbol)}" title="Remove">×</button>
             </div>
           `;
         })
@@ -388,70 +388,84 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     }
   }
 
+  function applyReorder(sourceId: string, targetId: string): void {
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    const ids = orderedIdsFromDom();
+    const from = ids.indexOf(sourceId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, sourceId);
+    const byId = new Map(items.map((it) => [it.id, it]));
+    items = ids
+      .map((id, i) => {
+        const it = byId.get(id);
+        return it ? { ...it, sort_index: i } : null;
+      })
+      .filter((x): x is WatchlistItem => x != null);
+    dragId = null;
+    pendingFullRender = false;
+    renderRows();
+    void invoke("reorder_symbols", { ordered_ids: ids }).catch((err) => {
+      console.error("reorder_symbols failed", err);
+    });
+  }
+
+  /**
+   * Pointer-based reorder (not HTML5 DnD).
+   * WebView2 + transparent Tauri windows often break native drag/drop.
+   */
   function bindRowEvents(): void {
     listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((row) => {
-      row.addEventListener("dragstart", (e) => {
-        // Don't start row drag from the remove control.
+      row.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
         const t = e.target as HTMLElement | null;
-        if (t?.closest?.(".row-remove")) {
-          e.preventDefault();
-          return;
-        }
-        dragId = row.dataset.id ?? null;
+        if (t?.closest?.(".row-remove")) return;
+
+        const sourceId = row.dataset.id;
+        if (!sourceId) return;
+
+        e.preventDefault();
+        dragId = sourceId;
         pendingFullRender = false;
         row.classList.add("dragging");
-        e.dataTransfer?.setData("text/plain", dragId ?? "");
-        if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-      });
-      row.addEventListener("dragend", () => {
-        dragId = null;
-        row.classList.remove("dragging");
-        listEl.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
-        if (pendingFullRender) {
-          pendingFullRender = false;
-          renderRows();
-        }
-      });
-      row.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-        listEl.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
-        if (row.dataset.id !== dragId) row.classList.add("drag-over");
-      });
-      row.addEventListener("dragleave", (e) => {
-        // Ignore leave when moving onto a child inside this row.
-        const related = e.relatedTarget as Node | null;
-        if (related && row.contains(related)) return;
-        row.classList.remove("drag-over");
-      });
-      row.addEventListener("drop", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        row.classList.remove("drag-over");
-        const targetId = row.dataset.id;
-        const sourceId =
-          dragId ?? e.dataTransfer?.getData("text/plain") ?? null;
-        if (!sourceId || !targetId || sourceId === targetId) return;
-        const ids = orderedIdsFromDom();
-        const from = ids.indexOf(sourceId);
-        const to = ids.indexOf(targetId);
-        if (from < 0 || to < 0) return;
-        ids.splice(from, 1);
-        ids.splice(to, 0, sourceId);
-        const byId = new Map(items.map((it) => [it.id, it]));
-        items = ids
-          .map((id, i) => {
-            const it = byId.get(id);
-            return it ? { ...it, sort_index: i } : null;
-          })
-          .filter((x): x is WatchlistItem => x != null);
-        dragId = null;
-        pendingFullRender = false;
-        renderRows();
-        void invoke("reorder_symbols", { ordered_ids: ids }).catch((err) => {
-          console.error("reorder_symbols failed", err);
-        });
+        row.setPointerCapture(e.pointerId);
+
+        const onMove = (ev: PointerEvent) => {
+          if (!dragId) return;
+          const el = document.elementFromPoint(ev.clientX, ev.clientY);
+          const over = el?.closest?.(".watchlist-row") as HTMLElement | null;
+          listEl.querySelectorAll(".drag-over").forEach((n) => n.classList.remove("drag-over"));
+          if (over && over.dataset.id && over.dataset.id !== dragId) {
+            over.classList.add("drag-over");
+          }
+        };
+
+        const finish = (ev: PointerEvent) => {
+          row.releasePointerCapture(ev.pointerId);
+          row.removeEventListener("pointermove", onMove);
+          row.removeEventListener("pointerup", finish);
+          row.removeEventListener("pointercancel", finish);
+
+          const el = document.elementFromPoint(ev.clientX, ev.clientY);
+          const over = el?.closest?.(".watchlist-row") as HTMLElement | null;
+          const targetId = over?.dataset.id ?? null;
+          listEl.querySelectorAll(".drag-over").forEach((n) => n.classList.remove("drag-over"));
+          row.classList.remove("dragging");
+
+          const src = dragId;
+          dragId = null;
+          if (src && targetId && src !== targetId) {
+            applyReorder(src, targetId);
+          } else if (pendingFullRender) {
+            pendingFullRender = false;
+            renderRows();
+          }
+        };
+
+        row.addEventListener("pointermove", onMove);
+        row.addEventListener("pointerup", finish);
+        row.addEventListener("pointercancel", finish);
       });
     });
 
