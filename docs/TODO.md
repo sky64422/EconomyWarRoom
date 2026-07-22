@@ -9,6 +9,8 @@ Status: `pending` · `in_progress` · `done` · `blocked`
 **Automated quality:** unit + integration + risk tests; coverage gate ≥85% (~98% business logic).  
 **Remaining:** optional manual OS smoke on Windows (P5-2 / P5-3).
 
+**New session / Windows clone:** start at [`docs/HANDOFF.md`](HANDOFF.md) and [`docs/windows-dev.md`](windows-dev.md).
+
 ---
 
 ## Phase 0 — Project foundation

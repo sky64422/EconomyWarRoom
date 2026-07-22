@@ -32,11 +32,26 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | Automated tests + coverage gate | Done (~98% business logic) |
 | Manual OS smoke (Windows autostart, long run) | Still recommended — see [TODO](docs/TODO.md) P5-2 / P5-3 |
 
+### Continuing on a new machine (especially Windows)
+
+| Start here | Purpose |
+|------------|---------|
+| **[docs/HANDOFF.md](docs/HANDOFF.md)** | **Read first** — project sync-up for humans & AI agents |
+| [docs/windows-dev.md](docs/windows-dev.md) | Windows prerequisites, first run, troubleshooting |
+| [AGENTS.md](AGENTS.md) | Short rules for coding agents |
+
+```powershell
+git clone https://github.com/sky64422/EconomyWarRoom.git
+cd EconomyWarRoom
+npm install
+npm run tauri dev
+```
+
 | Document | Purpose |
 |----------|---------|
 | [Architecture](docs/ARCHITECTURE.md) | Current module layout and data flow |
 | [Design spec](docs/superpowers/specs/2026-07-22-economy-war-room-design.md) | Goals, decisions, non-goals |
-| [MVP plan](docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md) | Implementation task breakdown |
+| [MVP plan](docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md) | Implementation task breakdown (complete) |
 | [TODO](docs/TODO.md) | Phase checklist + remaining manual smoke |
 | [Testing](docs/testing.md) | Unit / integration / risk / coverage policy |
 

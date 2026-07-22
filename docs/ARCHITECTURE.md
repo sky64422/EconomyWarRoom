@@ -109,6 +109,8 @@ Defined in `domain/constants.rs` (names approximate):
 
 ## Related docs
 
+- **Session sync-up:** [HANDOFF.md](./HANDOFF.md)  
+- **Windows setup:** [windows-dev.md](./windows-dev.md)  
 - Product decisions: [superpowers/specs/2026-07-22-economy-war-room-design.md](./superpowers/specs/2026-07-22-economy-war-room-design.md)  
 - Implementation history: [superpowers/plans/2026-07-22-economy-war-room-mvp.md](./superpowers/plans/2026-07-22-economy-war-room-mvp.md)  
 - Testing: [testing.md](./testing.md)  
