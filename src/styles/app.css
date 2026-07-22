@@ -33,13 +33,13 @@ body {
   width: 100%;
   height: 100%;
   border-radius: var(--radius);
-  background: var(--bg-glass);
-  backdrop-filter: blur(var(--blur));
-  -webkit-backdrop-filter: blur(var(--blur));
+  /* Opacity slider drives glass fill alpha: 100% = solid (no desktop bleed). */
+  background: rgba(var(--bg-glass-rgb-active), var(--panel-opacity, 0.92));
+  backdrop-filter: blur(calc(var(--blur) * (1.05 - var(--panel-opacity, 0.92))));
+  -webkit-backdrop-filter: blur(calc(var(--blur) * (1.05 - var(--panel-opacity, 0.92))));
   border: 1px solid var(--border);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   overflow: hidden;
-  opacity: var(--panel-opacity, 1);
 }
 
 /* —— Header —— */
@@ -166,10 +166,12 @@ body {
 }
 
 .watchlist-row {
+  position: relative;
   display: grid;
-  grid-template-columns: 1fr 72px auto auto 22px;
+  /* Remove is absolutely positioned — no permanent gap after change %. */
+  grid-template-columns: minmax(0, 1fr) 64px auto auto;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 8px 10px 8px 14px;
   border-bottom: 1px solid var(--border);
   cursor: grab;
@@ -200,9 +202,10 @@ body {
 }
 
 .row-sparkline {
-  width: 72px;
+  width: 64px;
   height: 28px;
   display: block;
+  overflow: visible;
 }
 
 .row-price {
@@ -210,7 +213,8 @@ body {
   font-weight: 500;
   font-size: 13px;
   text-align: right;
-  min-width: 4.5em;
+  min-width: 3.75em;
+  padding-right: 2px;
 }
 
 .row-change {
@@ -218,7 +222,8 @@ body {
   font-size: 12px;
   font-weight: 500;
   text-align: right;
-  min-width: 4.2em;
+  min-width: 3.6em;
+  padding-right: 2px;
   color: var(--text-secondary);
 }
 
@@ -231,6 +236,10 @@ body {
 }
 
 .row-remove {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -246,11 +255,13 @@ body {
   line-height: 1;
   cursor: pointer;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
 
 .watchlist-row:hover .row-remove {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .row-remove:hover {
@@ -408,7 +419,7 @@ body {
 }
 
 .segmented button.active {
-  background: var(--bg-glass);
+  background: rgba(var(--bg-glass-rgb-active), 0.9);
   color: var(--text);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   font-weight: 600;

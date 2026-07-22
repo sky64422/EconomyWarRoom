@@ -191,7 +191,7 @@ Do not add portfolio/P&L features. Hide must not quit the app.
 
 | Topic | Note |
 |-------|------|
-| Opacity | No native Tauri 2 `set_opacity`; CSS + `opacity-updated` event |
+| Opacity | No native Tauri 2 window alpha; slider sets **glass fill alpha** via CSS `--panel-opacity` (100% = solid / no desktop bleed) |
 | Yahoo | Unofficial public endpoints; 429 → backoff; may fail from some networks |
 | Hotkey | Best-effort register; may collide with other apps |
 | Coverage script | Bash; use Git Bash/WSL on Windows or run tarpaulin manually |

@@ -193,8 +193,13 @@ export function applyThemeToDocument(theme: ThemeMode): void {
   document.documentElement.dataset.theme = theme;
 }
 
-/** Apply opacity CSS variable on the glass panel. */
+/**
+ * Apply panel glass fill opacity (CSS variable).
+ * 1.0 = fully opaque solid fill; lower values increase glass transparency.
+ * Does not use element `opacity` so text stays fully legible.
+ */
 export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
   const clamped = Math.min(1, Math.max(0.35, opacity));
   panel.style.setProperty("--panel-opacity", String(clamped));
+  document.documentElement.style.setProperty("--panel-opacity", String(clamped));
 }

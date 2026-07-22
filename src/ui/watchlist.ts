@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { sparklinePath, sparklineTone } from "./sparkline";
+import { sparklinePaths, sparklineTone } from "./sparkline";
 import type {
   AssetKind,
   Quote,
@@ -8,7 +8,7 @@ import type {
   WatchlistItem,
 } from "./types";
 
-const SPARK_W = 72;
+const SPARK_W = 64;
 const SPARK_H = 28;
 
 export interface WatchlistController {
@@ -89,15 +89,27 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           const q = quotes.get(item.symbol);
           const sp = sparks.get(item.symbol);
           const points = sp?.points ?? [];
-          const path = sparklinePath(points, SPARK_W, SPARK_H);
+          const { line, area } = sparklinePaths(points, SPARK_W, SPARK_H);
           const tone = sparklineTone(points);
           const stroke = strokeForTone(tone);
           const pct = q?.change_percent ?? null;
+          const gradId = `spark-fill-${escapeAttr(item.id)}`;
           return `
             <div class="watchlist-row" role="listitem" draggable="true" data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}">
               <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
               <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="${SPARK_W}" height="${SPARK_H}" aria-hidden="true">
-                ${path ? `<path d="${path}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />` : ""}
+                ${
+                  line
+                    ? `<defs>
+                  <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="${stroke}" stop-opacity="0.32"/>
+                    <stop offset="100%" stop-color="${stroke}" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="${area}" fill="url(#${gradId})" stroke="none" />
+                <path d="${line}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />`
+                    : ""
+                }
               </svg>
               <span class="row-price">${q ? escapeHtml(formatPrice(q.price)) : "—"}</span>
               <span class="row-change ${changeClass(pct)}">${escapeHtml(formatChange(pct))}</span>

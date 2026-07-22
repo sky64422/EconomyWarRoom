@@ -1,7 +1,10 @@
 :root {
   color-scheme: light dark;
-  --bg-glass: rgba(255, 255, 255, 0.55);
-  --bg-glass-dark: rgba(28, 28, 30, 0.55);
+  /* RGB channels only — alpha comes from --panel-opacity (1 = fully opaque). */
+  --bg-glass-rgb: 255, 255, 255;
+  --bg-glass-dark-rgb: 28, 28, 30;
+  --bg-glass-rgb-active: var(--bg-glass-rgb);
+  --panel-opacity: 0.92;
   --bg-row-hover: rgba(0, 0, 0, 0.04);
   --bg-row-active: rgba(0, 0, 0, 0.08);
   --border: rgba(0, 0, 0, 0.08);
@@ -20,7 +23,7 @@
 }
 
 html[data-theme="dark"] {
-  --bg-glass: var(--bg-glass-dark);
+  --bg-glass-rgb-active: var(--bg-glass-dark-rgb);
   --bg-row-hover: rgba(255, 255, 255, 0.06);
   --bg-row-active: rgba(255, 255, 255, 0.1);
   --border: rgba(255, 255, 255, 0.1);
@@ -31,7 +34,7 @@ html[data-theme="dark"] {
 
 @media (prefers-color-scheme: dark) {
   html[data-theme="system"] {
-    --bg-glass: var(--bg-glass-dark);
+    --bg-glass-rgb-active: var(--bg-glass-dark-rgb);
     --bg-row-hover: rgba(255, 255, 255, 0.06);
     --bg-row-active: rgba(255, 255, 255, 0.1);
     --border: rgba(255, 255, 255, 0.1);
@@ -43,18 +46,7 @@ html[data-theme="dark"] {
 
 @media (prefers-reduced-transparency: reduce) {
   :root {
-    --bg-glass: rgba(255, 255, 255, 0.92);
-    --bg-glass-dark: rgba(28, 28, 30, 0.95);
     --blur: 0px;
-  }
-
-  html[data-theme="dark"] {
-    --bg-glass: rgba(28, 28, 30, 0.95);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    html[data-theme="system"] {
-      --bg-glass: rgba(28, 28, 30, 0.95);
-    }
+    --panel-opacity: 1;
   }
 }
