@@ -1,14 +1,16 @@
+use std::time::Duration;
+
 /// Quote / refresh scheduler policy.
 pub struct RefreshPolicy;
 
 impl RefreshPolicy {
-    pub const TICK: u64 = 1;
+    pub const TICK: Duration = Duration::from_secs(1);
     pub const BATCH_SIZE: usize = 4;
-    pub const MIN_QUOTE_INTERVAL: u64 = 10;
+    pub const MIN_QUOTE_INTERVAL: Duration = Duration::from_secs(10);
     pub const MAX_CONCURRENT: usize = 3;
-    pub const SPARKLINE_MIN_INTERVAL: u64 = 300;
-    pub const BACKOFF_INITIAL: u64 = 5;
-    pub const BACKOFF_MAX: u64 = 120;
+    pub const SPARKLINE_MIN_INTERVAL: Duration = Duration::from_secs(300);
+    pub const BACKOFF_INITIAL: Duration = Duration::from_secs(5);
+    pub const BACKOFF_MAX: Duration = Duration::from_secs(120);
 }
 
 /// Sparkline fetch policy.
@@ -65,5 +67,12 @@ mod tests {
         assert_eq!(clamp_opacity(OpacityPolicy::MAX), OpacityPolicy::MAX);
         assert_eq!(clamp_opacity(1.5), OpacityPolicy::MAX);
         assert_eq!(clamp_opacity(100.0), OpacityPolicy::MAX);
+    }
+
+    #[test]
+    fn refresh_policy_durations() {
+        assert_eq!(RefreshPolicy::TICK, Duration::from_secs(1));
+        assert_eq!(RefreshPolicy::MIN_QUOTE_INTERVAL, Duration::from_secs(10));
+        assert_eq!(RefreshPolicy::SPARKLINE_MIN_INTERVAL, Duration::from_secs(300));
     }
 }
