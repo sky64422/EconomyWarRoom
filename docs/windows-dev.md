@@ -122,6 +122,8 @@ State JSON is under Tauri app data, roughly:
 
 ## 5. Runtime checklist (first Windows session)
 
+**Toolchain on this Windows host (2026-07-22):** Node 24 + npm, Rust `stable-x86_64-pc-windows-msvc`, VS Build Tools 2022 (Desktop C++ / MSVC), WebView2, `npm install` complete. Unit lib tests pass. **UI smoke below still open.**
+
 Do these once after first successful launch — update [TODO.md](./TODO.md) when done:
 
 - [ ] Window always on top, frameless, tall  
@@ -152,6 +154,9 @@ Do these once after first successful launch — update [TODO.md](./TODO.md) when
 | npm scripts fail on `cd` | Use PowerShell 7+ or run `cargo` commands inside `src-tauri` manually |
 | CRLF noise in git | `git config core.autocrlf true` is common on Windows; avoid reformatting whole tree |
 | Slow first `tauri dev` | Normal — compiles all Rust deps once |
+| `npm.ps1` / execution policy blocked | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` (or call `npm.cmd`) |
+| `rustc` / `cargo` not found after install | Open a **new** terminal so PATH picks up `%USERPROFILE%\.cargo\bin` |
+| `link.exe` not on PATH | Expected; cargo finds MSVC via Build Tools registry — install **Desktop development with C++** if link fails during build |
 
 ---
 
@@ -186,3 +191,84 @@ EconomyWarRoom/
 
 - [HANDOFF.md](./HANDOFF.md) — product + agent starter prompt  
 - [Tauri Windows prerequisites](https://tauri.app/start/prerequisites/#windows)  
+
+---
+
+## 10. Defect reporting & agent visibility
+
+### Can an agent “see” a running app fail in real time?
+
+**No — not automatically.** The coding agent does not attach to your live `tauri dev` process, WebView, or system tray. It only sees:
+
+| What | When |
+|------|------|
+| Files you edit / git state | Always in the workspace |
+| Commands **it** runs (and their stdout/stderr) | During that session |
+| Terminal logs you paste or save into the repo | When you provide them |
+| Screenshots / paths you attach in chat | When you send them |
+
+There is **no crash dump pipeline**, no file logger, and no remote telemetry in MVP. Rust uses sparse `eprintln!` for setup/hotkey/autostart failures; the UI uses `console.error` in the WebView. Neither is persisted to disk by default.
+
+### Best ways to capture a failure (pick one)
+
+#### A. Dev session terminal (preferred for agents)
+
+Run from the repo root in a dedicated terminal and keep the buffer:
+
+```powershell
+cd C:\dev\EconomyWarRoom
+npm run tauri dev 2>&1 | Tee-Object -FilePath "$env:TEMP\ewr-tauri-dev.log"
+```
+
+When something breaks:
+
+1. Stop or leave the process as-is.  
+2. Tell the agent: path of the log (`$env:TEMP\ewr-tauri-dev.log`) **or** paste the last ~50–100 lines.  
+3. Add: what you did, expected vs actual, and whether the window is still open.
+
+#### B. WebView / frontend console
+
+In `tauri dev`, open WebView DevTools if available (or rely on Vite terminal + `console.error` lines that bubble). Copy any red stack traces. UI-only issues (layout, invoke errors) often appear only here.
+
+#### C. App state snapshot
+
+```text
+%APPDATA%\com.economywarroom.app\economy-war-room-state.json
+```
+
+Copy that file (or paste its JSON) if reorder/theme/geometry/watchlist looks wrong after restart. Do **not** commit secrets; this app stores no API keys today.
+
+#### D. Minimal “bug packet” template (paste into chat)
+
+```text
+### Bug
+- Steps:
+- Expected:
+- Actual:
+- Repro: always / sometimes
+- Branch / commit:
+- Command: npm run tauri dev | release build
+### Artifacts
+- Terminal log: (paste or path under repo / TEMP)
+- State JSON: (paste or path)
+- Screenshot: (attach if UI)
+```
+
+### What helps vs what does not
+
+| Helpful | Not enough alone |
+|---------|------------------|
+| Full terminal tail with `eprintln` / compile errors | “It doesn’t work” with no steps |
+| State JSON after bad persist | Screenshot without version/branch |
+| Exact symbol / hotkey / theme at failure | Only Task Manager “not responding” |
+| Whether hidden vs visible when quotes freeze | |
+
+### Optional future improvements (not implemented)
+
+If smoke shows diagnosis is painful, consider (product decision):
+
+1. **Rotating file log** under app data (`tracing` + daily file; redacted).  
+2. **“Copy diagnostics”** settings button (version, last N log lines, state path).  
+3. **Dev-only** verbose scheduler logs behind env flag `EWR_LOG=debug`.
+
+Until then, use **Tee-Object + bug packet** so a new agent session can fix without re-deriving context.

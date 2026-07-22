@@ -2,7 +2,7 @@
 
 **Purpose:** After `git clone` (especially on **Windows**), a human or coding agent should read this file and be able to continue without re-deriving project context.
 
-**Last updated:** 2026-07-22  
+**Last updated:** 2026-07-22 (Windows host env verified)  
 **Default branch:** `main`  
 **Remote:** `https://github.com/sky64422/EconomyWarRoom.git`
 
@@ -31,9 +31,10 @@ Contrast (do not merge architectures): sibling project **AssetStocker** is a ful
 | Area | Status |
 |------|--------|
 | MVP features | **Done** on `main` |
-| Automated tests | Unit + integration + risk (~62 tests) |
+| Automated tests | Unit + integration + risk (~62 tests); **51 unit tests green on Windows host** (`cargo test --lib`) |
 | Coverage gate | ≥85% business logic (**~98%** last measured) |
-| Windows machine verification | **Not done on a physical Windows host yet** — do smoke after first `tauri dev` |
+| Windows machine toolchain | **Ready** — Node 24, npm, Rust stable-MSVC 1.97, VS Build Tools 2022 (C++), WebView2, `npm install` done |
+| Windows runtime smoke | **Not done** — still need `npm run tauri dev` + P5-2/P5-3 checklist |
 | Open product work | Manual smoke (TODO P5-2/P5-3); optional post-MVP in TODO Phase 6 |
 
 **Do not re-scaffold** Tauri or re-implement domain/scheduler from the MVP plan unless fixing bugs. Plan file is historical.
@@ -159,6 +160,12 @@ Priority for a **Windows handoff session**:
 4. Only then: Phase 6 items (remappable hotkey, better symbol search, tray icon, etc.).
 
 Do **not** start Phase 6 until smoke is green unless the user explicitly prioritizes a feature.
+
+### Windows host notes (2026-07-22)
+
+- Repo path: `C:\dev\EconomyWarRoom` (branch may be `main` or feature; MVP lives on `main`).  
+- First-time setup issues seen: PowerShell blocked `npm.ps1` until `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`; Rust/VS Build Tools installed via winget.  
+- Full agent observability / how to report runtime failures: [windows-dev.md §10](./windows-dev.md#10-defect-reporting--agent-visibility).
 
 ---
 

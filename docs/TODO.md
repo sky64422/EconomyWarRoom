@@ -7,7 +7,8 @@ Status: `pending` · `in_progress` · `done` · `blocked`
 
 **MVP code:** implemented and merged to **`main`** (plan Tasks 1–14).  
 **Automated quality:** unit + integration + risk tests; coverage gate ≥85% (~98% business logic).  
-**Remaining:** optional manual OS smoke on Windows (P5-2 / P5-3).
+**Windows host (2026-07-22):** toolchain ready (Node, Rust MSVC, VS Build Tools, WebView2); `cargo test --lib` 51/51 green.  
+**Remaining:** manual OS smoke on Windows (P5-2 / P5-3) via `npm run tauri dev`.
 
 **New session / Windows clone:** start at [`docs/HANDOFF.md`](HANDOFF.md) and [`docs/windows-dev.md`](windows-dev.md).
 
