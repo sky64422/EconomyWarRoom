@@ -42,5 +42,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE5Q0YzMTVEQkU0MThFNkIKUldScmprRytYVEhQR1pJWXVyMzlKWVczYW1IM2NSaWpFazRHaks5N3lTeFEyMWhCaW5wbEFqOWQK",
+      "endpoints": [
+        "https://github.com/sky64422/EconomyWarRoom/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

@@ -75,6 +75,9 @@ npm run tauri build
 ```
 
 Installer/artifacts under `src-tauri/target/release/` (and bundle output per Tauri config).
+If you are preparing a release that should support in-app updates, set
+`TAURI_SIGNING_PRIVATE_KEY_PATH` or `TAURI_SIGNING_PRIVATE_KEY` before the build
+so the updater artifacts and signatures are generated too.
 
 To build and launch the release exe in one step:
 

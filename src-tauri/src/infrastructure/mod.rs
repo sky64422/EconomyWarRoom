@@ -1,4 +1,5 @@
 pub mod store;
+pub mod updater;
 pub mod window_ctl;
 pub mod yahoo;
 

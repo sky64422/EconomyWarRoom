@@ -134,6 +134,7 @@ Run with `npm run run:exe` on the target OS (**Windows preferred**):
 | P6-7 | Copy diagnostics (Settings → clipboard dump for agents) | **done** |
 | P6-8 | Rolling file log for hard-crash recovery | pending |
 | P6-9 | Diagnostics hardening (command notes, scheduler throttle, dump 100 lines) | **done** |
+| P6-10 | In-app self-update (Tauri 2 updater plugin + auto-check + manual check UI) | **done** |
 
 ## Out of scope (do not start without new design approval)
 

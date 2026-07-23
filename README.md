@@ -118,6 +118,17 @@ npm run build            # tsc + Vite production bundle
 
 See [docs/testing.md](docs/testing.md).
 
+### Updates
+
+The app checks for updates at startup through Tauri's updater plugin.
+To publish an installable release, build with a signing key and upload the
+generated updater manifest/artifacts to the configured release endpoint.
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH="C:\path\to\economy-war-room.key"
+npm run run:exe
+```
+
 ### Controls
 
 | Action | How |

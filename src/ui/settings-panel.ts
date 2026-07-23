@@ -53,6 +53,7 @@ export function mountSettingsPanel(
         </div>
       </div>
       <div class="settings-actions">
+        <button type="button" class="btn-update" id="btn-update">Check for updates</button>
         <button type="button" class="btn-diag" id="btn-diag">Copy diagnostics</button>
         <button type="button" class="btn-quit" id="btn-quit">Quit</button>
       </div>
@@ -80,6 +81,10 @@ export function mountSettingsPanel(
       });
     });
 
+    root.querySelector("#btn-update")!.addEventListener("click", () => {
+      void checkForUpdates(root.querySelector("#btn-update") as HTMLButtonElement);
+    });
+
     root.querySelector("#btn-diag")!.addEventListener("click", () => {
       void copyDiagnostics(root.querySelector("#btn-diag") as HTMLButtonElement);
     });
@@ -87,6 +92,31 @@ export function mountSettingsPanel(
     root.querySelector("#btn-quit")!.addEventListener("click", () => {
       void invoke("quit_app");
     });
+  }
+
+  async function checkForUpdates(btn: HTMLButtonElement): Promise<void> {
+    const original = "Check for updates";
+    btn.textContent = "Checking...";
+    btn.disabled = true;
+    try {
+      const hasUpdate = await invoke<boolean>("check_for_updates");
+      btn.textContent = hasUpdate ? "Updating..." : "Up to date";
+      window.setTimeout(() => {
+        if (btn.isConnected) {
+          btn.textContent = original;
+          btn.disabled = false;
+        }
+      }, 2000);
+    } catch (err) {
+      console.error("check_for_updates failed", err);
+      btn.textContent = "Check failed";
+      window.setTimeout(() => {
+        if (btn.isConnected) {
+          btn.textContent = original;
+          btn.disabled = false;
+        }
+      }, 2000);
+    }
   }
 
   async function copyDiagnostics(btn: HTMLButtonElement): Promise<void> {

@@ -5,8 +5,8 @@ use crate::domain::types::{
     AssetKind, PersistedState, Quote, Sparkline, SymbolSuggestion, ThemeMode, WatchlistItem,
     WindowGeometry,
 };
-use crate::infrastructure::yahoo::YahooProvider;
 use crate::infrastructure::window_ctl;
+use crate::infrastructure::yahoo::YahooProvider;
 use crate::state::AppHandleState;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -233,11 +233,17 @@ pub async fn search_symbols(
     match provider.search_symbols(q, limit).await {
         Ok(hits) => Ok(hits),
         Err(e) => {
-            state.core.note_throttled_default(
-                DiagLevel::Warn,
-                format!("search_symbols failed: {e}"),
-            );
+            state
+                .core
+                .note_throttled_default(DiagLevel::Warn, format!("search_symbols failed: {e}"));
             Err(e)
         }
     }
 }
+
+/// Trigger in-app update check manually.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn check_for_updates(app: AppHandle) -> Result<bool, String> {
+    crate::infrastructure::updater::check_and_install_update(&app).await
+}
+
