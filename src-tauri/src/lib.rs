@@ -17,7 +17,7 @@ use infrastructure::window_ctl;
 use infrastructure::yahoo::YahooProvider;
 use state::AppHandleState;
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
@@ -172,6 +172,22 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // Hard clamp while resizing: if drag goes under content min, snap to floor
+            // and re-assert OS min so further drag hits a wall (not a rubber-band loop
+            // driven by frontend setSize after the fact).
+            if let WindowEvent::Resized(size) = event {
+                let Some(state) = window.try_state::<AppHandleState>() else {
+                    return;
+                };
+                let (min_w, min_h) = state.content_min_logical();
+                if let Err(e) =
+                    window_ctl::clamp_physical_size_to_content_min(window, *size, min_w, min_h)
+                {
+                    eprintln!("clamp resize: {e}");
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
             commands::add_symbol,
@@ -186,6 +202,7 @@ pub fn run() {
             commands::hide_widget,
             commands::toggle_widget_visibility,
             commands::save_window_geometry,
+            commands::set_content_min_size,
             commands::get_quotes,
             commands::get_sparklines,
             commands::quit_app,

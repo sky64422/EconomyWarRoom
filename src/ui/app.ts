@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { renderHeader, setSettingsButtonActive } from "./header";
 import {
   applyPanelOpacity,
@@ -149,8 +149,11 @@ async function setupGeometryPersistence(panel: HTMLElement): Promise<void> {
   try {
     const win = getCurrentWindow();
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
-    let minSizeTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastMinH = 0;
+    let contentMinTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Last content floor (logical height). Only changes when content changes. */
+    let lastContentMinH = 0;
+    const POLICY_MIN_W = 260;
+    const CHROME_MIN_H = 120;
 
     const persist = async () => {
       try {
@@ -169,52 +172,48 @@ async function setupGeometryPersistence(panel: HTMLElement): Promise<void> {
       }
     };
 
-    // Absolute floor: header + padding + +Add (empty list). Content hug is larger.
-    const CHROME_MIN_H = 120;
-    const POLICY_MIN_W = 260;
-
-    const updateMinSize = async () => {
+    /**
+     * Publish content-hug min to OS. Does **not** run on every drag frame.
+     * grow_if_needed only when content grew / boot — never rubber-band mid-resize.
+     */
+    const syncContentMinSize = async (opts: { growIfNeeded: boolean }) => {
       try {
         const contentH = measureContentHugHeight(panel);
         const minHeight = Math.max(CHROME_MIN_H, contentH);
-        // Avoid thrashing OS min-size for sub-pixel noise.
-        if (Math.abs(minHeight - lastMinH) >= 1) {
-          lastMinH = minHeight;
-          await win.setMinSize(new LogicalSize(POLICY_MIN_W, minHeight));
-        }
-
-        // If current window is below the floor (restored geometry / race), grow it.
-        const factor = await win.scaleFactor();
-        const size = await win.innerSize();
-        const logicalH = size.height / factor;
-        const logicalW = size.width / factor;
-        if (logicalH + 0.5 < minHeight) {
-          await win.setSize(
-            new LogicalSize(Math.max(POLICY_MIN_W, logicalW), minHeight),
-          );
-        }
+        const grew = minHeight > lastContentMinH + 0.5;
+        const changed = Math.abs(minHeight - lastContentMinH) >= 1;
+        if (!changed && !opts.growIfNeeded) return;
+        lastContentMinH = minHeight;
+        await invoke("set_content_min_size", {
+          width: POLICY_MIN_W,
+          height: minHeight,
+          // Grow only when content increased or explicit boot/grow request.
+          grow_if_needed: opts.growIfNeeded || grew,
+        });
       } catch (err) {
-        console.error("setMinSize failed", err);
+        console.error("set_content_min_size failed", err);
       }
     };
 
-    const schedule = () => {
+    const schedulePersist = () => {
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
         void persist();
       }, 250);
-      if (minSizeTimer) clearTimeout(minSizeTimer);
-      minSizeTimer = setTimeout(() => {
-        void updateMinSize();
-      }, 50);
     };
 
-    // Panel size changes when window resizes (clamped) — still remeasure hug height.
-    const resizeObs = new ResizeObserver(() => schedule());
-    resizeObs.observe(panel);
+    const scheduleContentMin = (growIfNeeded: boolean) => {
+      if (contentMinTimer) clearTimeout(contentMinTimer);
+      contentMinTimer = setTimeout(() => {
+        void syncContentMinSize({ growIfNeeded });
+      }, 40);
+    };
 
-    // Rows / +Add / settings open-close change intrinsic height without window resize.
-    const mutObs = new MutationObserver(() => schedule());
+    // Content changes only — never remeasure min from window resize (that caused
+    // min to track the drag and then bounce with setSize).
+    const mutObs = new MutationObserver(() => {
+      scheduleContentMin(false);
+    });
     mutObs.observe(panel, {
       childList: true,
       subtree: true,
@@ -223,16 +222,17 @@ async function setupGeometryPersistence(panel: HTMLElement): Promise<void> {
       attributeFilter: ["class", "style", "hidden"],
     });
 
-    await win.onMoved(() => schedule());
-    await win.onResized(() => schedule());
-    // After first paint (fonts/layout).
+    await win.onMoved(() => schedulePersist());
+    // Persist only; OS min + Rust Resized clamp handle the hard wall.
+    await win.onResized(() => schedulePersist());
+
+    // Boot: measure after layout, install hard min, grow if restored size too small.
     requestAnimationFrame(() => {
-      schedule();
+      void syncContentMinSize({ growIfNeeded: true });
       window.setTimeout(() => {
-        void updateMinSize();
+        void syncContentMinSize({ growIfNeeded: true });
       }, 200);
     });
-    schedule();
   } catch (err) {
     console.error("geometry persistence unavailable", err);
   }

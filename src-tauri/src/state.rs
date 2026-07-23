@@ -2,12 +2,17 @@
 
 use crate::application::scheduler::QuoteScheduler;
 use crate::application::service::AppCore;
+use crate::domain::constants::WindowPolicy;
 use crate::domain::types::PersistedState;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 pub struct AppHandleState {
     pub core: Arc<AppCore>,
+    /// Content-hug min size in **logical** pixels (from UI measurement).
+    pub content_min_w: AtomicU32,
+    pub content_min_h: AtomicU32,
 }
 
 impl AppHandleState {
@@ -19,7 +24,23 @@ impl AppHandleState {
     ) -> Self {
         Self {
             core: Arc::new(AppCore::new(persisted, app_data_dir, scheduler, visible)),
+            content_min_w: AtomicU32::new(WindowPolicy::MIN_WIDTH as u32),
+            content_min_h: AtomicU32::new(WindowPolicy::MIN_HEIGHT as u32),
         }
+    }
+
+    pub fn set_content_min_logical(&self, width: f64, height: f64) {
+        let w = width.ceil().max(WindowPolicy::MIN_WIDTH) as u32;
+        let h = height.ceil().max(WindowPolicy::MIN_HEIGHT) as u32;
+        self.content_min_w.store(w, Ordering::SeqCst);
+        self.content_min_h.store(h, Ordering::SeqCst);
+    }
+
+    pub fn content_min_logical(&self) -> (f64, f64) {
+        (
+            self.content_min_w.load(Ordering::SeqCst) as f64,
+            self.content_min_h.load(Ordering::SeqCst) as f64,
+        )
     }
 }
 

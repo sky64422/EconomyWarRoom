@@ -269,6 +269,35 @@ pub fn save_window_geometry(
     Ok(())
 }
 
+/// Update OS min-size from measured content height (logical px).
+/// `grow_if_needed`: only true when content grew or on boot — never used mid-drag.
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_content_min_size(
+    app: AppHandle,
+    state: State<'_, AppHandleState>,
+    width: f64,
+    height: f64,
+    grow_if_needed: bool,
+) -> Result<(), String> {
+    state.set_content_min_logical(width, height);
+    let (w, h) = state.content_min_logical();
+    let window = window_ctl::main_window(&app).map_err(|e| {
+        note_err(&state, "set_content_min_size", &e);
+        e
+    })?;
+    window_ctl::apply_content_min_size(&window, w, h).map_err(|e| {
+        note_err(&state, "apply_content_min_size", &e);
+        e
+    })?;
+    if grow_if_needed {
+        window_ctl::ensure_at_least_min_size(&window, w, h).map_err(|e| {
+            note_err(&state, "ensure_at_least_min_size", &e);
+            e
+        })?;
+    }
+    Ok(())
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub async fn get_quotes(state: State<'_, AppHandleState>) -> Result<Vec<Quote>, String> {
     Ok(state.core.get_quotes().await)
