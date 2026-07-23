@@ -25,7 +25,7 @@ import {
   githubRepoFromRemote,
   githubRequest,
   readAppVersion,
-  resolveGitHubToken,
+  resolveGitHubTokenCandidates,
   resolvePrivateKey,
   root,
   run,
@@ -125,13 +125,32 @@ if (args.dryRun) {
   process.exit(0);
 }
 
-const token = resolveGitHubToken();
-if (!token) {
+const tokens = resolveGitHubTokenCandidates();
+if (tokens.length === 0) {
   console.error(`
 Missing GitHub token.
 Set GITHUB_TOKEN, GH_TOKEN, or GITHUB_PERSONAL_ACCESS_TOKEN (repo scope),
 or ensure git credential manager has a github.com password/token.
 `);
+  process.exit(1);
+}
+
+/** First token that can reach the API (skips stale env tokens). */
+async function resolveWorkingToken() {
+  for (const t of tokens) {
+    try {
+      await githubRequest(t, "GET", "https://api.github.com/user");
+      return t;
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
+}
+
+const token = await resolveWorkingToken();
+if (!token) {
+  console.error("No valid GitHub token (env tokens failed; git credential also unusable).");
   process.exit(1);
 }
 

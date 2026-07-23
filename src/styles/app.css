@@ -35,7 +35,9 @@ body {
   display: flex;
   flex-direction: column;
   width: 100%;
-  /* Content-sized glass; window may be taller (true transparency below). */
+  /* Content-sized glass; window may be taller (true transparency below).
+     Window min-height is set in app.ts from unconstrained content height
+     (not the max-height:100% clamped rect) so +Add cannot be clipped. */
   height: max-content;
   max-height: 100%;
   min-height: 0;

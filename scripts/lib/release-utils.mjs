@@ -49,34 +49,35 @@ export function writeJson(path, value) {
 }
 
 /**
- * GitHub token for Releases API.
- * Prefers env, then `git credential fill` for github.com (Windows credential manager).
+ * Candidate GitHub tokens (env + git credential manager).
+ * Callers should try until one authenticates — env vars may be stale.
  */
-export function resolveGitHubToken() {
-  const fromEnv =
-    process.env.GITHUB_TOKEN ||
-    process.env.GH_TOKEN ||
-    process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
-  if (fromEnv?.trim()) return fromEnv.trim();
-
-  const result = spawnSync(
-    "git",
-    ["credential", "fill"],
-    {
-      cwd: root,
-      input: "protocol=https\nhost=github.com\n\n",
-      encoding: "utf8",
-      shell: false,
-    },
-  );
-  if (result.status !== 0 || !result.stdout) return null;
-  for (const line of result.stdout.split(/\r?\n/)) {
-    if (line.startsWith("password=")) {
-      const pw = line.slice("password=".length).trim();
-      if (pw) return pw;
+export function resolveGitHubTokenCandidates() {
+  const out = [];
+  for (const key of ["GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN"]) {
+    const v = process.env[key]?.trim();
+    if (v) out.push(v);
+  }
+  const result = spawnSync("git", ["credential", "fill"], {
+    cwd: root,
+    input: "protocol=https\nhost=github.com\n\n",
+    encoding: "utf8",
+    shell: false,
+  });
+  if (result.status === 0 && result.stdout) {
+    for (const line of result.stdout.split(/\r?\n/)) {
+      if (line.startsWith("password=")) {
+        const pw = line.slice("password=".length).trim();
+        if (pw && !out.includes(pw)) out.push(pw);
+      }
     }
   }
-  return null;
+  return out;
+}
+
+/** @deprecated use resolveGitHubTokenCandidates + probe */
+export function resolveGitHubToken() {
+  return resolveGitHubTokenCandidates()[0] ?? null;
 }
 
 export function githubRepoFromRemote() {
