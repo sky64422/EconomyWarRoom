@@ -59,6 +59,7 @@ npm run run:exe
 ```
 
 **Expected:** frameless tall window, glass panel, seed symbols **AAPL** and **BTC-USD**, quotes filling after network calls.
+Settings includes theme, opacity, price refresh, and **Launch at login**. Header has **↻** (updates), settings, hide.
 
 ### Frontend only (no native window)
 
@@ -143,13 +144,17 @@ Do these once after first successful launch — update [TODO.md](./TODO.md) when
 - [ ] Seed quotes + sparklines for AAPL / BTC-USD  
 - [ ] **+** add symbol (e.g. `MSFT`); try several symbols for density  
 - [ ] Drag reorder; restart → order kept  
-- [ ] Remove symbol  
+- [ ] Remove symbol (row **x** and keyboard **Delete** with selection)  
+- [ ] Multi-select (Ctrl / Shift) and right-click pastel card tint  
+- [ ] Settings → Price refresh interval  
 - [ ] Header hide; `Ctrl+Shift+Space` shows again; no network thrash while hidden  
 - [ ] Settings = compact sheet **above** watchlist (list remains usable)  
 - [ ] Max height: extra space goes to quote list, not a hollow settings panel  
+- [ ] Cannot shrink below content (rows + **+ Add** stay visible)  
+- [ ] Header **↻** update check (release build)  
 - [ ] Settings → Copy diagnostics works  
 - [ ] Settings → Quit fully exits  
-- [ ] Autostart: enable, reboot or check Task Manager / Startup apps  
+- [ ] Settings → **Launch at login** toggle; check Startup apps / Task Manager  
 
 ---
 

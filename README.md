@@ -2,7 +2,7 @@
 
 Lightweight **Windows floating widget** for watching markets at a glance — not a portfolio manager.
 
-Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, and **change %**, reorder by drag-and-drop, and toggle visibility with a hotkey or an in-widget hide button.
+Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, and **change %**, reorder by drag-and-drop, highlight cards with soft colors, and toggle visibility with a hotkey or an in-widget hide button.
 
 > Contrast: [AssetStocker](../AssetStocker) is a full local-first finance app (holdings, imports, snapshots). EconomyWarRoom intentionally stays small: **watchlist + quotes only**.
 
@@ -10,27 +10,30 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 
 | | |
 |--|--|
-| **Shape** | Tall floating panel, always on top, freely draggable |
+| **Shape** | Tall floating panel, always on top, freely draggable (content-hug min height) |
 | **MVP assets** | US equities + crypto (providers extensible later) |
 | **Rows** | Symbol · intraday sparkline (1d/5m) · price · change % |
-| **Watchlist** | Add via bottom **+** (appends) · remove · drag reorder |
+| **Watchlist** | Add via bottom **+** · remove · drag reorder · multi-select · pastel tints |
 | **Toggle** | `Ctrl+Shift+Space` **or** in-UI hide (hide only; app stays running) |
 | **Look** | Light / dark / system · translucent **glass** · adjustable opacity |
-| **Startup** | Autostart on login · widget visible on launch |
+| **Settings** | Theme · opacity · **price refresh** · **launch at login** · diagnostics · quit |
+| **Updates** | In-app updater (header ↻ + release auto-check) |
+| **Startup** | Autostart on login (toggleable) · widget visible on launch |
 | **Stack** | [Tauri](https://tauri.app/) 2 — Rust core + vanilla TypeScript / Vite UI |
 | **Data** | Free Yahoo-style chart API + **rate-limited scheduler** (backoff on 429) |
 
 ## Status
 
-**MVP shipped on `main`.** Design, implementation plan (Tasks 1–14), unit/integration/risk tests, and ≥85% business-logic coverage gate are in place.
+**MVP + post-MVP UX on `main`.** Design, implementation plan (Tasks 1–14), unit/integration/risk tests, and ≥85% business-logic coverage gate are in place.
 
 | Area | State |
 |------|--------|
 | Core widget + glass UI | Done |
 | Yahoo quotes / sparklines + scheduler | Done |
 | Hotkey / hide / settings / JSON persist | Done |
-| Automated tests + coverage gate | Done (~98% business logic) |
-| Manual OS smoke (Windows autostart, long run) | Still recommended — see [TODO](docs/TODO.md) P5-2 / P5-3 |
+| Card tint · multi-select · quote interval · autostart UI · updater | Done |
+| Automated tests + coverage gate | Done (~98% business logic; ~63 unit tests) |
+| Manual OS smoke (Windows long run) | Still recommended — see [TODO](docs/TODO.md) P5-2 / P5-3 |
 
 ### Continuing on a new machine (especially Windows)
 
@@ -60,12 +63,13 @@ npm run run:exe
 ```
 Web UI (src/)          Tauri bridge              Rust (src-tauri/)
   glass list      ←→   commands / events   ←→   AppCore service
-  DnD / + / hide        invoke + emit            QuoteScheduler + queue
+  DnD / select / +      invoke + emit            QuoteScheduler + queue
   theme / opacity                                MarketDataProvider (Yahoo)
-                                                 JSON store (app data dir)
+  refresh / login                                JSON store (app data dir)
+  update icon                                    updater plugin
 ```
 
-- **Layers:** `domain` → `ports` → `application` (scheduler, queue, **AppCore**) → `infrastructure` (Yahoo, store, window helpers).
+- **Layers:** `domain` → `ports` → `application` (scheduler, queue, **AppCore**) → `infrastructure` (Yahoo, store, window, updater).
 - Commands are thin adapters; business logic lives in `AppCore` (unit-tested).
 - Network and rate limits run in **Rust** (no webview CORS).
 - Persistence: **one JSON file** under Tauri `app_data_dir` (no SQLite).
@@ -120,9 +124,9 @@ See [docs/testing.md](docs/testing.md).
 
 ### Updates
 
-The app checks for updates at startup through Tauri's updater plugin.
-To publish an installable release, build with a signing key and upload the
-generated updater manifest/artifacts to the configured release endpoint.
+The app checks for updates at startup (release builds) through Tauri's updater plugin.
+Manual check: header **↻** icon. To publish an installable release, build with a signing
+key and upload the generated updater manifest/artifacts to the configured release endpoint.
 
 ```powershell
 $env:TAURI_SIGNING_PRIVATE_KEY_PATH="C:\path\to\economy-war-room.key"
@@ -135,9 +139,13 @@ npm run run:exe
 |--------|-----|
 | Toggle visibility | **`Ctrl+Shift+Space`** (global hotkey) |
 | Hide widget | Header **hide** button (process keeps running; polling pauses) |
+| Check for updates | Header **↻** (left of settings) |
 | Quit | **Settings → Quit** (hide alone does not exit) |
-| Theme / opacity | Settings panel (light / dark / system; opacity slider) |
-| Watchlist | Bottom **+** · drag to reorder · per-row remove |
+| Theme / opacity / refresh / login | Settings panel |
+| Select cards | Click · **Ctrl** toggle · **Shift** range |
+| Delete selected | **Delete** or **Backspace** |
+| Card color | Right-click card → pastel swatch |
+| Watchlist | Bottom **+** · drag to reorder · per-row **x** |
 
 Default seed watchlist: **AAPL**, **BTC-USD**.
 
@@ -145,11 +153,12 @@ Default seed watchlist: **AAPL**, **BTC-USD**.
 
 JSON under the OS app data directory (Tauri `app_data_dir`), file name roughly `economy-war-room-state.json`:
 
-- Watchlist symbols and order  
+- Watchlist symbols, order, and **card_tint**  
 - Theme (`light` \| `dark` \| `system`)  
 - Opacity (clamped ~0.35–1.0)  
 - Window geometry  
-- Autostart flag  
+- **Autostart** flag (launch at login)  
+- **quote_refresh_secs** (5–120, default 10)  
 - Hotkey string (default `Ctrl+Shift+Space`)  
 
 ## Design references

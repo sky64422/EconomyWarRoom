@@ -1,16 +1,16 @@
 # Testing & Coverage
 
-**Updated:** 2026-07-22
+**Updated:** 2026-07-23
 
 ## Snapshot
 
 | Metric | Value |
 |--------|--------|
-| Unit tests (`cargo test --lib`) | ~51 |
+| Unit tests (`cargo test --lib`) | ~63 |
 | Integration (`integration_e2e`) | 4 |
 | Risk scenarios (`risk_scenarios`) | 7 |
 | Coverage gate | **≥ 85%** business logic |
-| Last measured | **~98.4%** (424/431 lines) via tarpaulin |
+| Last measured | **~98%** business logic via tarpaulin |
 
 ## Layers
 

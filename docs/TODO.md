@@ -7,9 +7,10 @@ Status: `pending` · `in_progress` · `done` · `blocked`
 
 **MVP code:** implemented and merged to **`main`** (plan Tasks 1–14).  
 **Automated quality:** unit + integration + risk tests; coverage gate ≥85% (~98% business logic).  
-  Last Windows run: `npm test` green (lib **~59** + e2e 4 + risk 7).  
-**Windows host (2026-07-22):** toolchain ready (Node, Rust MSVC, VS Build Tools, WebView2); `npm install` done.  
-**Diagnostics (Mode B):** Copy diagnostics + command/scheduler event hardening on `main` (`d4e9214`).  
+  Last measured: lib **~63** + e2e 4 + risk 7.  
+**Windows host:** toolchain ready (Node, Rust MSVC, VS Build Tools, WebView2).  
+**Diagnostics (Mode B):** Copy diagnostics + command/scheduler event hardening on `main`.  
+**Post-MVP (2026-07-23):** updater, card tints, multi-select, quote refresh, autostart UI — **done**.  
 **Remaining (highest priority):** **P5-2 / P5-3** manual smoke on Windows via `npm run run:exe`.
 
 **New session / Windows clone:** start at [`docs/HANDOFF.md`](HANDOFF.md) and [`docs/windows-dev.md`](windows-dev.md).
@@ -21,7 +22,7 @@ Status: `pending` · `in_progress` · `done` · `blocked`
 1. **P5-2** — Manual checklist below (`npm run run:exe`).  
 2. **P5-3** — Sustained-run smoke (rate limits / backoff healthy).  
 3. Fix any Windows-only bugs found; update `windows-dev.md` Troubleshooting.  
-4. Only then: Phase 6 product ideas (unless you explicitly prioritize a feature).  
+4. Only then: remaining Phase 6 product ideas (unless you explicitly prioritize a feature).  
 5. Optional later: **P6-8** rolling file log (hard-crash recovery).
 
 Do **not** start portfolio / P&L / SQLite work without a new design.
@@ -48,16 +49,16 @@ Do **not** start portfolio / P&L / SQLite work without a new design.
 | P1-4 | Window opacity API wired to settings | done |
 | P1-5 | Show / hide window commands | done |
 | P1-6 | Global hotkey `Ctrl+Shift+Space` → toggle visibility | done |
-| P1-7 | Login autostart (default on) | done |
+| P1-7 | Login autostart (default on) + Settings toggle | done |
 | P1-8 | Launch with widget visible | done |
 
 ## Phase 2 — Domain & persistence
 
 | ID | Task | Status |
 |----|------|--------|
-| P2-1 | Types: `WatchlistItem`, `Quote`, `Sparkline`, `AppSettings`, `AssetKind` | done |
-| P2-2 | Watchlist CRUD: add (append bottom), remove, reorder by sortIndex | done |
-| P2-3 | Persist watchlist + settings JSON | done |
+| P2-1 | Types: `WatchlistItem`, `Quote`, `Sparkline`, `AppSettings`, `AssetKind`, `CardTint` | done |
+| P2-2 | Watchlist CRUD: add (append bottom), remove, multi-remove, reorder by sortIndex | done |
+| P2-3 | Persist watchlist + settings JSON (incl. tint, quote interval, autostart) | done |
 | P2-4 | In-memory `QuoteCache` / `SparklineCache` | done |
 
 ## Phase 3 — Market data & scheduler
@@ -73,6 +74,7 @@ Do **not** start portfolio / P&L / SQLite work without a new design.
 | P3-7 | Priority boost for newly added symbol | done |
 | P3-8 | Backoff on 429/network failure; keep last good quote | done |
 | P3-9 | Fixture-based unit tests for parse + scheduler (no live API in CI) | done |
+| P3-10 | User-configurable quote refresh interval (5–120s) | done |
 
 ## Phase 4 — Web UI (Apple-like glass)
 
@@ -82,12 +84,15 @@ Do **not** start portfolio / P&L / SQLite work without a new design.
 | P4-2 | Watchlist row: symbol, sparkline, price, change % | done |
 | P4-3 | Bottom **+** add flow (symbol input; search depth per open item) | done |
 | P4-4 | Drag-and-drop reorder; sync to Rust store | done |
-| P4-5 | Remove symbol control | done |
+| P4-5 | Remove symbol control + keyboard Delete multi-remove | done |
 | P4-6 | Header **hide** button (= hotkey hide) | done |
 | P4-7 | Theme selector (light / dark / system) | done |
 | P4-8 | Opacity control in UI | done |
 | P4-9 | Subscribe to quote/sparkline updates from Rust events | done |
 | P4-10 | Reduced motion / reduced transparency where practical | done |
+| P4-11 | Card selection / Ctrl / Shift multi-select | done |
+| P4-12 | Pastel card tint picker (right-click) | done |
+| P4-13 | Content-hug min height (outer chrome floor) | done |
 
 ## Phase 5 — Polish & verification
 
@@ -111,15 +116,18 @@ Run with `npm run run:exe` on the target OS (**Windows preferred**):
 - [ ] Seed AAPL + BTC-USD load quotes and sparklines  
 - [ ] Add symbol at bottom via **+** (try 5–8 symbols)  
 - [ ] DnD reorder persists  
-- [ ] Remove symbol  
+- [ ] Remove symbol (row **x** and **Delete** on selection)  
+- [ ] Multi-select: click, Ctrl+click, Shift+click  
+- [ ] Right-click card → pastel tint persists after restart  
 - [ ] Hide button hides; **hotkey** `Ctrl+Shift+Space` shows again; polling pauses while hidden  
 - [ ] Settings opens as **compact sheet above list** (watchlist still visible / scrollable)  
-- [ ] **Tall window:** stretch height — extra space goes to the list, not empty settings chrome  
-- [ ] Settings closed: list + `+` footer density looks good at default and max height  
+- [ ] Settings → **Price refresh** presets change cadence  
+- [ ] Settings → **Launch at login** toggle registers/unregisters autostart  
+- [ ] Header **↻** update check (release build; may no-op in dev)  
+- [ ] Window cannot shrink below content (rows + **+ Add** stay visible)  
 - [ ] Settings → **Copy diagnostics** → paste looks complete (version, watchlist, events)  
 - [ ] Settings → Quit exits the process  
-- [ ] Autostart registered when setting true (verify OS-specific)  
-- [ ] Sustained-run smoke: leave open long enough to confirm rate limits / backoff stay healthy under default constants  
+- [ ] Sustained-run smoke: leave open long enough to confirm rate limits / backoff stay healthy  
 
 ## Phase 6 — Post-MVP ideas
 
@@ -134,7 +142,9 @@ Run with `npm run run:exe` on the target OS (**Windows preferred**):
 | P6-7 | Copy diagnostics (Settings → clipboard dump for agents) | **done** |
 | P6-8 | Rolling file log for hard-crash recovery | pending |
 | P6-9 | Diagnostics hardening (command notes, scheduler throttle, dump 100 lines) | **done** |
-| P6-10 | In-app self-update (Tauri 2 updater plugin + auto-check + manual check UI) | **done** |
+| P6-10 | In-app self-update (Tauri 2 updater plugin + auto-check + header icon) | **done** |
+| P6-11 | Card pastel tint, multi-select + Delete, quote interval setting | **done** |
+| P6-12 | Settings launch-at-login toggle | **done** |
 
 ## Out of scope (do not start without new design approval)
 
@@ -153,11 +163,8 @@ Run with `npm run run:exe` on the target OS (**Windows preferred**):
 | P4 | Glass UI |
 | P5 code | Docs, AppCore, tests, coverage gate |
 | Diagnostics | Mode B Copy diagnostics + event-ring hardening (`main`) |
+| Post-MVP UX | Updater, tints, multi-select, refresh, autostart UI (2026-07-23) |
 | P5 manual | **Open** — checklist above |
 
 Detail task breakdown (historical):  
 [`docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md`](superpowers/plans/2026-07-22-economy-war-room-mvp.md)
-
-Current structure: [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)  
-Testing: [`docs/testing.md`](testing.md)  
-Defect reporting: [`windows-dev.md` §10](windows-dev.md#10-defect-reporting--agent-visibility)
