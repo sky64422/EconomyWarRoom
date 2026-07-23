@@ -55,8 +55,9 @@ Contrast (do not merge architectures): sibling project **AssetStocker** is a ful
 | 4 | [testing.md](./testing.md) | How to test / coverage rules |
 | 5 | [TODO.md](./TODO.md) | Remaining checklist |
 | 6 | [README.md](../README.md) | User-facing runbook |
-| 7 | [superpowers/specs/2026-07-22-economy-war-room-design.md](./superpowers/specs/2026-07-22-economy-war-room-design.md) | Product decisions / non-goals |
-| 8 | [superpowers/plans/2026-07-22-economy-war-room-mvp.md](./superpowers/plans/2026-07-22-economy-war-room-mvp.md) | Historical implementation plan (**complete**) |
+| 7 | [release.md](./release.md) | Signed builds, `latest.json`, `npm run release:publish` |
+| 8 | [superpowers/specs/2026-07-22-economy-war-room-design.md](./superpowers/specs/2026-07-22-economy-war-room-design.md) | Product decisions / non-goals |
+| 9 | [superpowers/plans/2026-07-22-economy-war-room-mvp.md](./superpowers/plans/2026-07-22-economy-war-room-mvp.md) | Historical implementation plan (**complete**) |
 
 ---
 
@@ -199,7 +200,7 @@ Do not add portfolio/P&L features. Hide must not quit the app.
 | Opacity | No native Tauri 2 window alpha; slider sets **glass fill alpha** via CSS `--panel-opacity` (100% = solid / no desktop bleed) |
 | Yahoo | Unofficial public endpoints; 429 → backoff; may fail from some networks |
 | Hotkey | Best-effort register; may collide with other apps |
-| Updater | Auto-check only in release builds; needs signed artifacts + GitHub `latest.json` |
+| Updater | Auto-check only in release builds; publish with `npm run release:publish` — see [release.md](./release.md) |
 | Min window | Content-hug floor (~120px chrome); live `setMinSize` follows panel height so rows/+Add are not clipped |
 | Coverage script | Bash; use Git Bash/WSL on Windows or run tarpaulin manually |
 | Worktree | Optional `.worktrees/` on Linux dev host; Windows clone is usually a normal `main` checkout |

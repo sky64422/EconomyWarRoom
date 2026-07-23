@@ -80,7 +80,14 @@ If you are preparing a release that should support in-app updates, set
 `TAURI_SIGNING_PRIVATE_KEY_PATH` or `TAURI_SIGNING_PRIVATE_KEY` before the build
 so the updater artifacts and signatures are generated too.
 
-To build and launch the release exe in one step:
+**Full publish (signed build + GitHub Release + `latest.json`):** see **[release.md](./release.md)** and:
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH="C:\path\to\updater.key"
+npm run release:publish
+```
+
+To build and launch the release exe in one step (no GitHub upload):
 
 ```powershell
 npm run run:exe

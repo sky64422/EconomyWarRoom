@@ -6,7 +6,8 @@ If you are an automated coding agent in a new session:
 2. **On Windows:** also [`docs/windows-dev.md`](docs/windows-dev.md)  
 3. **Code map:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)  
 4. **Tests:** [`docs/testing.md`](docs/testing.md)  
-5. **Backlog:** [`docs/TODO.md`](docs/TODO.md)
+5. **Backlog:** [`docs/TODO.md`](docs/TODO.md)  
+6. **Releases / updater:** [`docs/release.md`](docs/release.md)
 
 ## Hard constraints
 

@@ -125,11 +125,21 @@ See [docs/testing.md](docs/testing.md).
 ### Updates
 
 The app checks for updates at startup (release builds) through Tauri's updater plugin.
-Manual check: header **↻** icon. To publish an installable release, build with a signing
-key and upload the generated updater manifest/artifacts to the configured release endpoint.
+Manual check: header **↻** icon.
+
+**Publishing a release** (signed build + GitHub `latest.json`) is documented in
+**[docs/release.md](docs/release.md)**. One-shot:
 
 ```powershell
-$env:TAURI_SIGNING_PRIVATE_KEY_PATH="C:\path\to\economy-war-room.key"
+# Bump version in package.json + src-tauri/tauri.conf.json + Cargo.toml first
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH="C:\path\to\updater.key"
+npm run release:publish
+```
+
+Local signed build + launch only (no GitHub):
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH="C:\path\to\updater.key"
 npm run run:exe
 ```
 
