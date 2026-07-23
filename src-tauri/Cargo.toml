@@ -1,6 +1,6 @@
 [package]
 name = "economy-war-room"
-version = "0.1.4"
+version = "0.1.5"
 description = "EconomyWarRoom floating market watchlist widget"
 authors = ["you"]
 edition = "2021"

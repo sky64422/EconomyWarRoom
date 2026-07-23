@@ -229,13 +229,13 @@ body {
   font-size: 12px;
 }
 
-/* Per-symbol cards — denser, less “hairline list” when few rows */
+/* Per-symbol cards: symbol · sparkline · price */
 .watchlist-row {
   position: relative;
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-columns: minmax(3.5em, 1fr) 64px auto;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-height: 56px;
   padding: 10px 34px 10px 12px;
   border: 1px solid var(--border);
@@ -287,16 +287,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-/* Symbol vertically centered; price/change stacked on the right. */
-.row-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-self: center;
 }
 
 .row-metrics {
@@ -306,6 +297,7 @@ body {
   align-items: flex-end;
   justify-content: center;
   gap: 2px;
+  min-width: 3.75em;
 }
 
 .watchlist-row:hover:not(.is-selected) {
@@ -348,15 +340,13 @@ body {
 
 .row-symbol {
   min-width: 0;
-  flex: 1 1 auto;
   font-weight: 700;
   font-size: 14px;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: flex;
-  align-items: center;
+  align-self: center;
 }
 
 .row-sparkline {

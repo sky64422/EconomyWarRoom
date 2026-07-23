@@ -282,17 +282,15 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
             <div class="watchlist-row${tintClass}${selectedClass}" role="listitem" tabindex="0"
               data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}"
               data-tint="${tint}" title="Click to select · drag to reorder · right-click color">
+              <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
               <div class="row-sparkline-wrap">
                 <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="${SPARK_W}" height="${SPARK_H}" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
                   ${sparkMarkup}
                 </svg>
               </div>
-              <div class="row-main">
-                <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
-                <div class="row-metrics">
-                  <span class="row-price" data-price="${escapeAttr(item.symbol)}">${q ? escapeHtml(formatPrice(q.price)) : "--"}</span>
-                  <span class="row-change ${changeClass(pct)}" data-change="${escapeAttr(item.symbol)}">${escapeHtml(formatChange(pct))}</span>
-                </div>
+              <div class="row-metrics">
+                <span class="row-price" data-price="${escapeAttr(item.symbol)}">${q ? escapeHtml(formatPrice(q.price)) : "--"}</span>
+                <span class="row-change ${changeClass(pct)}" data-change="${escapeAttr(item.symbol)}">${escapeHtml(formatChange(pct))}</span>
               </div>
               <button type="button" class="row-remove" data-remove="${escapeAttr(item.id)}" aria-label="Remove ${escapeAttr(item.symbol)}" title="Remove">x</button>
             </div>
