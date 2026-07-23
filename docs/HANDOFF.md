@@ -2,7 +2,7 @@
 
 **Purpose:** After `git clone` (especially on **Windows**), a human or coding agent should read this file and be able to continue without re-deriving project context.
 
-**Last updated:** 2026-07-23  
+**Last updated:** 2026-07-23 (release **v0.1.7** on GitHub)  
 **Default branch:** `main`  
 **Remote:** `https://github.com/sky64422/EconomyWarRoom.git`
 
@@ -12,14 +12,14 @@
 
 **EconomyWarRoom** = lightweight **floating desktop watchlist widget** (not a portfolio app).
 
-- Tall always-on-top glass panel (content-hug height; min size tracks outer chrome)  
+- Tall always-on-top glass panel (content-hug height; **OS min-size** tracks full list + **+ Add**)  
 - US stocks + crypto (Yahoo chart API)  
-- Rows: symbol · sparkline (1d/5m) · price · change %  
-- In-widget add (**+** at bottom), remove, drag-reorder  
-- Card **pastel tints**, multi-select (click / Ctrl / Shift), **Delete** to remove  
+- Rows: **symbol · sparkline · price / change %** (left → right)  
+- In-widget add (**+** at bottom), remove (row **x** or **Delete**), drag-reorder  
+- Card **pastel tints** (right-click), multi-select (click / Ctrl / Shift)  
 - Hide: UI button **or** `Ctrl+Shift+Space` (process stays alive; polling pauses)  
-- Theme light/dark/system, opacity slider, **launch at login** toggle, **quote refresh** interval  
-- Header **update check** icon · Tauri updater plugin (signed releases)  
+- Theme light/dark/system, opacity, **launch at login**, **quote refresh** interval  
+- Header **↻** update check · Tauri updater (`npm run release:publish`)  
 - Stack: **Tauri 2 + Rust + vanilla TS/Vite**
 
 **Not in scope:** portfolio, P&L, trades, SQLite history, broker sync, Finnhub-required realtime, Win11 Widgets board.
@@ -33,7 +33,8 @@ Contrast (do not merge architectures): sibling project **AssetStocker** is a ful
 | Area | Status |
 |------|--------|
 | MVP features | **Done** on `main` |
-| Post-MVP UX | Card tint, multi-select, refresh interval, autostart UI, updater — **done** |
+| Post-MVP UX | Tint, multi-select, refresh, autostart UI, updater, card layout, content min-size — **done** |
+| Latest release | **v0.1.7** (GitHub Releases + `latest.json` updater) |
 | Automated tests | Unit + integration + risk; ~**63** lib + e2e 4 + risk 7 |
 | Coverage gate | ≥85% business logic (**~98%** last measured) |
 | Windows machine toolchain | **Ready** — Node 24, npm, Rust stable-MSVC, VS Build Tools 2022, WebView2 |
@@ -201,6 +202,8 @@ Do not add portfolio/P&L features. Hide must not quit the app.
 | Yahoo | Unofficial public endpoints; 429 → backoff; may fail from some networks |
 | Hotkey | Best-effort register; may collide with other apps |
 | Updater | Auto-check only in release builds; publish with `npm run release:publish` — see [release.md](./release.md) |
+| Window min height | Content-hug floor via OS `set_min_size` + Rust `Resized` clamp; slight drag jitter near min is expected (frameless Win) |
+| Card layout | Symbol · sparkline · price/change; right-click pastel tint; no asset-kind subtitle |
 | Min window | Content-hug floor (~120px chrome); live `setMinSize` follows panel height so rows/+Add are not clipped |
 | Coverage script | Bash; use Git Bash/WSL on Windows or run tarpaulin manually |
 | Worktree | Optional `.worktrees/` on Linux dev host; Windows clone is usually a normal `main` checkout |

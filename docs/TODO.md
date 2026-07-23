@@ -10,7 +10,8 @@ Status: `pending` · `in_progress` · `done` · `blocked`
   Last measured: lib **~63** + e2e 4 + risk 7.  
 **Windows host:** toolchain ready (Node, Rust MSVC, VS Build Tools, WebView2).  
 **Diagnostics (Mode B):** Copy diagnostics + command/scheduler event hardening on `main`.  
-**Post-MVP (2026-07-23):** updater, card tints, multi-select, quote refresh, autostart UI — **done**.  
+**Post-MVP (2026-07-23):** updater, card tints, multi-select, quote refresh, autostart UI,  
+content-hug min window, card layout (symbol·spark·price), release tooling — **done** (shipped through **v0.1.7**).  
 **Remaining (highest priority):** **P5-2 / P5-3** manual smoke on Windows via `npm run run:exe`.
 
 **New session / Windows clone:** start at [`docs/HANDOFF.md`](HANDOFF.md) and [`docs/windows-dev.md`](windows-dev.md).
@@ -145,6 +146,9 @@ Run with `npm run run:exe` on the target OS (**Windows preferred**):
 | P6-10 | In-app self-update (Tauri 2 updater plugin + auto-check + header icon) | **done** |
 | P6-11 | Card pastel tint, multi-select + Delete, quote interval setting | **done** |
 | P6-12 | Settings launch-at-login toggle | **done** |
+| P6-13 | Content-hug OS min-size (hard wall; no rubber-band) + no spurious scrollbar at min | **done** |
+| P6-14 | Card layout symbol · sparkline · price; spacing / bottom inset polish | **done** |
+| P6-15 | `npm run release:publish` + [release.md](./release.md) | **done** |
 
 ## Out of scope (do not start without new design approval)
 
@@ -164,6 +168,7 @@ Run with `npm run run:exe` on the target OS (**Windows preferred**):
 | P5 code | Docs, AppCore, tests, coverage gate |
 | Diagnostics | Mode B Copy diagnostics + event-ring hardening (`main`) |
 | Post-MVP UX | Updater, tints, multi-select, refresh, autostart UI (2026-07-23) |
+| Window / card polish | Min-size wall, layout order, spacing, bottom inset; releases **v0.1.1–v0.1.7** |
 | P5 manual | **Open** — checklist above |
 
 Detail task breakdown (historical):  

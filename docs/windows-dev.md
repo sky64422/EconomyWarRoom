@@ -157,8 +157,10 @@ Do these once after first successful launch — update [TODO.md](./TODO.md) when
 - [ ] Header hide; `Ctrl+Shift+Space` shows again; no network thrash while hidden  
 - [ ] Settings = compact sheet **above** watchlist (list remains usable)  
 - [ ] Max height: extra space goes to quote list, not a hollow settings panel  
-- [ ] Cannot shrink below content (rows + **+ Add** stay visible)  
-- [ ] Header **↻** update check (release build)  
+- [ ] Cannot shrink below content (rows + **+ Add** stay visible; slight min-edge jitter OK)  
+- [ ] No useless right scrollbar when already at content min height  
+- [ ] Card order: symbol · sparkline · price  
+- [ ] Header **↻** update check (release build) · `npm run release:publish` for new versions  
 - [ ] Settings → Copy diagnostics works  
 - [ ] Settings → Quit fully exits  
 - [ ] Settings → **Launch at login** toggle; check Startup apps / Task Manager  

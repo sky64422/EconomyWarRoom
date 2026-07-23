@@ -1,7 +1,8 @@
 # Release & in-app updates
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
-**Companion:** [windows-dev.md](./windows-dev.md), [HANDOFF.md](./HANDOFF.md).
+**Companion:** [windows-dev.md](./windows-dev.md), [HANDOFF.md](./HANDOFF.md).  
+**Latest published (as of doc update):** **v0.1.7** on GitHub Releases.
 
 ---
 

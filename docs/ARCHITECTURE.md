@@ -1,6 +1,6 @@
 # Architecture (as implemented)
 
-**Updated:** 2026-07-23  
+**Updated:** 2026-07-23 (v0.1.7)  
 **Branch of truth:** `main`
 
 This document describes the **current codebase**, not only the original design sketch.
@@ -56,19 +56,19 @@ This document describes the **current codebase**, not only the original design s
 | `application/service.rs` | **`AppCore`** — testable app use cases |
 | `infrastructure/yahoo/` | `YahooProvider` (mockable base URL), chart parse |
 | `infrastructure/store.rs` | Load/save `economy-war-room-state.json` |
-| `infrastructure/window_ctl.rs` | Show/hide/geometry/opacity emit (OS / Tauri) |
+| `infrastructure/window_ctl.rs` | Show/hide/geometry/opacity; **content min-size** (physical) + resize clamp |
 | `infrastructure/updater.rs` | Startup auto-check + manual install path |
-| `commands.rs` | `#[tauri::command]` handlers |
-| `state.rs` | `AppHandleState { core: Arc<AppCore> }` |
-| `lib.rs` | Tauri `run()`, autostart, global shortcut, tick loop, updater |
+| `commands.rs` | `#[tauri::command]` handlers (incl. `set_content_min_size`) |
+| `state.rs` | `AppHandleState { core, content_min_w/h }` |
+| `lib.rs` | Tauri `run()`, autostart, hotkey, tick loop, updater, **on_window_event Resized** |
 
 ### Web (`src/`)
 
 | Path | Role |
 |------|------|
-| `ui/app.ts` | Boot, state, geometry + content-hug min size, theme |
+| `ui/app.ts` | Boot, state, geometry persist, **content-hug min** measure → `set_content_min_size` |
 | `ui/header.ts` | Drag region, update check, settings, hide |
-| `ui/watchlist.ts` | Rows, selection/multi-select, DnD, tint menu, add/remove |
+| `ui/watchlist.ts` | Rows (symbol · spark · price), multi-select, DnD, tint menu, add/remove |
 | `ui/sparkline.ts` | SVG path helper |
 | `ui/settings-panel.ts` | Theme, opacity, price refresh, launch-at-login, diagnostics, quit |
 | `ui/types.ts` | TS mirrors of Rust DTOs (snake_case) |
@@ -95,9 +95,10 @@ Defined in `domain/constants.rs` (names approximate):
 | Sparkline | range `1d`, interval `5m`, target points 32; min refresh ~300s |
 | Backoff | 5s initial → double up to 120s |
 | Opacity | 0.35–1.0, default ~0.92 |
-| Window | default 320×640, min **260×120** (content-hug floor; UI also `setMinSize` from panel height) |
+| Window | default 320×640; policy floor 260×120; **runtime min = measured content** (OS physical min + Resized clamp) |
 | Hotkey | `Ctrl+Shift+Space` |
 | Card tints | `none`, `rose`, `peach`, `mint`, `sky`, `lavender`, `lemon` |
+| Card layout | Left→right: **symbol · sparkline · price/change**; remove **x** on hover |
 
 ## Commands (selected)
 
@@ -108,6 +109,7 @@ Defined in `domain/constants.rs` (names approximate):
 | `reorder_symbols` | DnD order |
 | `set_theme` / `set_opacity` / `set_autostart` | Settings |
 | `set_quote_refresh_secs` | Persist + apply scheduler interval |
+| `set_content_min_size` | OS min from UI content measure; optional grow if content grew |
 | `check_for_updates` | Manual updater path |
 | `get_diagnostics` / `hide_widget` / `quit_app` | Ops |
 
@@ -126,7 +128,9 @@ Defined in `domain/constants.rs` (names approximate):
 - **Delete / Backspace** removes selection (not while typing in the add input).  
 - **Right-click** opens pastel tint menu.  
 - Drag-reorder starts after a small pointer movement threshold so clicks stay clicks.  
-- Sparkline 1s UI ticker pauses when `document.hidden`.
+- Sparkline 1s UI ticker pauses when `document.hidden`.  
+- **Window min height** follows content (add/remove cards); near the floor, frameless Windows may show slight resize jitter (accepted limitation).  
+- List scrolls only when content truly overflows (not at content-hug min).
 
 ## Extending markets
 

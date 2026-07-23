@@ -12,8 +12,8 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 |--|--|
 | **Shape** | Tall floating panel, always on top, freely draggable (content-hug min height) |
 | **MVP assets** | US equities + crypto (providers extensible later) |
-| **Rows** | Symbol · intraday sparkline (1d/5m) · price · change % |
-| **Watchlist** | Add via bottom **+** · remove · drag reorder · multi-select · pastel tints |
+| **Rows** | Symbol · sparkline (1d/5m) · price / change % (left → right) |
+| **Watchlist** | Add via bottom **+** · remove · drag reorder · multi-select · pastel tints (right-click) |
 | **Toggle** | `Ctrl+Shift+Space` **or** in-UI hide (hide only; app stays running) |
 | **Look** | Light / dark / system · translucent **glass** · adjustable opacity |
 | **Settings** | Theme · opacity · **price refresh** · **launch at login** · diagnostics · quit |
@@ -32,6 +32,7 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | Yahoo quotes / sparklines + scheduler | Done |
 | Hotkey / hide / settings / JSON persist | Done |
 | Card tint · multi-select · quote interval · autostart UI · updater | Done |
+| Content-hug min window · card layout polish | Done (latest GitHub release **v0.1.7**) |
 | Automated tests + coverage gate | Done (~98% business logic; ~63 unit tests) |
 | Manual OS smoke (Windows long run) | Still recommended — see [TODO](docs/TODO.md) P5-2 / P5-3 |
 
@@ -156,6 +157,7 @@ npm run run:exe
 | Delete selected | **Delete** or **Backspace** |
 | Card color | Right-click card → pastel swatch |
 | Watchlist | Bottom **+** · drag to reorder · per-row **x** |
+| Publish release | See [docs/release.md](docs/release.md) · `npm run release:publish` |
 
 Default seed watchlist: **AAPL**, **BTC-USD**.
 
