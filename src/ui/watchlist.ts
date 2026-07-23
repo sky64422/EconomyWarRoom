@@ -288,11 +288,9 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
                 </svg>
               </div>
               <div class="row-main">
-                <div class="row-topline">
-                  <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
+                <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
+                <div class="row-metrics">
                   <span class="row-price" data-price="${escapeAttr(item.symbol)}">${q ? escapeHtml(formatPrice(q.price)) : "--"}</span>
-                </div>
-                <div class="row-bottombar">
                   <span class="row-change ${changeClass(pct)}" data-change="${escapeAttr(item.symbol)}">${escapeHtml(formatChange(pct))}</span>
                 </div>
               </div>
