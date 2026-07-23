@@ -110,7 +110,8 @@ function measureContentHugHeight(panel: HTMLElement): number {
       el.style.overflow = "visible";
     }
     void panel.offsetHeight;
-    const hug = Math.ceil(panel.getBoundingClientRect().height);
+    // ceil + 1px slack: avoids subpixel overflow that shows a scrollbar at min size
+    const hug = Math.ceil(panel.getBoundingClientRect().height) + 1;
     if (hug >= 80) return hug;
 
     // Structural fallback: header + list rows/empty + footer (+ settings if open).

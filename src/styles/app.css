@@ -194,12 +194,21 @@ body {
 }
 
 /* —— Watchlist —— */
-.watchlist {
-  /* Hug rows + Add; scroll only when content exceeds viewport-based cap. */
-  flex: 0 1 auto;
+.watchlist-view {
+  flex: 1 1 auto;
   min-height: 0;
-  /* Leave room for header (+ optional settings). 100% of webview ≈ window. */
-  max-height: calc(100vh - var(--header-height) - 8px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.watchlist {
+  /* Fill remaining panel under header; scroll only if window > content min
+     and list still overflows (e.g. settings open). Do NOT use 100vh − fudge:
+     that was ~8px short of real content and forced a useless scrollbar. */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
@@ -208,6 +217,8 @@ body {
   padding: 10px 10px 10px;
   scrollbar-width: thin;
   scrollbar-color: var(--text-secondary) transparent;
+  /* Reserve no gutter when idle — scrollbar only when truly overflowing */
+  scrollbar-gutter: auto;
 }
 
 .watchlist-rows {
@@ -235,9 +246,12 @@ body {
   display: grid;
   grid-template-columns: minmax(3.5em, 1fr) 64px auto;
   align-items: center;
-  gap: 10px;
+  /* Room between symbol ↔ spark ↔ price */
+  column-gap: 14px;
+  row-gap: 0;
   min-height: 56px;
-  padding: 10px 34px 10px 12px;
+  /* Right pad: metrics → X gap + X width + outer margin */
+  padding: 10px 48px 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-row);
   background: var(--bg-row-hover);
@@ -298,6 +312,9 @@ body {
   justify-content: center;
   gap: 2px;
   min-width: 3.75em;
+  /* Extra air before the absolute remove control */
+  margin-right: 4px;
+  padding-left: 2px;
 }
 
 .watchlist-row:hover:not(.is-selected) {
@@ -386,14 +403,15 @@ body {
 
 .row-remove {
   position: absolute;
-  right: 4px;
+  /* Clear of card edge + room from price metrics */
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   margin: 0;
   padding: 0;
   border: none;
@@ -903,13 +921,4 @@ body {
 
 .watchlist-view.hidden {
   display: none;
-}
-
-.watchlist-view {
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
 }
