@@ -1,6 +1,9 @@
-use crate::domain::constants::{clamp_opacity, HotkeyPolicy, OpacityPolicy, WindowPolicy};
+use crate::domain::constants::{
+    clamp_opacity, clamp_quote_refresh_secs, HotkeyPolicy, OpacityPolicy, RefreshPolicy,
+    WindowPolicy,
+};
 use crate::domain::types::{
-    AppSettings, AssetKind, PersistedState, ThemeMode, WatchlistItem, WindowGeometry,
+    AppSettings, AssetKind, CardTint, PersistedState, ThemeMode, WatchlistItem, WindowGeometry,
 };
 use std::path::{Path, PathBuf};
 
@@ -13,6 +16,7 @@ pub fn default_state() -> PersistedState {
                 display_name: Some("Apple".into()),
                 asset_kind: AssetKind::Equity,
                 sort_index: 0,
+                card_tint: CardTint::None,
             },
             WatchlistItem {
                 id: "seed-btc".into(),
@@ -20,6 +24,7 @@ pub fn default_state() -> PersistedState {
                 display_name: Some("Bitcoin".into()),
                 asset_kind: AssetKind::Crypto,
                 sort_index: 1,
+                card_tint: CardTint::None,
             },
         ],
         settings: AppSettings {
@@ -33,6 +38,7 @@ pub fn default_state() -> PersistedState {
             },
             hotkey: HotkeyPolicy::DEFAULT.into(),
             autostart: true,
+            quote_refresh_secs: RefreshPolicy::QUOTE_REFRESH_SECS_DEFAULT,
         },
     }
 }
@@ -54,6 +60,8 @@ pub fn save_state(app_data_dir: &Path, state: &PersistedState) -> Result<(), Str
     let path = state_path(app_data_dir);
     let mut cloned = state.clone();
     cloned.settings.opacity = clamp_opacity(cloned.settings.opacity);
+    cloned.settings.quote_refresh_secs =
+        clamp_quote_refresh_secs(cloned.settings.quote_refresh_secs);
     let json = serde_json::to_string_pretty(&cloned).map_err(|e| e.to_string())?;
     std::fs::write(path, json).map_err(|e| e.to_string())
 }

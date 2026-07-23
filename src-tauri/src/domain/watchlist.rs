@@ -1,4 +1,4 @@
-use super::types::{AssetKind, WatchlistItem};
+use super::types::{AssetKind, CardTint, WatchlistItem};
 use uuid::Uuid;
 
 pub fn normalize_symbol(raw: &str) -> String {
@@ -33,6 +33,7 @@ pub fn add_item(
         display_name,
         asset_kind,
         sort_index: next_sort_index(items),
+        card_tint: CardTint::None,
     };
     items.push(item.clone());
     Ok(item)
@@ -43,6 +44,30 @@ pub fn remove_item(items: &mut Vec<WatchlistItem>, id: &str) -> bool {
     items.retain(|i| i.id != id);
     if items.len() != before {
         reindex(items);
+        true
+    } else {
+        false
+    }
+}
+
+/// Remove many items by id; returns how many were removed. Reindexes once.
+pub fn remove_items(items: &mut Vec<WatchlistItem>, ids: &[String]) -> usize {
+    if ids.is_empty() {
+        return 0;
+    }
+    let drop: std::collections::HashSet<&str> = ids.iter().map(|s| s.as_str()).collect();
+    let before = items.len();
+    items.retain(|i| !drop.contains(i.id.as_str()));
+    let removed = before - items.len();
+    if removed > 0 {
+        reindex(items);
+    }
+    removed
+}
+
+pub fn set_card_tint(items: &mut [WatchlistItem], id: &str, tint: CardTint) -> bool {
+    if let Some(item) = items.iter_mut().find(|i| i.id == id) {
+        item.card_tint = tint;
         true
     } else {
         false
@@ -169,5 +194,16 @@ mod tests {
     #[test]
     fn normalize_symbol_trims_and_uppercases() {
         assert_eq!(normalize_symbol("  btc-usd "), "BTC-USD");
+    }
+
+    #[test]
+    fn set_card_tint_and_remove_items() {
+        let mut items = vec![];
+        let a = add_item(&mut items, "A", AssetKind::Equity, None).unwrap();
+        let b = add_item(&mut items, "B", AssetKind::Equity, None).unwrap();
+        assert!(set_card_tint(&mut items, &a.id, CardTint::Mint));
+        assert_eq!(items[0].card_tint, CardTint::Mint);
+        assert_eq!(remove_items(&mut items, &[a.id.clone(), b.id.clone()]), 2);
+        assert!(items.is_empty());
     }
 }

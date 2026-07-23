@@ -2,8 +2,8 @@
 
 use crate::application::diagnostics::DiagLevel;
 use crate::domain::types::{
-    AssetKind, PersistedState, Quote, Sparkline, SymbolSuggestion, ThemeMode, WatchlistItem,
-    WindowGeometry,
+    AssetKind, CardTint, PersistedState, Quote, Sparkline, SymbolSuggestion, ThemeMode,
+    WatchlistItem, WindowGeometry,
 };
 use crate::infrastructure::window_ctl;
 use crate::infrastructure::yahoo::YahooProvider;
@@ -74,6 +74,51 @@ pub async fn remove_symbol(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub async fn remove_symbols(
+    app: AppHandle,
+    state: State<'_, AppHandleState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    if let Err(e) = state.core.remove_symbols(&ids).await {
+        note_err(&state, "remove_symbols", &e);
+        return Err(e);
+    }
+    let payload = state.core.watchlist_snapshot().await.map_err(|e| {
+        note_err(&state, "watchlist_snapshot", &e);
+        e
+    })?;
+    app.emit("watchlist-updated", payload).map_err(|e| {
+        let s = e.to_string();
+        note_err(&state, "emit watchlist-updated", &s);
+        s
+    })?;
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn set_card_tint(
+    app: AppHandle,
+    state: State<'_, AppHandleState>,
+    id: String,
+    tint: CardTint,
+) -> Result<(), String> {
+    if let Err(e) = state.core.set_card_tint(&id, tint).await {
+        note_err(&state, "set_card_tint", &e);
+        return Err(e);
+    }
+    let payload = state.core.watchlist_snapshot().await.map_err(|e| {
+        note_err(&state, "watchlist_snapshot", &e);
+        e
+    })?;
+    app.emit("watchlist-updated", payload).map_err(|e| {
+        let s = e.to_string();
+        note_err(&state, "emit watchlist-updated", &s);
+        s
+    })?;
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub async fn reorder_symbols(
     app: AppHandle,
     state: State<'_, AppHandleState>,
@@ -103,6 +148,32 @@ pub fn set_theme(state: State<'_, AppHandleState>, theme: ThemeMode) -> Result<(
     })
 }
 
+/// Persist and apply OS login autostart (Windows / macOS LaunchAgent / etc.).
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_autostart(
+    app: AppHandle,
+    state: State<'_, AppHandleState>,
+    enabled: bool,
+) -> Result<(), String> {
+    state.core.set_autostart(enabled).map_err(|e| {
+        note_err(&state, "set_autostart", &e);
+        e
+    })?;
+    use tauri_plugin_autostart::ManagerExt;
+    let autolaunch = app.autolaunch();
+    let result = if enabled {
+        autolaunch.enable()
+    } else {
+        autolaunch.disable()
+    };
+    if let Err(e) = result {
+        let s = e.to_string();
+        note_err(&state, "autolaunch", &s);
+        return Err(s);
+    }
+    Ok(())
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub fn set_opacity(
     app: AppHandle,
@@ -118,6 +189,17 @@ pub fn set_opacity(
         e
     })?;
     Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn set_quote_refresh_secs(
+    state: State<'_, AppHandleState>,
+    secs: u64,
+) -> Result<u64, String> {
+    state.core.set_quote_refresh_secs(secs).await.map_err(|e| {
+        note_err(&state, "set_quote_refresh_secs", &e);
+        e
+    })
 }
 
 #[tauri::command(rename_all = "snake_case")]

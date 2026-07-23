@@ -6,11 +6,24 @@ pub struct RefreshPolicy;
 impl RefreshPolicy {
     pub const TICK: Duration = Duration::from_secs(1);
     pub const BATCH_SIZE: usize = 4;
+    /// Default min seconds between quote fetches for the same symbol.
     pub const MIN_QUOTE_INTERVAL: Duration = Duration::from_secs(10);
+    /// User-configurable quote interval bounds (seconds).
+    pub const QUOTE_REFRESH_SECS_MIN: u64 = 5;
+    pub const QUOTE_REFRESH_SECS_MAX: u64 = 120;
+    pub const QUOTE_REFRESH_SECS_DEFAULT: u64 = 10;
     pub const MAX_CONCURRENT: usize = 3;
     pub const SPARKLINE_MIN_INTERVAL: Duration = Duration::from_secs(300);
     pub const BACKOFF_INITIAL: Duration = Duration::from_secs(5);
     pub const BACKOFF_MAX: Duration = Duration::from_secs(120);
+}
+
+/// Clamp user quote refresh interval (seconds).
+pub fn clamp_quote_refresh_secs(secs: u64) -> u64 {
+    secs.clamp(
+        RefreshPolicy::QUOTE_REFRESH_SECS_MIN,
+        RefreshPolicy::QUOTE_REFRESH_SECS_MAX,
+    )
 }
 
 /// Sparkline fetch policy.
@@ -29,7 +42,9 @@ impl WindowPolicy {
     pub const DEFAULT_WIDTH: f64 = 320.0;
     pub const DEFAULT_HEIGHT: f64 = 640.0;
     pub const MIN_WIDTH: f64 = 260.0;
-    pub const MIN_HEIGHT: f64 = 360.0;
+    /// Absolute floor: header + padding + Add card (content-hug chrome).
+    /// Runtime also sets min size from live panel height so rows cannot be clipped.
+    pub const MIN_HEIGHT: f64 = 120.0;
 }
 
 /// Global hotkey defaults.
@@ -91,6 +106,22 @@ mod tests {
         assert_eq!(
             RefreshPolicy::SPARKLINE_MIN_INTERVAL,
             Duration::from_secs(300)
+        );
+    }
+
+    #[test]
+    fn clamp_quote_refresh_secs_bounds() {
+        assert_eq!(
+            clamp_quote_refresh_secs(1),
+            RefreshPolicy::QUOTE_REFRESH_SECS_MIN
+        );
+        assert_eq!(
+            clamp_quote_refresh_secs(10),
+            RefreshPolicy::QUOTE_REFRESH_SECS_DEFAULT
+        );
+        assert_eq!(
+            clamp_quote_refresh_secs(999),
+            RefreshPolicy::QUOTE_REFRESH_SECS_MAX
         );
     }
 

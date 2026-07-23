@@ -5,6 +5,8 @@ import type { ThemeMode } from "./types";
 export interface SettingsPanelController {
   setTheme: (theme: ThemeMode) => void;
   setOpacity: (opacity: number) => void;
+  setQuoteRefreshSecs: (secs: number) => void;
+  setAutostart: (enabled: boolean) => void;
   show: () => void;
   hide: () => void;
   isVisible: () => boolean;
@@ -22,13 +24,22 @@ const THEMES: { value: ThemeMode; label: string }[] = [
   { value: "system", label: "System" },
 ];
 
+const REFRESH_PRESETS = [5, 10, 15, 30, 60, 120] as const;
+
 export function mountSettingsPanel(
   root: HTMLElement,
-  initial: { theme: ThemeMode; opacity: number },
+  initial: {
+    theme: ThemeMode;
+    opacity: number;
+    quoteRefreshSecs: number;
+    autostart: boolean;
+  },
   options: SettingsPanelOptions = {},
 ): SettingsPanelController {
   let theme = initial.theme;
   let opacity = initial.opacity;
+  let quoteRefreshSecs = initial.quoteRefreshSecs;
+  let autostart = initial.autostart;
   let visible = false;
 
   root.classList.add("settings-panel", "hidden");
@@ -52,8 +63,27 @@ export function mountSettingsPanel(
           <span class="opacity-value" id="opacity-value">${Math.round(opacity * 100)}%</span>
         </div>
       </div>
+      <div class="settings-section">
+        <div class="settings-label">Price refresh</div>
+        <div class="segmented refresh-segmented" role="group" aria-label="Price refresh interval">
+          ${REFRESH_PRESETS.map(
+            (s) => `
+            <button type="button" data-refresh="${s}" class="${s === quoteRefreshSecs ? "active" : ""}">${formatRefresh(s)}</button>
+          `,
+          ).join("")}
+        </div>
+      </div>
+      <div class="settings-section">
+        <label class="settings-toggle" for="autostart-toggle">
+          <span class="settings-toggle-text">
+            <span class="settings-toggle-title">Launch at login</span>
+            <span class="settings-toggle-hint">Start with Windows</span>
+          </span>
+          <input type="checkbox" id="autostart-toggle" ${autostart ? "checked" : ""} />
+          <span class="settings-switch" aria-hidden="true"></span>
+        </label>
+      </div>
       <div class="settings-actions">
-        <button type="button" class="btn-update" id="btn-update">Check for updates</button>
         <button type="button" class="btn-diag" id="btn-diag">Copy diagnostics</button>
         <button type="button" class="btn-quit" id="btn-quit">Quit</button>
       </div>
@@ -81,8 +111,19 @@ export function mountSettingsPanel(
       });
     });
 
-    root.querySelector("#btn-update")!.addEventListener("click", () => {
-      void checkForUpdates(root.querySelector("#btn-update") as HTMLButtonElement);
+    root.querySelectorAll<HTMLButtonElement>("[data-refresh]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const secs = Number(btn.dataset.refresh);
+        if (!Number.isFinite(secs)) return;
+        void applyQuoteRefresh(secs);
+      });
+    });
+
+    const autostartToggle = root.querySelector(
+      "#autostart-toggle",
+    ) as HTMLInputElement;
+    autostartToggle.addEventListener("change", () => {
+      void applyAutostart(autostartToggle.checked);
     });
 
     root.querySelector("#btn-diag")!.addEventListener("click", () => {
@@ -94,28 +135,27 @@ export function mountSettingsPanel(
     });
   }
 
-  async function checkForUpdates(btn: HTMLButtonElement): Promise<void> {
-    const original = "Check for updates";
-    btn.textContent = "Checking...";
-    btn.disabled = true;
+  async function applyQuoteRefresh(secs: number): Promise<void> {
+    quoteRefreshSecs = secs;
+    render();
     try {
-      const hasUpdate = await invoke<boolean>("check_for_updates");
-      btn.textContent = hasUpdate ? "Updating..." : "Up to date";
-      window.setTimeout(() => {
-        if (btn.isConnected) {
-          btn.textContent = original;
-          btn.disabled = false;
-        }
-      }, 2000);
+      const applied = await invoke<number>("set_quote_refresh_secs", { secs });
+      quoteRefreshSecs = applied;
+      if (visible) render();
     } catch (err) {
-      console.error("check_for_updates failed", err);
-      btn.textContent = "Check failed";
-      window.setTimeout(() => {
-        if (btn.isConnected) {
-          btn.textContent = original;
-          btn.disabled = false;
-        }
-      }, 2000);
+      console.error("set_quote_refresh_secs failed", err);
+    }
+  }
+
+  async function applyAutostart(enabled: boolean): Promise<void> {
+    const previous = autostart;
+    autostart = enabled;
+    try {
+      await invoke("set_autostart", { enabled });
+    } catch (err) {
+      console.error("set_autostart failed", err);
+      autostart = previous;
+      if (visible) render();
     }
   }
 
@@ -178,6 +218,14 @@ export function mountSettingsPanel(
         if (valueEl) valueEl.textContent = `${Math.round(o * 100)}%`;
       }
     },
+    setQuoteRefreshSecs: (s) => {
+      quoteRefreshSecs = s;
+      if (visible) render();
+    },
+    setAutostart: (enabled) => {
+      autostart = enabled;
+      if (visible) render();
+    },
     show: () => {
       visible = true;
       root.classList.remove("hidden");
@@ -192,6 +240,11 @@ export function mountSettingsPanel(
       for (const u of unlisteners) u();
     },
   };
+}
+
+function formatRefresh(secs: number): string {
+  if (secs >= 60 && secs % 60 === 0) return `${secs / 60}m`;
+  return `${secs}s`;
 }
 
 /** Copy text to the system clipboard (clipboard API with textarea fallback). */

@@ -7,10 +7,11 @@ use crate::application::diagnostics::{
     DiagLevel, EventRing, DIAGNOSTICS_DUMP_LINES, NOTE_THROTTLE,
 };
 use crate::application::scheduler::QuoteScheduler;
-use crate::domain::constants::clamp_geometry;
-use crate::domain::constants::clamp_opacity;
+use crate::domain::constants::{
+    clamp_geometry, clamp_opacity, clamp_quote_refresh_secs, RefreshPolicy,
+};
 use crate::domain::types::{
-    AssetKind, PersistedState, Quote, Sparkline, ThemeMode, WatchlistItem, WindowGeometry,
+    AssetKind, CardTint, PersistedState, Quote, Sparkline, ThemeMode, WatchlistItem, WindowGeometry,
 };
 use crate::domain::watchlist;
 use crate::infrastructure::store::save_state;
@@ -148,6 +149,38 @@ impl AppCore {
         self.sync_scheduler_watchlist().await
     }
 
+    pub async fn remove_symbols(&self, ids: &[String]) -> Result<usize, String> {
+        let removed = {
+            let mut persisted = self
+                .persisted
+                .lock()
+                .map_err(|_| "state lock poisoned".to_string())?;
+            let removed = watchlist::remove_items(&mut persisted.watchlist, ids);
+            if removed > 0 {
+                self.persist_locked(&persisted)?;
+            }
+            removed
+        };
+        if removed > 0 {
+            self.sync_scheduler_watchlist().await?;
+        }
+        Ok(removed)
+    }
+
+    pub async fn set_card_tint(&self, id: &str, tint: CardTint) -> Result<(), String> {
+        {
+            let mut persisted = self
+                .persisted
+                .lock()
+                .map_err(|_| "state lock poisoned".to_string())?;
+            if !watchlist::set_card_tint(&mut persisted.watchlist, id, tint) {
+                return Err(format!("unknown id {id}"));
+            }
+            self.persist_locked(&persisted)?;
+        }
+        Ok(())
+    }
+
     pub async fn reorder_symbols(&self, ordered_ids: &[String]) -> Result<(), String> {
         {
             let mut persisted = self
@@ -169,6 +202,16 @@ impl AppCore {
         self.persist_locked(&persisted)
     }
 
+    /// Persist login autostart preference (OS registration is applied by the command layer).
+    pub fn set_autostart(&self, enabled: bool) -> Result<(), String> {
+        let mut persisted = self
+            .persisted
+            .lock()
+            .map_err(|_| "state lock poisoned".to_string())?;
+        persisted.settings.autostart = enabled;
+        self.persist_locked(&persisted)
+    }
+
     /// Returns clamped opacity after persist.
     pub fn set_opacity(&self, opacity: f64) -> Result<f64, String> {
         let opacity = clamp_opacity(opacity);
@@ -179,6 +222,44 @@ impl AppCore {
         persisted.settings.opacity = opacity;
         self.persist_locked(&persisted)?;
         Ok(opacity)
+    }
+
+    /// Persist quote refresh interval (seconds) and update the scheduler.
+    pub async fn set_quote_refresh_secs(&self, secs: u64) -> Result<u64, String> {
+        let secs = clamp_quote_refresh_secs(secs);
+        {
+            let mut persisted = self
+                .persisted
+                .lock()
+                .map_err(|_| "state lock poisoned".to_string())?;
+            persisted.settings.quote_refresh_secs = secs;
+            self.persist_locked(&persisted)?;
+        }
+        {
+            let mut sched = self.scheduler.lock().await;
+            sched.set_min_quote_interval(Duration::from_secs(secs));
+        }
+        Ok(secs)
+    }
+
+    pub fn quote_refresh_secs(&self) -> Result<u64, String> {
+        let persisted = self
+            .persisted
+            .lock()
+            .map_err(|_| "state lock poisoned".to_string())?;
+        Ok(clamp_quote_refresh_secs(
+            persisted.settings.quote_refresh_secs,
+        ))
+    }
+
+    /// Apply persisted quote interval onto the scheduler (call once at bootstrap).
+    pub async fn apply_quote_refresh_to_scheduler(&self) -> Result<(), String> {
+        let secs = self.quote_refresh_secs()?;
+        let mut sched = self.scheduler.lock().await;
+        sched.set_min_quote_interval(Duration::from_secs(secs.max(
+            RefreshPolicy::QUOTE_REFRESH_SECS_MIN,
+        )));
+        Ok(())
     }
 
     pub fn save_window_geometry(&self, geometry: WindowGeometry) -> Result<WindowGeometry, String> {
@@ -422,7 +503,7 @@ mod tests {
             })
             .unwrap();
         assert!(geo.width >= 260.0);
-        assert!(geo.height >= 360.0);
+        assert!(geo.height >= 120.0);
 
         let reloaded = core.get_state().unwrap();
         assert_eq!(reloaded.settings.theme, ThemeMode::Dark);

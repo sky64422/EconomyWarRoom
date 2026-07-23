@@ -30,6 +30,8 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   const state = await invoke<PersistedState>("get_state");
   const theme: ThemeMode = state.settings.theme ?? "system";
   const opacity = state.settings.opacity ?? 0.92;
+  const quoteRefreshSecs = state.settings.quote_refresh_secs ?? 10;
+  const autostart = state.settings.autostart ?? true;
 
   applyThemeToDocument(theme);
   applyPanelOpacity(panel, opacity);
@@ -39,7 +41,7 @@ export async function mountApp(root: HTMLElement): Promise<void> {
 
   const settings = mountSettingsPanel(
     settingsRoot,
-    { theme, opacity },
+    { theme, opacity, quoteRefreshSecs, autostart },
     {
       onThemeChange: (t) => applyThemeToDocument(t),
       onOpacityChange: (o) => applyPanelOpacity(panel, o),
@@ -102,12 +104,16 @@ async function setupGeometryPersistence(panel: HTMLElement): Promise<void> {
       }
     };
 
+    // Floor = content-hug panel height (outer chrome + rows + Add). Never ratchet
+    // min width to the current window width (that blocked shrinking).
+    const CHROME_MIN_H = 120;
+    const POLICY_MIN_W = 260;
+
     const updateMinSize = async () => {
       try {
         const rect = panel.getBoundingClientRect();
-        const minWidth = Math.max(260, Math.ceil(rect.width));
-        const minHeight = Math.max(360, Math.ceil(rect.height));
-        await win.setMinSize(new LogicalSize(minWidth, minHeight));
+        const minHeight = Math.max(CHROME_MIN_H, Math.ceil(rect.height));
+        await win.setMinSize(new LogicalSize(POLICY_MIN_W, minHeight));
       } catch (err) {
         console.error("setMinSize failed", err);
       }

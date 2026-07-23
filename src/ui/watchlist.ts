@@ -3,15 +3,18 @@ import { listen } from "@tauri-apps/api/event";
 import { sparklineProgress, sparklineSvgMarkup, sparklineTone } from "./sparkline";
 import type {
   AssetKind,
+  CardTint,
   Quote,
   Sparkline,
   SymbolSuggestion,
   WatchlistItem,
 } from "./types";
+import { CARD_TINTS } from "./types";
 
 const SPARK_W = 64;
 const SPARK_H = 36;
 const SPARK_TICK_MS = 1000;
+const DRAG_THRESHOLD_PX = 6;
 
 /** Local fallback catalog (substring filter) when network is slow/offline. */
 const LOCAL_SYMBOLS: SymbolSuggestion[] = [
@@ -78,10 +81,17 @@ function strokeForTone(tone: "up" | "down" | "flat"): string {
   return "var(--sparkline-neutral)";
 }
 
+function normalizeTint(raw: CardTint | undefined | null): CardTint {
+  if (!raw || raw === "none") return "none";
+  return raw;
+}
+
 export function mountWatchlist(root: HTMLElement): WatchlistController {
   let items: WatchlistItem[] = [];
   const quotes = new Map<string, Quote>();
   const sparks = new Map<string, Sparkline>();
+  const selected = new Set<string>();
+  let anchorId: string | null = null;
 
   let dragId: string | null = null;
   let pendingFullRender = false;
@@ -93,6 +103,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let searchSeq = 0;
   let sparkTickTimer: ReturnType<typeof setInterval> | null = null;
+  let tintMenuEl: HTMLElement | null = null;
 
   root.innerHTML = `
     <div class="watchlist-view">
@@ -112,7 +123,133 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
       .filter((id): id is string => Boolean(id));
   }
 
+  function orderedItemIds(): string[] {
+    return [...items]
+      .sort((a, b) => a.sort_index - b.sort_index)
+      .map((i) => i.id);
+  }
+
+  function closeTintMenu(): void {
+    if (tintMenuEl) {
+      tintMenuEl.remove();
+      tintMenuEl = null;
+    }
+  }
+
+  function openTintMenu(id: string, clientX: number, clientY: number): void {
+    closeTintMenu();
+    const item = items.find((i) => i.id === id);
+    if (!item) return;
+    const current = normalizeTint(item.card_tint);
+    const menu = document.createElement("div");
+    menu.className = "tint-menu";
+    menu.setAttribute("role", "menu");
+    menu.innerHTML = `
+      <div class="tint-menu-label">Card color</div>
+      <div class="tint-swatches">
+        ${CARD_TINTS.map(
+          (t) => `
+          <button type="button" class="tint-swatch tint-${t.value} ${t.value === current ? "active" : ""}"
+            data-tint="${t.value}" title="${t.label}" aria-label="${t.label}"></button>
+        `,
+        ).join("")}
+      </div>
+    `;
+    document.body.appendChild(menu);
+    const pad = 8;
+    const rect = menu.getBoundingClientRect();
+    let left = clientX;
+    let top = clientY;
+    if (left + rect.width > window.innerWidth - pad) {
+      left = window.innerWidth - rect.width - pad;
+    }
+    if (top + rect.height > window.innerHeight - pad) {
+      top = window.innerHeight - rect.height - pad;
+    }
+    menu.style.left = `${Math.max(pad, left)}px`;
+    menu.style.top = `${Math.max(pad, top)}px`;
+    tintMenuEl = menu;
+
+    menu.querySelectorAll<HTMLButtonElement>("[data-tint]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const tint = btn.dataset.tint as CardTint;
+        closeTintMenu();
+        void invoke("set_card_tint", { id, tint }).catch((err) => {
+          console.error("set_card_tint failed", err);
+        });
+      });
+    });
+  }
+
+  function applySelectionClasses(): void {
+    listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((row) => {
+      const id = row.dataset.id;
+      row.classList.toggle("is-selected", Boolean(id && selected.has(id)));
+    });
+  }
+
+  function selectSingle(id: string): void {
+    selected.clear();
+    selected.add(id);
+    anchorId = id;
+    applySelectionClasses();
+  }
+
+  function toggleSelect(id: string): void {
+    if (selected.has(id)) {
+      selected.delete(id);
+    } else {
+      selected.add(id);
+    }
+    anchorId = id;
+    applySelectionClasses();
+  }
+
+  function selectRange(toId: string): void {
+    const order = orderedItemIds();
+    const from = anchorId && order.includes(anchorId) ? anchorId : toId;
+    const a = order.indexOf(from);
+    const b = order.indexOf(toId);
+    if (a < 0 || b < 0) {
+      selectSingle(toId);
+      return;
+    }
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    selected.clear();
+    for (let i = lo; i <= hi; i++) selected.add(order[i]);
+    applySelectionClasses();
+  }
+
+  function pruneSelection(): void {
+    const alive = new Set(items.map((i) => i.id));
+    for (const id of [...selected]) {
+      if (!alive.has(id)) selected.delete(id);
+    }
+    if (anchorId && !alive.has(anchorId)) {
+      anchorId = selected.values().next().value ?? null;
+    }
+  }
+
+  async function deleteSelected(): Promise<void> {
+    if (selected.size === 0) return;
+    const ids = [...selected];
+    selected.clear();
+    anchorId = null;
+    try {
+      if (ids.length === 1) {
+        await invoke("remove_symbol", { id: ids[0] });
+      } else {
+        await invoke("remove_symbols", { ids });
+      }
+    } catch (err) {
+      console.error("remove failed", err);
+    }
+  }
+
   function renderRows(): void {
+    pruneSelection();
     if (items.length === 0) {
       listEl.innerHTML = `<div class="watchlist-empty">No symbols yet. Add one below.</div>`;
     } else {
@@ -126,7 +263,9 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           const tone = toneForChange(pct, sparklineTone(points));
           const stroke = strokeForTone(tone);
           const progress = sparklineProgress(points, item.asset_kind);
-          const subtitle = item.display_name ?? item.asset_kind;
+          const tint = normalizeTint(item.card_tint);
+          const tintClass = tint !== "none" ? ` tint-${tint}` : "";
+          const selectedClass = selected.has(item.id) ? " is-selected" : "";
           const sparkMarkup = sparklineSvgMarkup(
             points,
             SPARK_W,
@@ -140,7 +279,9 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
             sp?.previous_close ?? null,
           );
           return `
-            <div class="watchlist-row" role="listitem" data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}" title="Drag to reorder">
+            <div class="watchlist-row${tintClass}${selectedClass}" role="listitem" tabindex="0"
+              data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}"
+              data-tint="${tint}" title="Click to select · drag to reorder · right-click color">
               <div class="row-sparkline-wrap">
                 <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="${SPARK_W}" height="${SPARK_H}" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
                   ${sparkMarkup}
@@ -152,7 +293,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
                   <span class="row-price" data-price="${escapeAttr(item.symbol)}">${q ? escapeHtml(formatPrice(q.price)) : "--"}</span>
                 </div>
                 <div class="row-bottombar">
-                  <span class="row-subtitle" title="${escapeAttr(subtitle)}">${escapeHtml(subtitle)}</span>
                   <span class="row-change ${changeClass(pct)}" data-change="${escapeAttr(item.symbol)}">${escapeHtml(formatChange(pct))}</span>
                 </div>
               </div>
@@ -212,12 +352,21 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   }
 
   function startSparklineTicker(): void {
-    if (sparkTickTimer) clearInterval(sparkTickTimer);
+    stopSparklineTicker();
+    if (document.hidden) return;
     sparkTickTimer = setInterval(() => {
+      if (document.hidden) return;
       if (listEl.querySelector(".watchlist-row")) {
         patchMarketCells();
       }
     }, SPARK_TICK_MS);
+  }
+
+  function stopSparklineTicker(): void {
+    if (sparkTickTimer) {
+      clearInterval(sparkTickTimer);
+      sparkTickTimer = null;
+    }
   }
 
   function localSuggestions(q: string): SymbolSuggestion[] {
@@ -491,6 +640,14 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
 
   function bindRowEvents(): void {
     listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((row) => {
+      row.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const id = row.dataset.id;
+        if (!id) return;
+        if (!selected.has(id)) selectSingle(id);
+        openTintMenu(id, e.clientX, e.clientY);
+      });
+
       row.addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return;
         const t = e.target as HTMLElement | null;
@@ -499,36 +656,62 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         const sourceId = row.dataset.id;
         if (!sourceId) return;
 
+        closeTintMenu();
         e.preventDefault();
-        dragId = sourceId;
-        pendingFullRender = false;
 
-        const rect = row.getBoundingClientRect();
-        const offsetX = e.clientX - rect.left;
-        const offsetY = e.clientY - rect.top;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const multi = e.ctrlKey || e.metaKey;
+        const range = e.shiftKey;
+        let dragging = false;
+        let ghost: HTMLElement | null = null;
+        let offsetX = 0;
+        let offsetY = 0;
 
-        const ghost = row.cloneNode(true) as HTMLElement;
-        ghost.classList.add("drag-ghost");
-        ghost.classList.remove("dragging", "is-dragging", "drag-over");
-        ghost.style.width = `${rect.width}px`;
-        ghost.style.height = `${rect.height}px`;
-        ghost.style.left = "0";
-        ghost.style.top = "0";
-        const placeGhost = (cx: number, cy: number) => {
-          const x = cx - offsetX;
-          const y = cy - offsetY;
-          ghost.style.transform = `translate3d(${x}px, ${y}px, 0) scale(1.03)`;
+        const beginDrag = (ev: PointerEvent) => {
+          if (dragging) return;
+          dragging = true;
+          dragId = sourceId;
+          pendingFullRender = false;
+          if (!selected.has(sourceId)) selectSingle(sourceId);
+
+          const rect = row.getBoundingClientRect();
+          offsetX = startX - rect.left;
+          offsetY = startY - rect.top;
+
+          ghost = row.cloneNode(true) as HTMLElement;
+          ghost.classList.add("drag-ghost");
+          ghost.classList.remove("dragging", "is-dragging", "drag-over", "is-selected");
+          ghost.style.width = `${rect.width}px`;
+          ghost.style.height = `${rect.height}px`;
+          ghost.style.left = "0";
+          ghost.style.top = "0";
+          const placeGhost = (cx: number, cy: number) => {
+            const x = cx - offsetX;
+            const y = cy - offsetY;
+            ghost!.style.transform = `translate3d(${x}px, ${y}px, 0) scale(1.03)`;
+          };
+          placeGhost(ev.clientX, ev.clientY);
+          document.body.appendChild(ghost);
+
+          row.classList.add("is-dragging");
+          listEl.classList.add("is-reordering");
         };
-        placeGhost(e.clientX, e.clientY);
-        document.body.appendChild(ghost);
 
-        row.classList.add("is-dragging");
-        listEl.classList.add("is-reordering");
-        row.setPointerCapture(e.pointerId);
+        try {
+          row.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
 
         const onMove = (ev: PointerEvent) => {
-          if (!dragId) return;
-          placeGhost(ev.clientX, ev.clientY);
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          if (!dragging && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
+            beginDrag(ev);
+          }
+          if (!dragging || !dragId || !ghost) return;
+          ghost.style.transform = `translate3d(${ev.clientX - offsetX}px, ${ev.clientY - offsetY}px, 0) scale(1.03)`;
           moveDragHole(row, ev.clientY);
         };
 
@@ -542,7 +725,21 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           row.removeEventListener("pointerup", finish);
           row.removeEventListener("pointercancel", finish);
 
-          ghost.remove();
+          if (!dragging) {
+            // Click selection
+            if (range) {
+              selectRange(sourceId);
+            } else if (multi) {
+              toggleSelect(sourceId);
+            } else {
+              selectSingle(sourceId);
+            }
+            row.focus({ preventScroll: true });
+            return;
+          }
+
+          ghost?.remove();
+          ghost = null;
           row.classList.remove("is-dragging");
           listEl.classList.remove("is-reordering");
           listEl.querySelectorAll(".drag-over").forEach((n) => n.classList.remove("drag-over"));
@@ -562,6 +759,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
               r.style.transform = "";
               r.style.transition = "";
             });
+            applySelectionClasses();
           }
         };
 
@@ -576,6 +774,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         e.stopPropagation();
         const id = btn.dataset.remove;
         if (!id) return;
+        selected.delete(id);
         void invoke("remove_symbol", { id }).catch((err) => {
           console.error("remove_symbol failed", err);
         });
@@ -622,6 +821,36 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   renderFooter();
   startSparklineTicker();
 
+  const onKeyDown = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest?.("input, textarea, [contenteditable=true]")) return;
+    if (e.key === "Delete" || e.key === "Backspace") {
+      if (selected.size === 0) return;
+      e.preventDefault();
+      void deleteSelected();
+    } else if (e.key === "Escape") {
+      closeTintMenu();
+      if (selected.size > 0) {
+        selected.clear();
+        applySelectionClasses();
+      }
+    }
+  };
+  document.addEventListener("keydown", onKeyDown);
+
+  const onDocPointer = (e: PointerEvent) => {
+    if (tintMenuEl && !tintMenuEl.contains(e.target as Node)) {
+      closeTintMenu();
+    }
+  };
+  document.addEventListener("pointerdown", onDocPointer, true);
+
+  const onVis = () => {
+    if (document.hidden) stopSparklineTicker();
+    else startSparklineTicker();
+  };
+  document.addEventListener("visibilitychange", onVis);
+
   const unlisteners: Array<() => void> = [];
 
   void listen<Quote[]>("quotes-updated", (e) => {
@@ -642,7 +871,11 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     setSparklines,
     destroy: () => {
       if (searchTimer) clearTimeout(searchTimer);
-      if (sparkTickTimer) clearInterval(sparkTickTimer);
+      stopSparklineTicker();
+      closeTintMenu();
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onDocPointer, true);
+      document.removeEventListener("visibilitychange", onVis);
       for (const u of unlisteners) u();
     },
   };

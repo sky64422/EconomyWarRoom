@@ -167,6 +167,7 @@ async fn e2e_yahoo_http_mock_provider_pipeline() {
         display_name: None,
         asset_kind: AssetKind::Equity,
         sort_index: 0,
+        card_tint: Default::default(),
     }]);
     sched.tick_once().await;
     let q = sched.quote_cache().get("AAPL").unwrap();
@@ -243,6 +244,7 @@ async fn e2e_rate_limit_does_not_wipe_cache() {
         display_name: None,
         asset_kind: AssetKind::Equity,
         sort_index: 0,
+        card_tint: Default::default(),
     }]);
     sched.tick_once().await;
     assert_eq!(sched.quote_cache().get("AAPL").unwrap().price, 99.0);

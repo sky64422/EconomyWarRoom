@@ -110,6 +110,15 @@ pub fn run() {
 
             app.manage(handle_state);
 
+            if let Some(state) = app.try_state::<AppHandleState>() {
+                let core = state.core.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = core.apply_quote_refresh_to_scheduler().await {
+                        eprintln!("apply_quote_refresh_to_scheduler: {e}");
+                    }
+                });
+            }
+
             updater::spawn_update_check(app.handle().clone());
 
             // --- global shortcut (best-effort) ---
@@ -167,9 +176,13 @@ pub fn run() {
             commands::get_state,
             commands::add_symbol,
             commands::remove_symbol,
+            commands::remove_symbols,
+            commands::set_card_tint,
             commands::reorder_symbols,
             commands::set_theme,
             commands::set_opacity,
+            commands::set_autostart,
+            commands::set_quote_refresh_secs,
             commands::hide_widget,
             commands::toggle_widget_visibility,
             commands::save_window_geometry,

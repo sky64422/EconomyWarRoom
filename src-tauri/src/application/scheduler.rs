@@ -79,6 +79,8 @@ pub struct QuoteScheduler {
     last_error: Option<String>,
     /// Provider errors since last [`drain_diag_notes`] (for ring buffer, not spammy success logs).
     pending_diag: Vec<String>,
+    /// User-configurable min interval between quote fetches (same symbol).
+    min_quote_interval: Duration,
 }
 
 impl QuoteScheduler {
@@ -97,6 +99,7 @@ impl QuoteScheduler {
             backoff: RefreshPolicy::BACKOFF_INITIAL,
             last_error: None,
             pending_diag: Vec::new(),
+            min_quote_interval: RefreshPolicy::MIN_QUOTE_INTERVAL,
         }
     }
 
@@ -113,13 +116,24 @@ impl QuoteScheduler {
             .unwrap_or(false);
         let err = self.last_error.as_deref().unwrap_or("(none)");
         format!(
-            "visible={} watchlist_len={} backoff_active={} backoff_secs={} last_error={}",
+            "visible={} watchlist_len={} quote_interval_secs={} backoff_active={} backoff_secs={} last_error={}",
             self.visible,
             self.watchlist.len(),
+            self.min_quote_interval.as_secs(),
             backoff_active,
             self.backoff.as_secs_f64(),
             err
         )
+    }
+
+    pub fn set_min_quote_interval(&mut self, interval: Duration) {
+        self.min_quote_interval = interval.max(Duration::from_secs(
+            RefreshPolicy::QUOTE_REFRESH_SECS_MIN,
+        ));
+    }
+
+    pub fn min_quote_interval(&self) -> Duration {
+        self.min_quote_interval
     }
 
     pub fn set_visible(&mut self, visible: bool) {
@@ -179,7 +193,7 @@ impl QuoteScheduler {
             .provider
             .limits()
             .min_interval
-            .max(RefreshPolicy::MIN_QUOTE_INTERVAL);
+            .max(self.min_quote_interval);
         let priority = self.priority.take();
         let batch = pick_batch(
             &self.watchlist,
@@ -287,6 +301,7 @@ mod tests {
             display_name: None,
             asset_kind: AssetKind::Equity,
             sort_index: idx,
+            card_tint: Default::default(),
         }
     }
 

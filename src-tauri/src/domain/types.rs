@@ -9,6 +9,20 @@ pub enum AssetKind {
     Other,
 }
 
+/// Soft pastel card highlight (user-picked); `None` / omit = default glass row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CardTint {
+    #[default]
+    None,
+    Rose,
+    Peach,
+    Mint,
+    Sky,
+    Lavender,
+    Lemon,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WatchlistItem {
     pub id: String,
@@ -16,6 +30,9 @@ pub struct WatchlistItem {
     pub display_name: Option<String>,
     pub asset_kind: AssetKind,
     pub sort_index: u32,
+    /// Soft pastel background for attention; defaults for older saved state.
+    #[serde(default)]
+    pub card_tint: CardTint,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -74,6 +91,13 @@ pub struct AppSettings {
     pub window: WindowGeometry,
     pub hotkey: String,
     pub autostart: bool,
+    /// Seconds between quote refreshes per symbol (clamped on write).
+    #[serde(default = "default_quote_refresh_secs")]
+    pub quote_refresh_secs: u64,
+}
+
+fn default_quote_refresh_secs() -> u64 {
+    10
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

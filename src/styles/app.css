@@ -57,13 +57,14 @@ body {
     .row-symbol,
     .row-price,
     .row-change,
-    .row-subtitle,
     .row-remove,
     .watchlist-empty,
     .add-card,
     .add-card-input,
     .add-card-btn,
     .settings-label,
+    .settings-toggle-title,
+    .settings-toggle-hint,
     .segmented button,
     .opacity-value,
     .btn-diag,
@@ -143,6 +144,11 @@ body {
 .icon-btn.active {
   color: var(--accent);
   background: var(--bg-row-hover);
+}
+
+.icon-btn.busy {
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 /* —— Main content —— */
@@ -228,16 +234,44 @@ body {
   grid-template-columns: 64px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  min-height: 60px;
+  min-height: 56px;
   padding: 10px 34px 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-row);
   background: var(--bg-row-hover);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
-  cursor: grab;
+  cursor: pointer;
   touch-action: none; /* pointer reorder; avoid scroll competing on touch */
   user-select: none;
+  outline: none;
   transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease;
+}
+
+/* Soft pastel tints for attention */
+.watchlist-row.tint-rose {
+  background: color-mix(in srgb, #ffb3c1 42%, var(--bg-row-hover));
+}
+.watchlist-row.tint-peach {
+  background: color-mix(in srgb, #ffd6a5 48%, var(--bg-row-hover));
+}
+.watchlist-row.tint-mint {
+  background: color-mix(in srgb, #b8f2e6 48%, var(--bg-row-hover));
+}
+.watchlist-row.tint-sky {
+  background: color-mix(in srgb, #a0c4ff 48%, var(--bg-row-hover));
+}
+.watchlist-row.tint-lavender {
+  background: color-mix(in srgb, #cdb4db 48%, var(--bg-row-hover));
+}
+.watchlist-row.tint-lemon {
+  background: color-mix(in srgb, #fdffb6 52%, var(--bg-row-hover));
+}
+
+.watchlist-row.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
 .watchlist-row > *:not(.row-remove) {
@@ -260,8 +294,7 @@ body {
   gap: 3px;
 }
 
-.row-topline,
-.row-bottombar {
+.row-topline {
   min-width: 0;
   display: flex;
   align-items: baseline;
@@ -269,9 +302,20 @@ body {
   gap: 8px;
 }
 
-.watchlist-row:hover {
-  background: var(--bg-row-active);
+.row-bottombar {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.watchlist-row:hover:not(.is-selected) {
   border-color: color-mix(in srgb, var(--text) 20%, transparent);
+}
+
+.watchlist-row:not([class*="tint-"]):hover:not(.is-selected) {
+  background: var(--bg-row-active);
 }
 
 /* In-list hole while the floating ghost follows the pointer */
@@ -338,15 +382,6 @@ body {
   text-align: right;
   color: var(--text-secondary);
   transition: opacity 0.12s ease, color 0.12s ease;
-}
-
-.row-subtitle {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-secondary);
-  font-size: 11px;
 }
 
 .row-change.up {
@@ -654,6 +689,15 @@ body {
   font-weight: 600;
 }
 
+.refresh-segmented {
+  flex-wrap: wrap;
+}
+
+.refresh-segmented button {
+  flex: 1 1 28%;
+  min-width: 2.6em;
+}
+
 .opacity-row {
   display: flex;
   align-items: center;
@@ -675,6 +719,81 @@ body {
   text-align: right;
 }
 
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bg-row-hover);
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-toggle-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-toggle-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.settings-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.settings-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--text) 18%, transparent);
+  transition: background 0.15s ease;
+}
+
+.settings-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.settings-toggle input:checked + .settings-switch {
+  background: var(--accent);
+}
+
+.settings-toggle input:checked + .settings-switch::after {
+  transform: translateX(18px);
+}
+
+.settings-toggle input:focus-visible + .settings-switch {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
 .settings-actions {
   display: flex;
   flex-direction: column;
@@ -683,8 +802,7 @@ body {
   margin-top: 4px;
 }
 
-.btn-diag,
-.btn-update {
+.btn-diag {
   margin-top: 0;
   height: 34px;
   border: none;
@@ -698,9 +816,79 @@ body {
   transition: background 0.12s ease;
 }
 
-.btn-diag:hover,
-.btn-update:hover {
+.btn-diag:hover {
   background: rgba(10, 132, 255, 0.2);
+}
+
+/* Floating pastel tint picker (right-click on card) */
+.tint-menu {
+  position: fixed;
+  z-index: 20000;
+  min-width: 168px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(var(--bg-glass-rgb-active), 0.96);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(12px);
+}
+
+.tint-menu-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.tint-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tint-swatch {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text) 12%, transparent);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.tint-swatch:hover {
+  transform: scale(1.08);
+}
+
+.tint-swatch.active {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.tint-swatch.tint-none {
+  background:
+    linear-gradient(135deg, transparent 46%, color-mix(in srgb, var(--text) 35%, transparent) 50%, transparent 54%),
+    var(--bg-row-hover);
+}
+.tint-swatch.tint-rose {
+  background: #ffb3c1;
+}
+.tint-swatch.tint-peach {
+  background: #ffd6a5;
+}
+.tint-swatch.tint-mint {
+  background: #b8f2e6;
+}
+.tint-swatch.tint-sky {
+  background: #a0c4ff;
+}
+.tint-swatch.tint-lavender {
+  background: #cdb4db;
+}
+.tint-swatch.tint-lemon {
+  background: #fdffb6;
 }
 
 .btn-quit {

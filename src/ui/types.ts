@@ -4,12 +4,32 @@ export type AssetKind = "equity" | "crypto" | "commodity" | "other";
 
 export type ThemeMode = "light" | "dark" | "system";
 
+export type CardTint =
+  | "none"
+  | "rose"
+  | "peach"
+  | "mint"
+  | "sky"
+  | "lavender"
+  | "lemon";
+
+export const CARD_TINTS: { value: CardTint; label: string }[] = [
+  { value: "none", label: "Default" },
+  { value: "rose", label: "Rose" },
+  { value: "peach", label: "Peach" },
+  { value: "mint", label: "Mint" },
+  { value: "sky", label: "Sky" },
+  { value: "lavender", label: "Lavender" },
+  { value: "lemon", label: "Lemon" },
+];
+
 export interface WatchlistItem {
   id: string;
   symbol: string;
   display_name: string | null;
   asset_kind: AssetKind;
   sort_index: number;
+  card_tint?: CardTint;
 }
 
 export interface Quote {
@@ -46,6 +66,7 @@ export interface AppSettings {
   window: WindowGeometry;
   hotkey: string;
   autostart: boolean;
+  quote_refresh_secs?: number;
 }
 
 export interface PersistedState {

@@ -89,6 +89,7 @@ fn item(sym: &str) -> WatchlistItem {
         display_name: None,
         asset_kind: AssetKind::Equity,
         sort_index: 0,
+        card_tint: Default::default(),
     }
 }
 
