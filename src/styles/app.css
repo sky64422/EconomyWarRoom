@@ -214,7 +214,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px; /* same as .watchlist-rows — space before + Add slot */
-  padding: 10px 10px 10px;
+  /* Even inset around list + Add (was + footer 6px → looked like a bottom gap) */
+  padding: 10px;
   scrollbar-width: thin;
   scrollbar-color: var(--text-secondary) transparent;
   /* Reserve no gutter when idle — scrollbar only when truly overflowing */
@@ -439,7 +440,7 @@ body {
 /* —— Add (simple centered control, same card size as rows) —— */
 .watchlist-footer {
   flex: 0 0 auto;
-  padding: 0 0 6px;
+  padding: 0;
   border-top: none;
 }
 
