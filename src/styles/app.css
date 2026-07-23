@@ -48,6 +48,32 @@ body {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   overflow: hidden;
   box-sizing: border-box;
+  --text-opacity: calc(0.72 + var(--panel-opacity, 0.92) * 0.28);
+}
+
+.panel :is(
+    .header .title,
+    .icon-btn,
+    .row-symbol,
+    .row-price,
+    .row-change,
+    .row-subtitle,
+    .row-remove,
+    .watchlist-empty,
+    .add-card,
+    .add-card-input,
+    .add-card-btn,
+    .settings-label,
+    .segmented button,
+    .opacity-value,
+    .btn-diag,
+    .btn-quit,
+    .suggest-symbol,
+    .suggest-meta,
+    .add-suggest-empty,
+    .add-error
+  ) {
+  opacity: var(--text-opacity);
 }
 
 /* —— Header —— */
@@ -311,6 +337,7 @@ body {
   min-width: 3.6em;
   text-align: right;
   color: var(--text-secondary);
+  transition: opacity 0.12s ease, color 0.12s ease;
 }
 
 .row-subtitle {
@@ -355,7 +382,7 @@ body {
 }
 
 .watchlist-row:hover .row-remove {
-  opacity: 1;
+  opacity: calc(var(--text-opacity) * 1);
   pointer-events: auto;
 }
 
@@ -656,7 +683,8 @@ body {
   margin-top: 4px;
 }
 
-.btn-diag {
+.btn-diag,
+.btn-update {
   margin-top: 0;
   height: 34px;
   border: none;
@@ -670,7 +698,8 @@ body {
   transition: background 0.12s ease;
 }
 
-.btn-diag:hover {
+.btn-diag:hover,
+.btn-update:hover {
   background: rgba(10, 132, 255, 0.2);
 }
 

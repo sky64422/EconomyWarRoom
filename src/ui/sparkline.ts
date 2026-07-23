@@ -90,12 +90,12 @@ export function sparklinePaths(
     .map((c, i) => `${i === 0 ? "M" : "L"}${c.x.toFixed(2)} ${c.y.toFixed(2)}`)
     .join(" ");
 
-  const first = coords[0];
-  const last = coords[coords.length - 1];
   const baselineY = validBaseline != null
     ? padding + plotHeight - ((validBaseline - chartMinY) / yRange) * plotHeight
     : height - padding;
   const baseline = `M${padding.toFixed(2)} ${baselineY.toFixed(2)} L${(width - padding).toFixed(2)} ${baselineY.toFixed(2)}`;
+  const first = coords[0];
+  const last = coords[coords.length - 1];
   const area = `${line} L${last.x.toFixed(2)} ${baselineY.toFixed(2)} L${first.x.toFixed(2)} ${baselineY.toFixed(2)} Z`;
 
   return { line, area, baseline, height };

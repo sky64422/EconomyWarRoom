@@ -62,6 +62,16 @@ function changeClass(pct: number | null | undefined): string {
   return pct > 0 ? "up" : "down";
 }
 
+function toneForChange(
+  pct: number | null | undefined,
+  fallback: ReturnType<typeof sparklineTone>,
+): ReturnType<typeof sparklineTone> {
+  if (pct == null || !Number.isFinite(pct)) return fallback;
+  if (pct > 0) return "up";
+  if (pct < 0) return "down";
+  return "flat";
+}
+
 function strokeForTone(tone: "up" | "down" | "flat"): string {
   if (tone === "up") return "var(--sparkline-up)";
   if (tone === "down") return "var(--sparkline-down)";
@@ -112,10 +122,10 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           const q = quotes.get(item.symbol);
           const sp = sparks.get(item.symbol);
           const points = sp?.points ?? [];
-          const tone = sparklineTone(points);
+          const pct = q?.change_percent ?? null;
+          const tone = toneForChange(pct, sparklineTone(points));
           const stroke = strokeForTone(tone);
           const progress = sparklineProgress(points, item.asset_kind);
-          const pct = q?.change_percent ?? null;
           const subtitle = item.display_name ?? item.asset_kind;
           const sparkMarkup = sparklineSvgMarkup(
             points,
@@ -181,7 +191,8 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
       const svg = row.querySelector<SVGElement>("[data-spark]");
       if (svg && sp && item) {
         const points = sp.points ?? [];
-        const tone = sparklineTone(points);
+        const pct = q?.change_percent ?? null;
+        const tone = toneForChange(pct, sparklineTone(points));
         const stroke = strokeForTone(tone);
         const progress = sparklineProgress(points, item.asset_kind);
         svg.innerHTML = sparklineSvgMarkup(
