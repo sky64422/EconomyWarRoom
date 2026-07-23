@@ -1,12 +1,14 @@
 //! Risk-scenario tests: API limits, corrupt state, invalid input, hide/pause.
 
+use async_trait::async_trait;
 use economy_war_room_lib::application::scheduler::QuoteScheduler;
 use economy_war_room_lib::application::service::AppCore;
 use economy_war_room_lib::domain::types::{AssetKind, Quote, Sparkline, WatchlistItem};
 use economy_war_room_lib::domain::watchlist;
-use economy_war_room_lib::infrastructure::store::{default_state, load_state, save_state, state_path};
+use economy_war_room_lib::infrastructure::store::{
+    default_state, load_state, save_state, state_path,
+};
 use economy_war_room_lib::ports::market_data::{MarketDataProvider, ProviderLimits};
-use async_trait::async_trait;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,12 +34,7 @@ impl MarketDataProvider for AlwaysRateLimited {
     async fn fetch_quotes(&self, _: &[String]) -> Result<Vec<Quote>, String> {
         Err("rate_limited".into())
     }
-    async fn fetch_sparkline(
-        &self,
-        _: &str,
-        _: &str,
-        _: &str,
-    ) -> Result<Sparkline, String> {
+    async fn fetch_sparkline(&self, _: &str, _: &str, _: &str) -> Result<Sparkline, String> {
         Err("rate_limited".into())
     }
 }
@@ -75,12 +72,7 @@ impl MarketDataProvider for OnceThenOk {
             })
             .collect())
     }
-    async fn fetch_sparkline(
-        &self,
-        symbol: &str,
-        _: &str,
-        _: &str,
-    ) -> Result<Sparkline, String> {
+    async fn fetch_sparkline(&self, symbol: &str, _: &str, _: &str) -> Result<Sparkline, String> {
         Ok(Sparkline {
             symbol: symbol.into(),
             points: vec![],
@@ -138,10 +130,7 @@ async fn risk_duplicate_and_empty_symbol_rejected() {
     }));
     let core = AppCore::new(default_state(), dir.path().to_path_buf(), sched, true);
 
-    assert!(core
-        .add_symbol("".into(), AssetKind::Equity)
-        .await
-        .is_err());
+    assert!(core.add_symbol("".into(), AssetKind::Equity).await.is_err());
     assert!(core
         .add_symbol("AAPL".into(), AssetKind::Equity)
         .await

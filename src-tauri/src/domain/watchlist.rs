@@ -65,8 +65,7 @@ pub fn reorder(items: &mut Vec<WatchlistItem>, ordered_ids: &[String]) -> Result
         next.push((*item).clone());
     }
     // Detect duplicates in ordered_ids (same id twice ⇒ map size mismatch).
-    let unique: std::collections::HashSet<&str> =
-        ordered_ids.iter().map(|s| s.as_str()).collect();
+    let unique: std::collections::HashSet<&str> = ordered_ids.iter().map(|s| s.as_str()).collect();
     if unique.len() != ordered_ids.len() {
         return Err("ordered_ids contains duplicates".into());
     }

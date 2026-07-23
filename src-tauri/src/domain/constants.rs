@@ -54,7 +54,9 @@ pub fn clamp_opacity(value: f64) -> f64 {
 }
 
 /// Clamp window size to policy minimums (position unchanged).
-pub fn clamp_geometry(geometry: &crate::domain::types::WindowGeometry) -> crate::domain::types::WindowGeometry {
+pub fn clamp_geometry(
+    geometry: &crate::domain::types::WindowGeometry,
+) -> crate::domain::types::WindowGeometry {
     crate::domain::types::WindowGeometry {
         x: geometry.x,
         y: geometry.y,
@@ -73,7 +75,10 @@ mod tests {
         assert_eq!(clamp_opacity(0.1), OpacityPolicy::MIN);
         assert_eq!(clamp_opacity(OpacityPolicy::MIN), OpacityPolicy::MIN);
         assert_eq!(clamp_opacity(0.5), 0.5);
-        assert_eq!(clamp_opacity(OpacityPolicy::DEFAULT), OpacityPolicy::DEFAULT);
+        assert_eq!(
+            clamp_opacity(OpacityPolicy::DEFAULT),
+            OpacityPolicy::DEFAULT
+        );
         assert_eq!(clamp_opacity(OpacityPolicy::MAX), OpacityPolicy::MAX);
         assert_eq!(clamp_opacity(1.5), OpacityPolicy::MAX);
         assert_eq!(clamp_opacity(100.0), OpacityPolicy::MAX);
@@ -83,7 +88,10 @@ mod tests {
     fn refresh_policy_durations() {
         assert_eq!(RefreshPolicy::TICK, Duration::from_secs(1));
         assert_eq!(RefreshPolicy::MIN_QUOTE_INTERVAL, Duration::from_secs(10));
-        assert_eq!(RefreshPolicy::SPARKLINE_MIN_INTERVAL, Duration::from_secs(300));
+        assert_eq!(
+            RefreshPolicy::SPARKLINE_MIN_INTERVAL,
+            Duration::from_secs(300)
+        );
     }
 
     #[test]

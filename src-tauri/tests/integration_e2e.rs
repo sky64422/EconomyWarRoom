@@ -3,13 +3,13 @@
 //! These exercise store + service + scheduler + (mock/HTTP) provider together —
 //! the same paths production uses for watchlist and market data.
 
+use async_trait::async_trait;
 use economy_war_room_lib::application::scheduler::QuoteScheduler;
 use economy_war_room_lib::application::service::AppCore;
 use economy_war_room_lib::domain::types::{AssetKind, Quote, Sparkline, ThemeMode};
 use economy_war_room_lib::infrastructure::store::{default_state, load_state, save_state};
 use economy_war_room_lib::infrastructure::yahoo::YahooProvider;
 use economy_war_room_lib::ports::market_data::{MarketDataProvider, ProviderLimits};
-use async_trait::async_trait;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,12 +50,7 @@ impl MarketDataProvider for CountingProvider {
             })
             .collect())
     }
-    async fn fetch_sparkline(
-        &self,
-        symbol: &str,
-        _: &str,
-        _: &str,
-    ) -> Result<Sparkline, String> {
+    async fn fetch_sparkline(&self, symbol: &str, _: &str, _: &str) -> Result<Sparkline, String> {
         Ok(Sparkline {
             symbol: symbol.into(),
             points: vec![],

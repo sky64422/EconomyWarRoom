@@ -14,9 +14,7 @@ pub fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
 }
 
 pub fn apply_always_on_top(window: &WebviewWindow, on_top: bool) -> Result<(), String> {
-    window
-        .set_always_on_top(on_top)
-        .map_err(|e| e.to_string())
+    window.set_always_on_top(on_top).map_err(|e| e.to_string())
 }
 
 pub fn apply_geometry(window: &WebviewWindow, geometry: &WindowGeometry) -> Result<(), String> {

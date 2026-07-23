@@ -1,6 +1,4 @@
-use crate::domain::constants::{
-    clamp_opacity, HotkeyPolicy, OpacityPolicy, WindowPolicy,
-};
+use crate::domain::constants::{clamp_opacity, HotkeyPolicy, OpacityPolicy, WindowPolicy};
 use crate::domain::types::{
     AppSettings, AssetKind, PersistedState, ThemeMode, WatchlistItem, WindowGeometry,
 };

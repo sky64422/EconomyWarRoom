@@ -111,10 +111,7 @@ impl QuoteScheduler {
             .backoff_until
             .map(|u| Instant::now() < u)
             .unwrap_or(false);
-        let err = self
-            .last_error
-            .as_deref()
-            .unwrap_or("(none)");
+        let err = self.last_error.as_deref().unwrap_or("(none)");
         format!(
             "visible={} watchlist_len={} backoff_active={} backoff_secs={} last_error={}",
             self.visible,
@@ -586,12 +583,7 @@ mod tests {
         async fn fetch_quotes(&self, symbols: &[String]) -> Result<Vec<Quote>, String> {
             self.inner.fetch_quotes(symbols).await
         }
-        async fn fetch_sparkline(
-            &self,
-            _: &str,
-            _: &str,
-            _: &str,
-        ) -> Result<Sparkline, String> {
+        async fn fetch_sparkline(&self, _: &str, _: &str, _: &str) -> Result<Sparkline, String> {
             Err("rate_limited".into())
         }
     }

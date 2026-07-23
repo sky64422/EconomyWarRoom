@@ -18,12 +18,7 @@ impl AppHandleState {
         visible: bool,
     ) -> Self {
         Self {
-            core: Arc::new(AppCore::new(
-                persisted,
-                app_data_dir,
-                scheduler,
-                visible,
-            )),
+            core: Arc::new(AppCore::new(persisted, app_data_dir, scheduler, visible)),
         }
     }
 }

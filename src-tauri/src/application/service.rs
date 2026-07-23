@@ -7,13 +7,13 @@ use crate::application::diagnostics::{
     DiagLevel, EventRing, DIAGNOSTICS_DUMP_LINES, NOTE_THROTTLE,
 };
 use crate::application::scheduler::QuoteScheduler;
+use crate::domain::constants::clamp_geometry;
 use crate::domain::constants::clamp_opacity;
 use crate::domain::types::{
     AssetKind, PersistedState, Quote, Sparkline, ThemeMode, WatchlistItem, WindowGeometry,
 };
 use crate::domain::watchlist;
 use crate::infrastructure::store::save_state;
-use crate::domain::constants::clamp_geometry;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -57,12 +57,7 @@ impl AppCore {
 
     /// Like [`note`], but skips if the same message was logged within `cooldown`
     /// (default [`NOTE_THROTTLE`]). Prevents scheduler 429 spam from filling the ring.
-    pub fn note_throttled(
-        &self,
-        level: DiagLevel,
-        message: impl Into<String>,
-        cooldown: Duration,
-    ) {
+    pub fn note_throttled(&self, level: DiagLevel, message: impl Into<String>, cooldown: Duration) {
         let message = message.into();
         if let Ok(mut slot) = self.throttle.lock() {
             if let Some((prev, at)) = slot.as_ref() {
