@@ -28,3 +28,5 @@ dist-ssr
 
 tmp/
 
+
+.tmp-ui*.png
