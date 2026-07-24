@@ -130,7 +130,7 @@ function measureContentHugHeight(panel: HTMLElement): number {
         (parseFloat(cs.gap) || 0);
     }
     return Math.ceil(
-      (header?.offsetHeight ?? 44) +
+      (header?.offsetHeight ?? 38) +
         (settings?.offsetHeight ?? 0) +
         (rows?.scrollHeight ?? empty?.scrollHeight ?? 0) +
         (footer?.scrollHeight ?? 52) +

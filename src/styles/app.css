@@ -45,78 +45,48 @@ body {
   border-radius: var(--radius);
   /* Opacity slider drives glass fill alpha: 100% = solid (no desktop bleed). */
   background: rgba(var(--bg-glass-rgb-active), var(--panel-opacity, 0.92));
-  backdrop-filter: blur(calc(var(--blur) * (1.05 - var(--panel-opacity, 0.92))));
-  -webkit-backdrop-filter: blur(calc(var(--blur) * (1.05 - var(--panel-opacity, 0.92))));
+  /* Match TokenUsage: saturated glass blur */
+  backdrop-filter: saturate(180%) blur(var(--blur));
+  -webkit-backdrop-filter: saturate(180%) blur(var(--blur));
   border: 1px solid var(--border);
   /* Inset only — outer box-shadow paints a halo in the transparent HWND zone. */
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
   overflow: hidden;
   margin: 0;
   box-sizing: border-box;
-  --text-opacity: calc(0.72 + var(--panel-opacity, 0.92) * 0.28);
 }
 
-.panel :is(
-    .header .title,
-    .icon-btn,
-    .row-symbol,
-    .row-price,
-    .row-change,
-    .row-remove,
-    .watchlist-empty,
-    .add-card,
-    .add-card-input,
-    .add-card-btn,
-    .settings-label,
-    .settings-toggle-title,
-    .settings-toggle-hint,
-    .segmented button,
-    .opacity-value,
-    .btn-diag,
-    .btn-quit,
-    .suggest-symbol,
-    .suggest-meta,
-    .add-suggest-empty,
-    .add-error
-  ) {
-  opacity: var(--text-opacity);
-}
-
-/* —— Header —— */
+/* —— Header (TokenUsage-aligned: flat, no heavy bar chrome) —— */
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: var(--header-height);
   min-height: var(--header-height);
-  padding: 0 10px 0 14px;
+  padding: 0 8px 0 var(--pad-x);
   flex-shrink: 0;
-  cursor: default;
-  /* Dense bar so title chrome reads separate from cards */
-  background: rgba(
-    var(--bg-glass-rgb-active),
-    calc(0.72 + var(--panel-opacity, 0.92) * 0.22)
-  );
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 18%, var(--border));
-  box-shadow:
-    inset 0 -1px 0 color-mix(in srgb, var(--text) 6%, transparent),
-    0 1px 0 color-mix(in srgb, var(--text) 10%, transparent),
-    0 10px 20px rgba(0, 0, 0, 0.2);
+  background: transparent;
+  border-bottom: none;
+  box-shadow: none;
   z-index: 2;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .header .title {
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--text);
-  pointer-events: none;
+  line-height: 1;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
   gap: 2px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .icon-btn {
@@ -130,15 +100,15 @@ body {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--text-secondary);
-  font-size: 15px;
+  color: var(--text-tertiary);
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .icon-btn:hover {
-  background: var(--bg-row-hover);
+  background: var(--bg-hover);
   color: var(--text);
 }
 
@@ -148,11 +118,11 @@ body {
 
 .icon-btn.active {
   color: var(--accent);
-  background: var(--bg-row-hover);
+  background: var(--bg-hover);
 }
 
 .icon-btn.busy {
-  opacity: 0.55;
+  opacity: 0.45;
   pointer-events: none;
 }
 

@@ -5,15 +5,16 @@ export interface HeaderHandlers {
 }
 
 export function renderHeader(root: HTMLElement, handlers: HeaderHandlers): void {
+  // Markup/chrome aligned with TokenUsage header (flat Apple-like bar).
   root.innerHTML = `
-    <header class="header" data-tauri-drag-region>
-      <span class="title">WarRoom</span>
+    <div class="header" data-tauri-drag-region>
+      <div class="title">WarRoom</div>
       <div class="header-actions">
         <button type="button" class="icon-btn" id="btn-update" aria-label="Check for updates" title="Check for updates">↻</button>
         <button type="button" class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings">⚙</button>
-        <button type="button" class="icon-btn" id="btn-hide" aria-label="Hide" title="Hide">−</button>
+        <button type="button" class="icon-btn" id="btn-hide" aria-label="Hide" title="Hide">–</button>
       </div>
-    </header>
+    </div>
   `;
 
   root.querySelector("#btn-hide")!.addEventListener("click", (e) => {
