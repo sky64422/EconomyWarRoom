@@ -8,7 +8,7 @@ import {
   run,
 } from "./lib/release-utils.mjs";
 
-const tauriCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
 const exeName =
   process.platform === "win32" ? "economy-war-room.exe" : "economy-war-room";
 const exePath = resolve(root, "src-tauri", "target", "release", exeName);
@@ -20,7 +20,7 @@ if (hasSigningKey) {
   tauriArgs.push("--config", ensureUpdaterBuildConfig());
 }
 
-run(tauriCmd, tauriArgs, privateKey ? { TAURI_SIGNING_PRIVATE_KEY: privateKey } : {});
+run(npmCmd, tauriArgs, privateKey ? { TAURI_SIGNING_PRIVATE_KEY: privateKey } : {});
 
 if (!existsSync(exePath)) {
   throw new Error(`release exe not found: ${exePath}`);

@@ -61,11 +61,12 @@ Put the printed public key into src-tauri/tauri.conf.json → plugins.updater.pu
 }
 
 if (!args.skipBuild) {
-  const tauriCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+  // Use npm run tauri (not `npx run tauri` — that installs the unrelated `run` package).
+  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
   const configPath = ensureUpdaterBuildConfig();
   console.log("Building signed bundles (createUpdaterArtifacts)...");
   run(
-    tauriCmd,
+    npmCmd,
     ["run", "tauri", "--", "build", "--config", configPath],
     {
       TAURI_SIGNING_PRIVATE_KEY: privateKey,
