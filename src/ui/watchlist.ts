@@ -47,12 +47,17 @@ function guessAssetKind(symbol: string): AssetKind {
   return "equity";
 }
 
+/** Compact, stable-width friendly prices (tabular metrics column). */
 function formatPrice(price: number): string {
   if (!Number.isFinite(price)) return "--";
-  if (Math.abs(price) >= 1000) return price.toFixed(2);
-  if (Math.abs(price) >= 1) return price.toFixed(2);
-  if (Math.abs(price) >= 0.01) return price.toFixed(4);
-  return price.toPrecision(4);
+  const a = Math.abs(price);
+  // Large prices: no cents — keeps metrics column from ballooning (e.g. BTC)
+  if (a >= 1000) {
+    return Math.round(price).toLocaleString("en-US");
+  }
+  if (a >= 1) return price.toFixed(2);
+  if (a >= 0.01) return price.toFixed(4);
+  return price.toPrecision(3);
 }
 
 function formatChange(pct: number | null | undefined): string {

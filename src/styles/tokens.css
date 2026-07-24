@@ -41,6 +41,9 @@
   --row-min-h: 44px;
   --spark-w: 72px;
   --spark-h: 28px;
+  /* Fixed metrics + action columns → even left/right rhythm across rows */
+  --metrics-w: 4.75em;
+  --row-action-w: 28px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));
   --sparkline-neutral: rgba(0, 0, 0, calc(0.35 * var(--fg-opacity)));

@@ -213,18 +213,21 @@ body {
   font-size: 12px;
 }
 
-/* Per-symbol cards: symbol · sparkline · price (compact, TokenUsage density) */
+/* Per-symbol: symbol | spark | metrics | action — equal side inset */
 .watchlist-row {
   position: relative;
   display: grid;
-  /* Symbol flexes modestly; spark fixed; metrics hug content */
-  grid-template-columns: minmax(3.25em, 0.85fr) var(--spark-w) auto;
+  grid-template-columns:
+    minmax(3.25em, 1fr)
+    var(--spark-w)
+    var(--metrics-w)
+    var(--row-action-w);
   align-items: center;
   column-gap: var(--space-2);
   row-gap: 0;
   min-height: var(--row-min-h);
-  /* Right pad: metrics → remove control */
-  padding: 6px 40px 6px 10px;
+  /* Symmetric horizontal padding (was 10 vs 40 — felt lopsided) */
+  padding: 6px var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-row);
   background: var(--bg-row-hover);
@@ -278,15 +281,17 @@ body {
 }
 
 .row-metrics {
-  flex-shrink: 0;
+  width: var(--metrics-w);
+  max-width: var(--metrics-w);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
   gap: 1px;
-  min-width: 3.5em;
-  margin-right: 2px;
-  padding-left: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  justify-self: end;
 }
 
 .watchlist-row:hover:not(.is-selected) {
@@ -354,18 +359,22 @@ body {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   font-size: 12px;
-  min-width: 3.5em;
+  width: 100%;
   text-align: right;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .row-change {
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: 600;
-  min-width: 3.4em;
+  width: 100%;
   text-align: right;
   color: var(--text-secondary);
+  white-space: nowrap;
   transition: opacity 0.12s ease, color 0.12s ease;
 }
 
@@ -378,25 +387,22 @@ body {
 }
 
 .row-remove {
-  position: absolute;
-  /* Clear of card edge + room from price metrics */
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
+  /* In-grid action column — no absolute positioning / uneven right pad */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: var(--row-action-w);
+  height: var(--row-action-w);
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 6px;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
+  justify-self: center;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
@@ -428,10 +434,11 @@ body {
   min-height: var(--row-min-h);
   margin: 0;
   padding: 6px 10px;
-  border: 1px dashed color-mix(in srgb, var(--text) 22%, transparent);
+  /* Soft accent wash so +Add reads as an action, not a dead empty row */
+  border: 1px dashed color-mix(in srgb, var(--accent) 42%, var(--border));
   border-radius: var(--radius-row);
-  background: color-mix(in srgb, var(--bg-row-hover) 50%, transparent);
-  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-row-hover));
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -441,9 +448,10 @@ body {
 }
 
 .add-card:hover {
-  background: var(--bg-row-hover);
-  border-color: color-mix(in srgb, var(--text) 32%, transparent);
-  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-row-hover));
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  color: var(--accent);
+  border-style: solid;
 }
 
 .add-card--active {
