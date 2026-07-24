@@ -48,6 +48,8 @@ export async function mountApp(root: HTMLElement): Promise<void> {
     },
   );
 
+  const scheduleHug = await setupGeometryPersistence(panel);
+
   function toggleSettings(): void {
     settingsOpen = !settingsOpen;
     // Keep watchlist visible; settings is a compact sheet above the list so tall
@@ -60,6 +62,11 @@ export async function mountApp(root: HTMLElement): Promise<void> {
       panel.classList.remove("settings-open");
     }
     setSettingsButtonActive(headerRoot, settingsOpen);
+    // After layout, snap window height to content (grow open / shrink close).
+    requestAnimationFrame(() => {
+      scheduleHug(true);
+      window.setTimeout(() => scheduleHug(true), 50);
+    });
   }
 
   renderHeader(headerRoot, { onSettings: toggleSettings });
@@ -77,8 +84,6 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   } catch {
     /* not ready */
   }
-
-  await setupGeometryPersistence(panel);
 }
 
 /**
@@ -146,7 +151,10 @@ function measureContentHugHeight(panel: HTMLElement): number {
   }
 }
 
-async function setupGeometryPersistence(panel: HTMLElement): Promise<void> {
+async function setupGeometryPersistence(
+  panel: HTMLElement,
+): Promise<(growIfNeeded: boolean) => void> {
+  const noop = (_growIfNeeded: boolean) => {};
   try {
     const win = getCurrentWindow();
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -175,21 +183,23 @@ async function setupGeometryPersistence(panel: HTMLElement): Promise<void> {
 
     /**
      * Publish content-hug min to OS. Does **not** run on every drag frame.
-     * grow_if_needed only when content grew / boot — never rubber-band mid-resize.
+     * Snap height (grow or shrink) when content changes / boot / settings toggle.
      */
     const syncContentMinSize = async (opts: { growIfNeeded: boolean }) => {
       try {
         const contentH = measureContentHugHeight(panel);
         const minHeight = Math.max(CHROME_MIN_H, contentH);
         const grew = minHeight > lastContentMinH + 0.5;
+        const shrank = minHeight < lastContentMinH - 0.5;
         const changed = Math.abs(minHeight - lastContentMinH) >= 1;
+        // Snap when content grew/shrank (settings sheet), or explicit fit (boot).
+        const fit = opts.growIfNeeded || grew || shrank;
         if (!changed && !opts.growIfNeeded) return;
         lastContentMinH = minHeight;
         await invoke("set_content_min_size", {
           width: POLICY_MIN_W,
           height: minHeight,
-          // Grow only when content increased or explicit boot/grow request.
-          grow_if_needed: opts.growIfNeeded || grew,
+          grow_if_needed: fit,
         });
       } catch (err) {
         console.error("set_content_min_size failed", err);
@@ -234,7 +244,10 @@ async function setupGeometryPersistence(panel: HTMLElement): Promise<void> {
         void syncContentMinSize({ growIfNeeded: true });
       }, 200);
     });
+
+    return scheduleContentMin;
   } catch (err) {
     console.error("geometry persistence unavailable", err);
+    return noop;
   }
 }

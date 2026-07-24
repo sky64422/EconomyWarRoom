@@ -270,7 +270,7 @@ pub fn save_window_geometry(
 }
 
 /// Update OS min-size from measured content height (logical px).
-/// `grow_if_needed`: only true when content grew or on boot — never used mid-drag.
+/// `grow_if_needed`: snap height to content (grow or shrink). False = min only.
 #[tauri::command(rename_all = "snake_case")]
 pub fn set_content_min_size(
     app: AppHandle,
@@ -290,8 +290,9 @@ pub fn set_content_min_size(
         e
     })?;
     if grow_if_needed {
-        window_ctl::ensure_at_least_min_size(&window, w, h).map_err(|e| {
-            note_err(&state, "ensure_at_least_min_size", &e);
+        // Full content-hug: settings open/close must shrink as well as grow.
+        window_ctl::snap_height_to_content(&window, w, h).map_err(|e| {
+            note_err(&state, "snap_height_to_content", &e);
             e
         })?;
         let _ = window_ctl::apply_clean_glass_edge(&window);

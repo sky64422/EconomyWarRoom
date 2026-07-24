@@ -128,6 +128,29 @@ pub fn ensure_at_least_min_size(
     Ok(())
 }
 
+/// Content-hug: set height to measured content; grow width only if below floor.
+/// Used when settings open/close so the window does not stay tall after shrink.
+pub fn snap_height_to_content(
+    window: &impl WindowMinSize,
+    logical_w: f64,
+    logical_h: f64,
+) -> Result<(), String> {
+    let min_w = logical_w.max(WindowPolicy::MIN_WIDTH);
+    let min_h = logical_h.max(WindowPolicy::MIN_HEIGHT);
+    let scale = window.scale_factor_for_min().map_err(|e| e.to_string())?;
+    let size = window.inner_size_for_min().map_err(|e| e.to_string())?;
+    let cur_w = size.width as f64 / scale;
+    let cur_h = size.height as f64 / scale;
+    let target_w = cur_w.max(min_w);
+    let target_h = min_h;
+    if (cur_w - target_w).abs() > 0.5 || (cur_h - target_h).abs() > 1.0 {
+        window
+            .set_size_for_content(Size::Logical(LogicalSize::new(target_w, target_h)))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Clamp a physical resize to stored content min (logical). Used from window events.
 pub fn clamp_physical_size_to_content_min(
     window: &impl WindowMinSize,

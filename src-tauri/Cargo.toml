@@ -1,6 +1,6 @@
 [package]
 name = "economy-war-room"
-version = "0.1.10"
+version = "0.1.11"
 description = "EconomyWarRoom floating market watchlist widget"
 authors = ["you"]
 edition = "2021"
@@ -45,6 +45,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 # Coverage gate focuses on business logic; GUI bootstrap is excluded via scripts/coverage.sh
 [package.metadata.tarpaulin]
 exclude-files = ["src/main.rs", "src/lib.rs", "src/infrastructure/window_ctl.rs", "src/commands.rs"]
+
 
 
 
