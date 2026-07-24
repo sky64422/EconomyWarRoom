@@ -11,8 +11,9 @@ import type {
 } from "./types";
 import { CARD_TINTS } from "./types";
 
-const SPARK_W = 64;
-const SPARK_H = 36;
+/** Keep in sync with tokens.css --spark-w / --spark-h */
+const SPARK_W = 72;
+const SPARK_H = 28;
 const SPARK_TICK_MS = 1000;
 const DRAG_THRESHOLD_PX = 6;
 

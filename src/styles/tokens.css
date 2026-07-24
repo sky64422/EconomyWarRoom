@@ -28,10 +28,19 @@
   /* Panel chrome uses OS DWM rounding on Windows (apply_clean_glass_edge).
      CSS radius 0 avoids double-AA transparent corners (white fringe). */
   --radius: 0px;
-  --radius-row: 12px;
+  --radius-row: 10px;
   --blur: 36px;
   --header-height: 38px;
-  --pad-x: 14px;
+  /* Spacing scale (aligned with TokenUsage) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --pad-x: var(--space-3);
+  /* Compact row metrics — denser widget chrome */
+  --row-min-h: 44px;
+  --spark-w: 72px;
+  --spark-h: 28px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));
   --sparkline-neutral: rgba(0, 0, 0, calc(0.35 * var(--fg-opacity)));
