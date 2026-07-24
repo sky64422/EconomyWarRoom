@@ -277,12 +277,22 @@ export function applyThemeToDocument(theme: ThemeMode): void {
 }
 
 /**
- * Apply panel glass fill opacity (CSS variable).
- * 1.0 = fully opaque solid fill; lower values increase glass transparency.
- * Does not use element `opacity` so text stays fully legible.
+ * Glass opacity + matching text/chart alpha (TokenUsage-aligned).
+ * Background uses --panel-opacity; fg/accent/chrome track the slider so
+ * labels, prices, and sparklines don't stay fully solid while glass fades.
  */
 export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
-  const clamped = Math.min(1, Math.max(0.35, opacity));
-  panel.style.setProperty("--panel-opacity", String(clamped));
-  document.documentElement.style.setProperty("--panel-opacity", String(clamped));
+  const o = Math.min(1, Math.max(0.35, opacity));
+  // Keep type slightly stronger than glass so low opacity stays readable
+  const fg = Math.min(1, Math.max(0.62, o * 1.02));
+  const accent = Math.min(1, Math.max(0.55, o * 1.05));
+  const chrome = Math.min(1, Math.max(0.4, o));
+
+  const root = document.documentElement;
+  for (const el of [panel, root]) {
+    el.style.setProperty("--panel-opacity", String(o));
+    el.style.setProperty("--fg-opacity", String(fg));
+    el.style.setProperty("--accent-opacity", String(accent));
+    el.style.setProperty("--chrome-opacity", String(chrome));
+  }
 }

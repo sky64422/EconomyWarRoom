@@ -345,7 +345,8 @@ body {
   height: 36px;
   display: block;
   overflow: visible;
-  opacity: var(--panel-opacity, 0.92);
+  /* Chart ink tracks accent alpha (same family as --up/--down) */
+  opacity: var(--accent-opacity, 0.95);
   transition: opacity 0.12s ease;
 }
 
@@ -401,7 +402,7 @@ body {
 }
 
 .watchlist-row:hover .row-remove {
-  opacity: calc(var(--text-opacity) * 1);
+  opacity: var(--fg-opacity, 1);
   pointer-events: auto;
 }
 
