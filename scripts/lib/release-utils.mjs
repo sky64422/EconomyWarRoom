@@ -6,15 +6,21 @@ import { fileURLToPath } from "node:url";
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 export function run(cmd, args, extraEnv = {}) {
+  // Windows .cmd shims (npm.cmd / npx.cmd) need a shell; without it spawnSync
+  // often exits immediately with status 1 and no output.
+  const useShell = process.platform === "win32";
   const result = spawnSync(cmd, args, {
     cwd: root,
     stdio: "inherit",
-    shell: false,
+    shell: useShell,
     env: {
       ...process.env,
       ...extraEnv,
     },
   });
+  if (result.error) {
+    console.error(`spawn failed: ${result.error.message}`);
+  }
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
