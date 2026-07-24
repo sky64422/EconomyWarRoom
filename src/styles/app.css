@@ -214,20 +214,19 @@ body {
 }
 
 /*
- * symbol (max-content) | spark (1fr fills the rest) | metrics (max-content)
- * Fixed equal side rails left a permanent hole between spark and price.
+ * symbol | soft-clamped spark | ··· | metrics
+ * Container query so spark tracks card width, not the whole viewport.
  */
 .watchlist-row {
   position: relative;
-  display: grid;
-  grid-template-columns:
-    minmax(0, max-content)
-    minmax(40px, 1fr)
-    minmax(var(--row-metrics-min), max-content);
+  container-type: inline-size;
+  container-name: watch-row;
+  display: flex;
+  flex-direction: row;
   align-items: center;
-  column-gap: var(--row-col-gap);
+  gap: var(--row-col-gap);
   min-height: var(--row-min-h);
-  padding: 8px var(--row-pad-x);
+  padding: 7px var(--row-pad-x);
   border: 1px solid var(--border);
   border-radius: var(--radius-row);
   background: var(--bg-row-hover);
@@ -296,26 +295,28 @@ body {
 }
 
 .row-sparkline-wrap {
-  width: 100%;
-  min-width: 0;
+  /* Grow/shrink only inside clamp — never full-bleed 1fr */
+  flex: 0 1 var(--spark-w);
+  width: var(--spark-w);
+  min-width: 56px;
+  max-width: 80px;
   height: var(--spark-h);
   display: flex;
   align-items: center;
-  justify-content: stretch;
+  justify-content: center;
 }
 
 .row-metrics {
+  flex: 0 0 auto;
   width: max-content;
-  max-width: 100%;
   min-width: var(--row-metrics-min);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
   gap: 2px;
-  margin: 0;
+  margin: 0 0 0 auto; /* pin quote to the right; leftover width = middle air */
   padding: 0;
-  justify-self: end;
 }
 
 .watchlist-row:hover:not(.is-selected) {
@@ -357,9 +358,10 @@ body {
 }
 
 .row-symbol {
-  min-width: 0;
+  /* Shrink after spark hits min (flex-shrink higher than spark) */
+  flex: 0 1 auto;
+  min-width: 2.75em;
   max-width: var(--row-symbol-max);
-  width: max-content;
   font-weight: 600;
   font-size: 14px;
   letter-spacing: -0.025em;
@@ -368,7 +370,6 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   align-self: center;
-  justify-self: start;
 }
 
 .row-sparkline {
@@ -376,9 +377,16 @@ body {
   height: var(--spark-h);
   display: block;
   overflow: visible;
-  /* Chart ink tracks accent alpha (same family as --up/--down) */
+  /* Uniform scale into the clamped box — no axis stretch */
   opacity: var(--accent-opacity, 0.95);
   transition: opacity 0.12s ease;
+}
+
+/* Prefer cqi when container queries work; fallback uses parent % via clamp on tokens */
+@supports (width: 1cqi) {
+  .watchlist-row {
+    --spark-w: clamp(56px, 28cqi, 80px);
+  }
 }
 
 .row-price {

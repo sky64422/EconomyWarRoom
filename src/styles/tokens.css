@@ -40,20 +40,19 @@
   --space-4: 16px;
   --pad-x: var(--space-3);
   /*
-   * Row: symbol (content) | spark (fluid) | metrics (content).
-   * Side columns hug text so spark can sit next to the price; only
-   * --row-col-gap separates them. Shrinking width compresses spark, not a dead rail.
+   * Row model A + soft clamp spark (Apple Stocks–like):
+   * symbol (shrink last) · spark clamp(56–80) · flex gap · price (right).
+   * Extra width becomes middle air, not a full-bleed chart.
    */
-  --row-min-h: 50px;
-  --row-symbol-max: 6.5em;
+  --row-min-h: 48px;
+  --row-symbol-max: 5.75em;
   --row-metrics-min: 3.5em;
-  --spark-h: 30px;
-  /* SVG viewBox only (CSS stretches to column width) */
-  --spark-vb-w: 120;
-  --spark-vb-h: 30;
+  /* Default mid; .watchlist-row overrides with clamp(56–80) via cqi when supported */
+  --spark-w: 72px;
+  --spark-h: 28px;
   --row-action-w: 22px;
   --row-pad-x: 12px;
-  --row-col-gap: 8px;
+  --row-col-gap: 10px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));
   --sparkline-neutral: rgba(0, 0, 0, calc(0.35 * var(--fg-opacity)));
