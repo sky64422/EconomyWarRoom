@@ -1,0 +1,19 @@
+/**
+ * Bundled Pretendard (OFL) — no user install required.
+ * Weights match UI usage: 400 body, 600 labels / prices.
+ */
+@font-face {
+  font-family: "Pretendard";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/Pretendard-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Pretendard";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../assets/fonts/Pretendard-SemiBold.woff2") format("woff2");
+}

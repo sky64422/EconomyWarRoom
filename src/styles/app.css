@@ -25,7 +25,7 @@ body {
   width: 100%;
   height: 100%;
   padding: 0;
-  /* Do not stretch children to fill the window â€” glass hugs content. */
+  /* Do not stretch children to fill the window ??glass hugs content. */
   display: block;
   overflow: hidden;
   background: transparent;
@@ -49,14 +49,14 @@ body {
   backdrop-filter: saturate(180%) blur(var(--blur));
   -webkit-backdrop-filter: saturate(180%) blur(var(--blur));
   border: 1px solid var(--border);
-  /* Inset only â€” outer box-shadow paints a halo in the transparent HWND zone. */
+  /* Inset only ??outer box-shadow paints a halo in the transparent HWND zone. */
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
   overflow: hidden;
   margin: 0;
   box-sizing: border-box;
 }
 
-/* â€”â€” Header (TokenUsage-aligned: flat, no heavy bar chrome) â€”â€” */
+/* ?”â€?Header (TokenUsage-aligned: flat, no heavy bar chrome) ?”â€?*/
 .header {
   display: flex;
   align-items: center;
@@ -126,7 +126,7 @@ body {
   pointer-events: none;
 }
 
-/* â€”â€” Main content â€”â€” */
+/* ?”â€?Main content ?”â€?*/
 .content {
   flex: 0 1 auto;
   min-height: 0;
@@ -143,7 +143,7 @@ body {
   overflow: hidden;
 }
 
-/* Settings is content-sized sheet above the list â€” not a full-height takeover. */
+/* Settings is content-sized sheet above the list ??not a full-height takeover. */
 #settings-root {
   flex: 0 0 auto;
   max-height: min(42vh, 320px);
@@ -157,7 +157,7 @@ body {
   display: none;
 }
 
-/* Fallback when :has() unsupported â€” JS also toggles .settings-open on .panel */
+/* Fallback when :has() unsupported ??JS also toggles .settings-open on .panel */
 .panel:not(.settings-open) #settings-root {
   display: none;
 }
@@ -166,7 +166,7 @@ body {
   display: flex;
 }
 
-/* â€”â€” Watchlist â€”â€” */
+/* ?”â€?Watchlist ?”â€?*/
 .watchlist-view {
   flex: 1 1 auto;
   min-height: 0;
@@ -177,7 +177,7 @@ body {
 
 .watchlist {
   /* Fill remaining panel under header; scroll only if window > content min
-     and list still overflows (e.g. settings open). Do NOT use 100vh âˆ’ fudge:
+     and list still overflows (e.g. settings open). Do NOT use 100vh ??fudge:
      that was ~8px short of real content and forced a useless scrollbar. */
   flex: 1 1 auto;
   min-height: 0;
@@ -186,11 +186,11 @@ body {
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2); /* same as .watchlist-rows â€” space before + Add */
+  gap: var(--space-2); /* same as .watchlist-rows ??space before + Add */
   padding: var(--space-2);
   scrollbar-width: thin;
   scrollbar-color: var(--text-secondary) transparent;
-  /* Reserve no gutter when idle â€” scrollbar only when truly overflowing */
+  /* Reserve no gutter when idle ??scrollbar only when truly overflowing */
   scrollbar-gutter: auto;
 }
 
@@ -213,20 +213,19 @@ body {
   font-size: 12px;
 }
 
-/* Per-symbol: symbol | spark | metrics â€” Ã— overlays on hover (no dead gutter) */
+/*
+ * Balanced triptych:  symbol  |  spark (full width)  |  price
+ * Side rails are equal width ??visual mass matches left/right.
+ * Spark owns the entire center track (no max-width void).
+ */
 .watchlist-row {
   position: relative;
   display: grid;
-  grid-template-columns:
-    minmax(3.5em, 1fr)
-    var(--spark-w)
-    var(--metrics-w);
+  grid-template-columns: var(--row-side-w) minmax(0, 1fr) var(--row-side-w);
   align-items: center;
-  column-gap: var(--space-2);
-  row-gap: 0;
+  column-gap: var(--row-col-gap);
   min-height: var(--row-min-h);
-  /* Roomier symmetric inset so labels aren't glued to the card edge */
-  padding: 6px var(--row-pad-x);
+  padding: 8px var(--row-pad-x);
   border: 1px solid var(--border);
   border-radius: var(--radius-row);
   background: var(--bg-row-hover);
@@ -238,7 +237,7 @@ body {
   transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease;
 }
 
-/* Soft pastel tints â€” mix % tracks --tint-strength (opacity slider) */
+/* Soft pastel tints ??mix % tracks --tint-strength (opacity slider) */
 .watchlist-row.tint-rose {
   background: color-mix(
     in srgb,
@@ -295,26 +294,25 @@ body {
 }
 
 .row-sparkline-wrap {
-  width: var(--spark-w);
+  width: 100%;
+  min-width: 0;
   height: var(--spark-h);
   display: flex;
   align-items: center;
-  justify-content: center;
-  justify-self: center;
+  justify-content: stretch;
 }
 
 .row-metrics {
-  width: var(--metrics-w);
-  max-width: var(--metrics-w);
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
-  gap: 1px;
-  min-width: 0;
+  gap: 2px;
   margin: 0;
   padding: 0;
-  justify-self: end;
+  justify-self: stretch;
 }
 
 .watchlist-row:hover:not(.is-selected) {
@@ -357,19 +355,20 @@ body {
 
 .row-symbol {
   min-width: 0;
-  /* Match header title weight/size band for chrome unity */
+  width: 100%;
   font-weight: 600;
-  font-size: 13px;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  font-size: 14px;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   align-self: center;
+  justify-self: start;
 }
 
 .row-sparkline {
-  width: var(--spark-w);
+  width: 100%;
   height: var(--spark-h);
   display: block;
   overflow: visible;
@@ -381,23 +380,25 @@ body {
 .row-price {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 14px;
   width: 100%;
   text-align: right;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.15;
 }
 
 .row-change {
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   width: 100%;
   text-align: right;
   color: var(--text-secondary);
   white-space: nowrap;
+  line-height: 1.15;
   transition: opacity 0.12s ease, color 0.12s ease;
 }
 
@@ -445,7 +446,7 @@ body {
   color: var(--down);
 }
 
-/* â€”â€” Add (simple centered control, same card size as rows) â€”â€” */
+/* ?”â€?Add (simple centered control, same card size as rows) ?”â€?*/
 .watchlist-footer {
   flex: 0 0 auto;
   padding: 0;
@@ -734,7 +735,7 @@ body {
   color: var(--down);
 }
 
-/* â€”â€” Settings panel (compact card; no flex-grow empty gap) â€”â€” */
+/* ?”â€?Settings panel (compact card; no flex-grow empty gap) ?”â€?*/
 .settings-panel {
   flex: 0 0 auto;
   height: auto;

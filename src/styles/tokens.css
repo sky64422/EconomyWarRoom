@@ -39,20 +39,26 @@
   --space-3: 12px;
   --space-4: 16px;
   --pad-x: var(--space-3);
-  /* Compact row metrics — denser widget chrome */
-  --row-min-h: 44px;
-  --spark-w: 72px;
-  --spark-h: 28px;
-  /* Fixed metrics column; remove (×) is hover overlay — no reserved gutter */
-  --metrics-w: 4.75em;
+  /*
+   * Row geometry: equal side rails + fluid spark (iOS Stocks-like).
+   * Side columns share the same track width so left/right mass balances;
+   * the spark always paints the full middle track - no dead air.
+   */
+
+  --row-min-h: 50px;
+  --row-side-w: 6em;
+  --spark-h: 30px;
+  /* SVG viewBox only (CSS stretches to column width) */
+  --spark-vb-w: 120;
+  --spark-vb-h: 30;
   --row-action-w: 22px;
-  /* In-card horizontal inset (symbol / price breathing room) */
   --row-pad-x: 12px;
+  --row-col-gap: 10px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));
   --sparkline-neutral: rgba(0, 0, 0, calc(0.35 * var(--fg-opacity)));
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Pretendard,
-    "Pretendard Variable", "Segoe UI", system-ui, sans-serif;
+  /* Pretendard bundled via fonts.css; system stack is fallback only */
+  font-family: "Pretendard", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
 html[data-theme="dark"] {
