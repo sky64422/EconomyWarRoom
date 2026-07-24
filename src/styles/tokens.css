@@ -40,20 +40,20 @@
   --space-4: 16px;
   --pad-x: var(--space-3);
   /*
-   * Row geometry: equal side rails + fluid spark (iOS Stocks-like).
-   * Side columns share the same track width so left/right mass balances;
-   * the spark always paints the full middle track - no dead air.
+   * Row: symbol (content) | spark (fluid) | metrics (content).
+   * Side columns hug text so spark can sit next to the price; only
+   * --row-col-gap separates them. Shrinking width compresses spark, not a dead rail.
    */
-
   --row-min-h: 50px;
-  --row-side-w: 6em;
+  --row-symbol-max: 6.5em;
+  --row-metrics-min: 3.5em;
   --spark-h: 30px;
   /* SVG viewBox only (CSS stretches to column width) */
   --spark-vb-w: 120;
   --spark-vb-h: 30;
   --row-action-w: 22px;
   --row-pad-x: 12px;
-  --row-col-gap: 10px;
+  --row-col-gap: 8px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));
   --sparkline-neutral: rgba(0, 0, 0, calc(0.35 * var(--fg-opacity)));

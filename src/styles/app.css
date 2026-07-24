@@ -56,7 +56,7 @@ body {
   box-sizing: border-box;
 }
 
-/* ?”â€?Header (TokenUsage-aligned: flat, no heavy bar chrome) ?”â€?*/
+/* ?ï¿½ï¿½?Header (TokenUsage-aligned: flat, no heavy bar chrome) ?ï¿½ï¿½?*/
 .header {
   display: flex;
   align-items: center;
@@ -126,7 +126,7 @@ body {
   pointer-events: none;
 }
 
-/* ?”â€?Main content ?”â€?*/
+/* ?ï¿½ï¿½?Main content ?ï¿½ï¿½?*/
 .content {
   flex: 0 1 auto;
   min-height: 0;
@@ -166,7 +166,7 @@ body {
   display: flex;
 }
 
-/* ?”â€?Watchlist ?”â€?*/
+/* ?ï¿½ï¿½?Watchlist ?ï¿½ï¿½?*/
 .watchlist-view {
   flex: 1 1 auto;
   min-height: 0;
@@ -214,14 +214,16 @@ body {
 }
 
 /*
- * Balanced triptych:  symbol  |  spark (full width)  |  price
- * Side rails are equal width ??visual mass matches left/right.
- * Spark owns the entire center track (no max-width void).
+ * symbol (max-content) | spark (1fr fills the rest) | metrics (max-content)
+ * Fixed equal side rails left a permanent hole between spark and price.
  */
 .watchlist-row {
   position: relative;
   display: grid;
-  grid-template-columns: var(--row-side-w) minmax(0, 1fr) var(--row-side-w);
+  grid-template-columns:
+    minmax(0, max-content)
+    minmax(40px, 1fr)
+    minmax(var(--row-metrics-min), max-content);
   align-items: center;
   column-gap: var(--row-col-gap);
   min-height: var(--row-min-h);
@@ -303,8 +305,9 @@ body {
 }
 
 .row-metrics {
-  width: 100%;
-  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+  min-width: var(--row-metrics-min);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -312,7 +315,7 @@ body {
   gap: 2px;
   margin: 0;
   padding: 0;
-  justify-self: stretch;
+  justify-self: end;
 }
 
 .watchlist-row:hover:not(.is-selected) {
@@ -355,7 +358,8 @@ body {
 
 .row-symbol {
   min-width: 0;
-  width: 100%;
+  max-width: var(--row-symbol-max);
+  width: max-content;
   font-weight: 600;
   font-size: 14px;
   letter-spacing: -0.025em;
@@ -446,7 +450,7 @@ body {
   color: var(--down);
 }
 
-/* ?”â€?Add (simple centered control, same card size as rows) ?”â€?*/
+/* ?ï¿½ï¿½?Add (simple centered control, same card size as rows) ?ï¿½ï¿½?*/
 .watchlist-footer {
   flex: 0 0 auto;
   padding: 0;
@@ -735,7 +739,7 @@ body {
   color: var(--down);
 }
 
-/* ?”â€?Settings panel (compact card; no flex-grow empty gap) ?”â€?*/
+/* ?ï¿½ï¿½?Settings panel (compact card; no flex-grow empty gap) ?ï¿½ï¿½?*/
 .settings-panel {
   flex: 0 0 auto;
   height: auto;
