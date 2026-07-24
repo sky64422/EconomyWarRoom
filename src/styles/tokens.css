@@ -9,6 +9,8 @@
   --fg-opacity: 0.92;
   --accent-opacity: 0.95;
   --chrome-opacity: 0.92;
+  /* Pastel card tints scale with opacity slider (see applyPanelOpacity) */
+  --tint-strength: 0.92;
 
   --text-rgb: 29, 29, 31;
   --up-rgb: 52, 199, 89;
@@ -41,9 +43,11 @@
   --row-min-h: 44px;
   --spark-w: 72px;
   --spark-h: 28px;
-  /* Fixed metrics + action columns → even left/right rhythm across rows */
+  /* Fixed metrics column; remove (×) is hover overlay — no reserved gutter */
   --metrics-w: 4.75em;
-  --row-action-w: 28px;
+  --row-action-w: 22px;
+  /* In-card horizontal inset (symbol / price breathing room) */
+  --row-pad-x: 12px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));
   --sparkline-neutral: rgba(0, 0, 0, calc(0.35 * var(--fg-opacity)));
@@ -86,5 +90,6 @@ html[data-theme="dark"] {
     --fg-opacity: 1;
     --accent-opacity: 1;
     --chrome-opacity: 1;
+    --tint-strength: 1;
   }
 }

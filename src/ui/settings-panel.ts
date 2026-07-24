@@ -277,9 +277,10 @@ export function applyThemeToDocument(theme: ThemeMode): void {
 }
 
 /**
- * Glass opacity + matching text/chart alpha (TokenUsage-aligned).
- * Background uses --panel-opacity; fg/accent/chrome track the slider so
- * labels, prices, and sparklines don't stay fully solid while glass fades.
+ * Glass opacity + matching text/chart/tint alpha (TokenUsage-aligned).
+ * Background uses --panel-opacity; fg/accent/chrome/tint track the slider so
+ * labels, prices, sparklines, and pastel card tints don't stay fully solid
+ * while glass fades.
  */
 export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
   const o = Math.min(1, Math.max(0.35, opacity));
@@ -287,6 +288,8 @@ export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
   const fg = Math.min(1, Math.max(0.62, o * 1.02));
   const accent = Math.min(1, Math.max(0.55, o * 1.05));
   const chrome = Math.min(1, Math.max(0.4, o));
+  // Card pastel mix strength — same floor as chrome so tints stay soft, not chalky
+  const tint = chrome;
 
   const root = document.documentElement;
   for (const el of [panel, root]) {
@@ -294,5 +297,6 @@ export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
     el.style.setProperty("--fg-opacity", String(fg));
     el.style.setProperty("--accent-opacity", String(accent));
     el.style.setProperty("--chrome-opacity", String(chrome));
+    el.style.setProperty("--tint-strength", String(tint));
   }
 }
