@@ -454,6 +454,42 @@ body {
   border-style: solid;
 }
 
+/* Same pastel tints as watchlist rows (right-click on +Add) */
+.add-card.tint-rose {
+  background: color-mix(in srgb, #ffb3c1 42%, var(--bg-row-hover));
+  border-color: color-mix(in srgb, #ffb3c1 55%, var(--border));
+  color: color-mix(in srgb, #ffb3c1 35%, var(--text));
+}
+.add-card.tint-peach {
+  background: color-mix(in srgb, #ffd6a5 48%, var(--bg-row-hover));
+  border-color: color-mix(in srgb, #ffd6a5 55%, var(--border));
+  color: color-mix(in srgb, #ffd6a5 30%, var(--text));
+}
+.add-card.tint-mint {
+  background: color-mix(in srgb, #b8f2e6 48%, var(--bg-row-hover));
+  border-color: color-mix(in srgb, #b8f2e6 55%, var(--border));
+  color: color-mix(in srgb, #b8f2e6 30%, var(--text));
+}
+.add-card.tint-sky {
+  background: color-mix(in srgb, #a0c4ff 48%, var(--bg-row-hover));
+  border-color: color-mix(in srgb, #a0c4ff 55%, var(--border));
+  color: color-mix(in srgb, #a0c4ff 35%, var(--text));
+}
+.add-card.tint-lavender {
+  background: color-mix(in srgb, #cdb4db 48%, var(--bg-row-hover));
+  border-color: color-mix(in srgb, #cdb4db 55%, var(--border));
+  color: color-mix(in srgb, #cdb4db 35%, var(--text));
+}
+.add-card.tint-lemon {
+  background: color-mix(in srgb, #fdffb6 52%, var(--bg-row-hover));
+  border-color: color-mix(in srgb, #fdffb6 55%, var(--border));
+  color: color-mix(in srgb, #fdffb6 25%, var(--text));
+}
+.add-card[class*="tint-"]:hover {
+  border-style: solid;
+  filter: brightness(1.06);
+}
+
 .add-card--active {
   display: flex;
   flex-direction: row;

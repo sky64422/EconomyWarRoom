@@ -17,6 +17,8 @@ use infrastructure::window_ctl;
 use infrastructure::yahoo::YahooProvider;
 use state::AppHandleState;
 use std::sync::Arc;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
@@ -68,6 +70,8 @@ pub fn run() {
             // --- window policy from settings ---
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window_ctl::apply_always_on_top(&window, true);
+                // Floating widget: live on the desktop + tray, not the taskbar.
+                let _ = window.set_skip_taskbar(true);
                 if let Err(e) = window_ctl::apply_geometry(&window, &persisted.settings.window) {
                     eprintln!("apply_geometry: {e}");
                     handle_state
@@ -94,6 +98,14 @@ pub fn run() {
                 handle_state
                     .core
                     .note(DiagLevel::Error, "main window not found at setup");
+            }
+
+            // --- system tray (show / hide / quit) ---
+            if let Err(e) = setup_system_tray(app) {
+                eprintln!("system tray setup failed: {e}");
+                handle_state
+                    .core
+                    .note(DiagLevel::Warn, format!("system tray setup failed: {e}"));
             }
 
             // --- autostart (best-effort) ---
@@ -223,4 +235,61 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Tray-only presence for a desktop widget (no taskbar button).
+fn setup_system_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
+    let hide_i = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
+    let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show_i, &hide_i, &quit_i])?;
+
+    let icon = app
+        .default_window_icon()
+        .ok_or("default window icon missing")?
+        .clone();
+
+    let _tray = TrayIconBuilder::with_id("main")
+        .icon(icon)
+        .tooltip("Economy War Room")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let Some(state) = app.try_state::<AppHandleState>() else {
+                        return;
+                    };
+                    let _ = commands::set_visibility(&app, &state, true).await;
+                });
+            }
+            "hide" => {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let Some(state) = app.try_state::<AppHandleState>() else {
+                        return;
+                    };
+                    let _ = commands::set_visibility(&app, &state, false).await;
+                });
+            }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                // Left-click tray icon: toggle widget visibility (same as hotkey).
+                commands::toggle_visibility_from_handle(tray.app_handle());
+            }
+        })
+        .build(app)?;
+
+    Ok(())
 }

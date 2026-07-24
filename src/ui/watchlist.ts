@@ -89,8 +89,30 @@ function strokeForTone(tone: "up" | "down" | "flat"): string {
 
 function normalizeTint(raw: CardTint | undefined | null): CardTint {
   if (!raw || raw === "none") return "none";
-  return raw;
+  const ok = CARD_TINTS.some((t) => t.value === raw);
+  return ok ? raw : "none";
 }
+
+const ADD_TINT_STORAGE_KEY = "ewr.add_card_tint";
+
+function loadAddCardTint(): CardTint {
+  try {
+    return normalizeTint(localStorage.getItem(ADD_TINT_STORAGE_KEY) as CardTint | null);
+  } catch {
+    return "none";
+  }
+}
+
+function saveAddCardTint(tint: CardTint): void {
+  try {
+    if (tint === "none") localStorage.removeItem(ADD_TINT_STORAGE_KEY);
+    else localStorage.setItem(ADD_TINT_STORAGE_KEY, tint);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+type TintTarget = { kind: "item"; id: string } | { kind: "add" };
 
 export function mountWatchlist(root: HTMLElement): WatchlistController {
   let items: WatchlistItem[] = [];
@@ -110,6 +132,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
   let searchSeq = 0;
   let sparkTickTimer: ReturnType<typeof setInterval> | null = null;
   let tintMenuEl: HTMLElement | null = null;
+  let addCardTint: CardTint = loadAddCardTint();
 
   root.innerHTML = `
     <div class="watchlist-view">
@@ -142,11 +165,16 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     }
   }
 
-  function openTintMenu(id: string, clientX: number, clientY: number): void {
+  function openTintMenu(target: TintTarget, clientX: number, clientY: number): void {
     closeTintMenu();
-    const item = items.find((i) => i.id === id);
-    if (!item) return;
-    const current = normalizeTint(item.card_tint);
+    let current: CardTint = "none";
+    if (target.kind === "item") {
+      const item = items.find((i) => i.id === target.id);
+      if (!item) return;
+      current = normalizeTint(item.card_tint);
+    } else {
+      current = normalizeTint(addCardTint);
+    }
     const menu = document.createElement("div");
     menu.className = "tint-menu";
     menu.setAttribute("role", "menu");
@@ -179,13 +207,35 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     menu.querySelectorAll<HTMLButtonElement>("[data-tint]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const tint = btn.dataset.tint as CardTint;
+        const tint = normalizeTint(btn.dataset.tint as CardTint);
         closeTintMenu();
-        void invoke("set_card_tint", { id, tint }).catch((err) => {
-          console.error("set_card_tint failed", err);
-        });
+        if (target.kind === "item") {
+          void invoke("set_card_tint", { id: target.id, tint }).catch((err) => {
+            console.error("set_card_tint failed", err);
+          });
+        } else {
+          addCardTint = tint;
+          saveAddCardTint(tint);
+          // Idle +Add re-render so tint class applies immediately
+          if (!adding) renderFooter();
+          else applyAddCardTintClass();
+        }
       });
     });
+  }
+
+  function addCardTintClass(): string {
+    const tint = normalizeTint(addCardTint);
+    return tint !== "none" ? ` tint-${tint}` : "";
+  }
+
+  function applyAddCardTintClass(): void {
+    const el = footerEl.querySelector<HTMLElement>(".add-card");
+    if (!el) return;
+    for (const t of CARD_TINTS) {
+      if (t.value === "none") continue;
+      el.classList.toggle(`tint-${t.value}`, t.value === addCardTint);
+    }
   }
 
   function applySelectionClasses(): void {
@@ -530,15 +580,23 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
       });
     } else {
       footerEl.innerHTML = `
-        <button type="button" class="add-card" id="btn-add" aria-label="Add symbol">+ Add</button>
+        <button type="button" class="add-card${addCardTintClass()}" id="btn-add"
+          aria-label="Add symbol"
+          title="Click to add · right-click color">+ Add</button>
       `;
-      footerEl.querySelector("#btn-add")!.addEventListener("click", () => {
+      const btn = footerEl.querySelector("#btn-add") as HTMLButtonElement;
+      btn.addEventListener("click", () => {
         adding = true;
         addError = null;
         addQuery = "";
         suggestions = [];
         activeSuggest = -1;
         renderFooter();
+      });
+      btn.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openTintMenu({ kind: "add" }, e.clientX, e.clientY);
       });
     }
   }
@@ -647,7 +705,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         const id = row.dataset.id;
         if (!id) return;
         if (!selected.has(id)) selectSingle(id);
-        openTintMenu(id, e.clientX, e.clientY);
+        openTintMenu({ kind: "item", id }, e.clientX, e.clientY);
       });
 
       row.addEventListener("pointerdown", (e) => {
