@@ -198,7 +198,7 @@ export function sparklineSvgMarkup(
           : ""
       }
     </defs>
-    <path d="${baseline}" fill="none" stroke="${options.stroke}" stroke-opacity="0.32" stroke-width="1" stroke-dasharray="3 3" stroke-linecap="round" />
+    <path class="spark-baseline" d="${baseline}" fill="none" stroke="var(--sparkline-baseline)" stroke-width="1" stroke-dasharray="3 3" stroke-linecap="round" />
     <g ${animate ? `clip-path="url(#${clipId})"` : ""}>
       <path d="${area}" fill="url(#${gradientId})" stroke="none" />
       <path d="${line}" fill="none" stroke="${options.stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" ${animate ? 'pathLength="100" stroke-dasharray="100" stroke-dashoffset="' + dashOffset.toFixed(2) + '"' : ""} />

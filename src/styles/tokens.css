@@ -40,22 +40,24 @@
   --space-4: 16px;
   --pad-x: var(--space-3);
   /*
-   * Row model A + soft clamp spark (Apple Stocks–like):
-   * symbol (shrink last) · spark clamp(56–80) · flex gap · price (right).
-   * Extra width becomes middle air, not a full-bleed chart.
+   * Proportional row (no px clamp tuning):
+   * symbol | spark | metrics  as fr shares of the card content box.
+   * Resize → all three scale together; only pad/gap stay small fixed chrome.
    */
   --row-min-h: 48px;
-  --row-symbol-max: 5.75em;
-  --row-metrics-min: 3.5em;
-  /* Default mid; .watchlist-row overrides with clamp(56–80) via cqi when supported */
-  --spark-w: 72px;
+  /* ~38% / 35% / 27% */
+  --row-col-symbol: 1.4fr;
+  --row-col-spark: 1.3fr;
+  --row-col-metrics: 1fr;
   --spark-h: 28px;
   --row-action-w: 22px;
   --row-pad-x: 12px;
-  --row-col-gap: 10px;
+  --row-col-gap: 8px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));
   --sparkline-neutral: rgba(0, 0, 0, calc(0.35 * var(--fg-opacity)));
+  /* Between muted gray and full ticker text — readable but not loud */
+  --sparkline-baseline: var(--text-secondary);
   /* Pretendard bundled via fonts.css; system stack is fallback only */
   font-family: "Pretendard", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
@@ -71,6 +73,7 @@ html[data-theme="dark"] {
   --text-secondary: rgba(255, 255, 255, calc(0.55 * var(--fg-opacity)));
   --text-tertiary: rgba(255, 255, 255, calc(0.38 * var(--fg-opacity)));
   --sparkline-neutral: rgba(255, 255, 255, calc(0.35 * var(--fg-opacity)));
+  --sparkline-baseline: var(--text-secondary);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -85,6 +88,7 @@ html[data-theme="dark"] {
     --text-secondary: rgba(255, 255, 255, calc(0.55 * var(--fg-opacity)));
     --text-tertiary: rgba(255, 255, 255, calc(0.38 * var(--fg-opacity)));
     --sparkline-neutral: rgba(255, 255, 255, calc(0.35 * var(--fg-opacity)));
+    --sparkline-baseline: var(--text-secondary);
   }
 }
 

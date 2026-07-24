@@ -214,17 +214,19 @@ body {
 }
 
 /*
- * symbol | soft-clamped spark | ··· | metrics
- * Container query so spark tracks card width, not the whole viewport.
+ * Proportional triptych — shares of content width, not magic px widths.
+ * ~30% symbol · ~39% spark · ~31% metrics (from fr weights below).
  */
 .watchlist-row {
   position: relative;
-  container-type: inline-size;
-  container-name: watch-row;
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns:
+    minmax(0, var(--row-col-symbol))
+    minmax(0, var(--row-col-spark))
+    minmax(0, var(--row-col-metrics));
   align-items: center;
-  gap: var(--row-col-gap);
+  justify-items: stretch;
+  column-gap: var(--row-col-gap);
   min-height: var(--row-min-h);
   padding: 7px var(--row-pad-x);
   border: 1px solid var(--border);
@@ -295,28 +297,29 @@ body {
 }
 
 .row-sparkline-wrap {
-  /* Grow/shrink only inside clamp — never full-bleed 1fr */
-  flex: 0 1 var(--spark-w);
-  width: var(--spark-w);
-  min-width: 56px;
-  max-width: 80px;
+  /* min-width:0 — grid/fr children otherwise keep SVG intrinsic min and refuse to grow */
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   height: var(--spark-h);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  overflow: hidden;
+  justify-self: stretch;
 }
 
 .row-metrics {
-  flex: 0 0 auto;
-  width: max-content;
-  min-width: var(--row-metrics-min);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
   gap: 2px;
-  margin: 0 0 0 auto; /* pin quote to the right; leftover width = middle air */
+  margin: 0;
   padding: 0;
+  justify-self: stretch;
 }
 
 .watchlist-row:hover:not(.is-selected) {
@@ -358,10 +361,10 @@ body {
 }
 
 .row-symbol {
-  /* Shrink after spark hits min (flex-shrink higher than spark) */
-  flex: 0 1 auto;
-  min-width: 2.75em;
-  max-width: var(--row-symbol-max);
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
   font-weight: 600;
   font-size: 14px;
   letter-spacing: -0.025em;
@@ -370,23 +373,21 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   align-self: center;
+  justify-self: stretch;
+  text-align: left;
 }
 
 .row-sparkline {
-  width: 100%;
-  height: var(--spark-h);
   display: block;
-  overflow: visible;
-  /* Uniform scale into the clamped box — no axis stretch */
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  /* Fill the proportional spark column edge-to-edge as the widget resizes */
   opacity: var(--accent-opacity, 0.95);
   transition: opacity 0.12s ease;
-}
-
-/* Prefer cqi when container queries work; fallback uses parent % via clamp on tokens */
-@supports (width: 1cqi) {
-  .watchlist-row {
-    --spark-w: clamp(56px, 28cqi, 80px);
-  }
+  overflow: visible;
 }
 
 .row-price {

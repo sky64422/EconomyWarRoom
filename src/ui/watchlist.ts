@@ -12,10 +12,10 @@ import type {
 import { CARD_TINTS } from "./types";
 
 /**
- * SVG viewBox at the soft-clamp mid (≈72). CSS width is clamp(56–80);
- * preserveAspectRatio meet keeps proportions inside the box.
+ * SVG coordinate system only — CSS width is the proportional spark column.
+ * none: fill the share edge-to-edge as the card resizes (ratio model).
  */
-const SPARK_W = 72;
+const SPARK_W = 100;
 const SPARK_H = 28;
 const SPARK_TICK_MS = 1000;
 const DRAG_THRESHOLD_PX = 6;
@@ -343,7 +343,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
               data-tint="${tint}" title="Click to select · drag to reorder · right-click color">
               <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
               <div class="row-sparkline-wrap">
-                <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="xMidYMid meet" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
+                <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
                   ${sparkMarkup}
                 </svg>
               </div>
