@@ -30,3 +30,5 @@ tmp/
 
 
 .tmp-ui*.png
+
+.tmp-eval*.png
