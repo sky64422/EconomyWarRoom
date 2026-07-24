@@ -49,6 +49,42 @@ pub fn hide_window(window: &WebviewWindow) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())
 }
 
+/// Kill OS/CSS fringe outside the rounded glass (Windows WebView2).
+/// Note: SetWindowRgn clips break DWM transparency — use DWM corner prefs only.
+/// (Ported from TokenUsage — Tauri docs: shadow:true draws a 1px white border.)
+pub fn apply_clean_glass_edge(window: &WebviewWindow) -> Result<(), String> {
+    use tauri::window::Color;
+    // Fully transparent surface; avoids default white HWND fill in corners.
+    let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
+    // OS drop-shadow on transparent windows draws a light ring outside CSS radius.
+    let _ = window.set_shadow(false);
+    #[cfg(windows)]
+    apply_dwm_round_corners(window)?;
+    Ok(())
+}
+
+/// Win11: prefer system-rounded window so square transparent corners are not shown.
+#[cfg(windows)]
+fn apply_dwm_round_corners(window: &WebviewWindow) -> Result<(), String> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWM_WINDOW_CORNER_PREFERENCE, DWMWA_WINDOW_CORNER_PREFERENCE,
+        DWMWCP_ROUND,
+    };
+
+    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+    let pref = DWMWCP_ROUND;
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            HWND(hwnd.0),
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &pref as *const DWM_WINDOW_CORNER_PREFERENCE as *const _,
+            std::mem::size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
+        );
+    }
+    Ok(())
+}
+
 /// Install OS-level min size (hard wall while dragging). Uses physical pixels.
 pub fn apply_content_min_size(
     window: &impl WindowMinSize,

@@ -294,6 +294,7 @@ pub fn set_content_min_size(
             note_err(&state, "ensure_at_least_min_size", &e);
             e
         })?;
+        let _ = window_ctl::apply_clean_glass_edge(&window);
     }
     Ok(())
 }

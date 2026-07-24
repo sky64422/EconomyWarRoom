@@ -41,14 +41,17 @@ body {
   height: max-content;
   max-height: 100%;
   min-height: 0;
+  /* Radius 0 in CSS; Windows DWM rounds the HWND (no transparent square corners). */
   border-radius: var(--radius);
   /* Opacity slider drives glass fill alpha: 100% = solid (no desktop bleed). */
   background: rgba(var(--bg-glass-rgb-active), var(--panel-opacity, 0.92));
   backdrop-filter: blur(calc(var(--blur) * (1.05 - var(--panel-opacity, 0.92))));
   -webkit-backdrop-filter: blur(calc(var(--blur) * (1.05 - var(--panel-opacity, 0.92))));
   border: 1px solid var(--border);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  /* Inset only — outer box-shadow paints a halo in the transparent HWND zone. */
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
   overflow: hidden;
+  margin: 0;
   box-sizing: border-box;
   --text-opacity: calc(0.72 + var(--panel-opacity, 0.92) * 0.28);
 }

@@ -81,6 +81,13 @@ pub fn run() {
                         .core
                         .note(DiagLevel::Warn, format!("apply_opacity: {e}"));
                 }
+                // Transparent edge: no OS shadow / white ring (see TokenUsage).
+                if let Err(e) = window_ctl::apply_clean_glass_edge(&window) {
+                    eprintln!("apply_clean_glass_edge: {e}");
+                    handle_state
+                        .core
+                        .note(DiagLevel::Warn, format!("apply_clean_glass_edge: {e}"));
+                }
                 let _ = window_ctl::show_window(&window);
             } else {
                 eprintln!("main window not found at setup");
@@ -185,6 +192,10 @@ pub fn run() {
                     window_ctl::clamp_physical_size_to_content_min(window, *size, min_w, min_h)
                 {
                     eprintln!("clamp resize: {e}");
+                }
+                // Re-apply DWM round / transparent edge after content-hug or drag resize.
+                if let Some(w) = window.app_handle().get_webview_window(window.label()) {
+                    let _ = window_ctl::apply_clean_glass_edge(&w);
                 }
             }
         })

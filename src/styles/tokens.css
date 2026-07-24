@@ -13,7 +13,9 @@
   --up: #34c759;
   --down: #ff3b30;
   --accent: #007aff;
-  --radius: 16px;
+  /* Panel chrome uses OS DWM rounding on Windows (apply_clean_glass_edge).
+     CSS radius 0 avoids double-AA transparent corners (white fringe). */
+  --radius: 0px;
   --radius-row: 12px;
   --blur: 20px;
   --header-height: 44px;
