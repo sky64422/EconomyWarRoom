@@ -50,28 +50,172 @@ function guessAssetKind(symbol: string): AssetKind {
   return "equity";
 }
 
-/** Compact, stable-width friendly prices (tabular metrics column). */
+/** Compact prices for narrow widget columns. */
 function formatPrice(price: number): string {
   if (!Number.isFinite(price)) return "--";
   const a = Math.abs(price);
-  // Large prices: no cents — keeps metrics column from ballooning (e.g. BTC)
-  if (a >= 1000) {
+  if (a >= 10_000) {
     return Math.round(price).toLocaleString("en-US");
   }
+  if (a >= 1000) {
+    return price.toLocaleString("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  }
+  if (a >= 100) return price.toFixed(1);
   if (a >= 1) return price.toFixed(2);
-  if (a >= 0.01) return price.toFixed(4);
-  return price.toPrecision(3);
+  if (a >= 0.01) return price.toFixed(3);
+  return price.toPrecision(2);
 }
 
-function formatChange(pct: number | null | undefined): string {
-  if (pct == null || !Number.isFinite(pct)) return "--";
+function formatChange(pct: number | null | undefined, compact = false): string {
+  if (pct == null || !Number.isFinite(pct)) return "";
   const sign = pct > 0 ? "+" : "";
-  return `${sign}${pct.toFixed(2)}%`;
+  const digits = compact ? 1 : 2;
+  return `${sign}${pct.toFixed(digits)}%`;
+}
+
+/** Inline suffix: `(+0.42%)` — empty when no change. Gap vs price is CSS. */
+function formatChangeParen(pct: number | null | undefined, compact = false): string {
+  const inner = formatChange(pct, compact);
+  return inner ? `(${inner})` : "";
 }
 
 function changeClass(pct: number | null | undefined): string {
   if (pct == null || !Number.isFinite(pct) || pct === 0) return "";
   return pct > 0 ? "up" : "down";
+}
+
+interface PriceRow {
+  price: number | null;
+  change: number | null;
+}
+
+interface PriceRows {
+  primary: PriceRow;
+  secondary: PriceRow;
+}
+
+function isExtendedSession(state: string | null | undefined): boolean {
+  if (!state) return false;
+  const s = state.toLowerCase();
+  return s === "pre" || s === "prepre" || s === "post" || s === "postpost" || s === "closed";
+}
+
+function extendedChangePercent(q: Quote): number | null {
+  if (q.extended_change_percent != null && Number.isFinite(q.extended_change_percent)) {
+    return q.extended_change_percent;
+  }
+  const ext = q.extended_price;
+  const reg = q.regular_price ?? q.price;
+  if (ext == null || !Number.isFinite(ext) || !Number.isFinite(reg) || reg === 0) {
+    return null;
+  }
+  return ((ext - reg) / reg) * 100;
+}
+
+function isExtendedQuote(q: Quote): boolean {
+  if (q.extended_price == null) return false;
+  if (isExtendedSession(q.market_state)) return true;
+  const reg = q.regular_price ?? q.price;
+  return Math.abs(q.extended_price - reg) > 0.0001;
+}
+
+/** Primary = live/extended; secondary = reference close row (muted). */
+function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): PriceRows {
+  const empty: PriceRow = { price: null, change: null };
+  if (!q) {
+    return { primary: empty, secondary: empty };
+  }
+
+  const previousClose = q.previous_close ?? sparkPrevClose ?? null;
+  const regularPrice = q.regular_price ?? q.price;
+  const regularChange = q.regular_change_percent ?? q.change_percent ?? null;
+  const priorChange = q.previous_day_change_percent ?? null;
+
+  if (isExtendedQuote(q) && q.extended_price != null) {
+    return {
+      primary: {
+        price: q.extended_price,
+        change: extendedChangePercent(q),
+      },
+      secondary: {
+        price: regularPrice,
+        change: regularChange,
+      },
+    };
+  }
+
+  return {
+    primary: {
+      price: q.price,
+      change: q.change_percent ?? null,
+    },
+    secondary: {
+      price: previousClose,
+      change: priorChange,
+    },
+  };
+}
+
+function metricsMarkup(
+  symbol: string,
+  rows: PriceRows,
+): string {
+  const primaryPrice = rows.primary.price != null ? formatPrice(rows.primary.price) : "--";
+  const primaryChange = formatChangeParen(rows.primary.change);
+  const primaryCls = changeClass(rows.primary.change);
+  const secondaryPrice =
+    rows.secondary.price != null ? formatPrice(rows.secondary.price) : "--";
+  const secondaryChange = formatChangeParen(rows.secondary.change, true);
+  const secondaryCls = changeClass(rows.secondary.change);
+
+  return `
+    <div class="row-metrics">
+      <div class="row-quote row-quote--primary">
+        <span class="row-price" data-price-primary="${escapeAttr(symbol)}">${escapeHtml(primaryPrice)}</span><span class="row-change ${primaryCls}" data-change-primary="${escapeAttr(symbol)}"${primaryChange ? "" : " hidden"}>${escapeHtml(primaryChange)}</span>
+      </div>
+      <div class="row-quote row-quote--secondary">
+        <span class="row-price" data-price-secondary="${escapeAttr(symbol)}">${escapeHtml(secondaryPrice)}</span><span class="row-change ${secondaryCls}" data-change-secondary="${escapeAttr(symbol)}"${secondaryChange ? "" : " hidden"}>${escapeHtml(secondaryChange)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function patchMetricsRow(
+  row: HTMLElement,
+  rows: PriceRows,
+): void {
+  const primaryPriceEl = row.querySelector<HTMLElement>("[data-price-primary]");
+  const primaryChangeEl = row.querySelector<HTMLElement>("[data-change-primary]");
+  const secondaryPriceEl = row.querySelector<HTMLElement>("[data-price-secondary]");
+  const secondaryChangeEl = row.querySelector<HTMLElement>("[data-change-secondary]");
+
+  if (primaryPriceEl) {
+    primaryPriceEl.textContent =
+      rows.primary.price != null ? formatPrice(rows.primary.price) : "--";
+  }
+  if (primaryChangeEl) {
+    const txt = formatChangeParen(rows.primary.change);
+    primaryChangeEl.textContent = txt;
+    primaryChangeEl.hidden = !txt;
+    primaryChangeEl.classList.remove("up", "down");
+    const cls = changeClass(rows.primary.change);
+    if (cls) primaryChangeEl.classList.add(cls);
+  }
+  if (secondaryPriceEl) {
+    secondaryPriceEl.textContent =
+      rows.secondary.price != null ? formatPrice(rows.secondary.price) : "--";
+  }
+  if (secondaryChangeEl) {
+    const txt = formatChangeParen(rows.secondary.change, true);
+    secondaryChangeEl.textContent = txt;
+    secondaryChangeEl.hidden = !txt;
+    secondaryChangeEl.classList.remove("up", "down");
+    const cls = changeClass(rows.secondary.change);
+    if (cls) secondaryChangeEl.classList.add(cls);
+  }
 }
 
 function toneForChange(
@@ -181,6 +325,10 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     const menu = document.createElement("div");
     menu.className = "tint-menu";
     menu.setAttribute("role", "menu");
+    const removeLabel =
+      target.kind === "item" && selected.size > 1 && selected.has(target.id)
+        ? `Remove ${selected.size}`
+        : "Remove";
     menu.innerHTML = `
       <div class="tint-menu-label">Card color</div>
       <div class="tint-swatches">
@@ -191,6 +339,12 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         `,
         ).join("")}
       </div>
+      ${
+        target.kind === "item"
+          ? `<div class="tint-menu-divider" role="separator"></div>
+      <button type="button" class="tint-menu-action tint-menu-action--danger" data-action="remove" role="menuitem">${escapeHtml(removeLabel)}</button>`
+          : ""
+      }
     `;
     document.body.appendChild(menu);
     const pad = 8;
@@ -223,6 +377,21 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           if (!adding) renderFooter();
           else applyAddCardTintClass();
         }
+      });
+    });
+
+    menu.querySelector<HTMLButtonElement>('[data-action="remove"]')?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeTintMenu();
+      if (target.kind !== "item") return;
+      // Multi-select: remove all selected when the target is part of the selection
+      if (selected.size > 1 && selected.has(target.id)) {
+        void deleteSelected();
+        return;
+      }
+      selected.delete(target.id);
+      void invoke("remove_symbol", { id: target.id }).catch((err) => {
+        console.error("remove_symbol failed", err);
       });
     });
   }
@@ -337,21 +506,20 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
             },
             sp?.previous_close ?? null,
           );
+          const priceRows = resolvePriceRows(q, sp?.previous_close ?? null);
           return `
-            <div class="watchlist-row${tintClass}${selectedClass}" role="listitem" tabindex="0"
+            <div class="watchlist-row watchlist-card${tintClass}${selectedClass}" role="listitem" tabindex="0"
               data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}"
-              data-tint="${tint}" title="Click to select · drag to reorder · right-click color">
+              data-tint="${tint}" title="Click to select · drag to reorder · right-click menu">
               <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
-              <div class="row-sparkline-wrap">
-                <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
-                  ${sparkMarkup}
-                </svg>
+              <div class="row-market">
+                <div class="row-sparkline-wrap">
+                  <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
+                    ${sparkMarkup}
+                  </svg>
+                </div>
+                ${metricsMarkup(item.symbol, priceRows)}
               </div>
-              <div class="row-metrics">
-                <span class="row-price" data-price="${escapeAttr(item.symbol)}">${q ? escapeHtml(formatPrice(q.price)) : "--"}</span>
-                <span class="row-change ${changeClass(pct)}" data-change="${escapeAttr(item.symbol)}">${escapeHtml(formatChange(pct))}</span>
-              </div>
-              <button type="button" class="row-remove" data-remove="${escapeAttr(item.id)}" aria-label="Remove ${escapeAttr(item.symbol)}" title="Remove">x</button>
             </div>
           `;
         })
@@ -368,21 +536,9 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
       if (!symbol) return;
       const item = row.dataset.id ? byId.get(row.dataset.id) : undefined;
       const q = quotes.get(symbol);
-
-      const priceEl = row.querySelector<HTMLElement>("[data-price]");
-      const changeEl = row.querySelector<HTMLElement>("[data-change]");
-      if (priceEl) {
-        priceEl.textContent = q ? formatPrice(q.price) : "--";
-      }
-      if (changeEl) {
-        const pct = q?.change_percent ?? null;
-        changeEl.textContent = formatChange(pct);
-        changeEl.classList.remove("up", "down");
-        const cls = changeClass(pct);
-        if (cls) changeEl.classList.add(cls);
-      }
-
       const sp = sparks.get(symbol);
+      patchMetricsRow(row, resolvePriceRows(q, sp?.previous_close ?? null));
+
       const svg = row.querySelector<SVGElement>("[data-spark]");
       if (svg && sp && item) {
         const points = sp.points ?? [];
@@ -495,7 +651,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         : addQuery.length;
       footerEl.innerHTML = `
         <div class="add-wrap">
-          <form class="add-card add-card--active" id="add-form" autocomplete="off">
+          <form class="add-card add-card--active watchlist-card" id="add-form" autocomplete="off">
             <input type="text" id="add-symbol-input" class="add-card-input" placeholder="Symbol..." maxlength="32" spellcheck="false" value="${escapeAttr(addQuery)}" aria-autocomplete="list" aria-controls="add-suggest" />
             <button type="submit" class="add-card-btn primary">Add</button>
             <button type="button" class="add-card-btn" id="add-cancel">Cancel</button>
@@ -583,7 +739,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
       });
     } else {
       footerEl.innerHTML = `
-        <button type="button" class="add-card${addCardTintClass()}" id="btn-add"
+        <button type="button" class="add-card watchlist-card${addCardTintClass()}" id="btn-add"
           aria-label="Add symbol"
           title="Click to add · right-click color">+ Add</button>
       `;
@@ -675,29 +831,27 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     );
     if (others.length === 0) return;
 
-    let insertBefore: HTMLElement | null = null;
-    for (const other of others) {
-      const rect = other.getBoundingClientRect();
+    let targetIndex = others.length;
+    for (let i = 0; i < others.length; i++) {
+      const rect = others[i].getBoundingClientRect();
       const mid = rect.top + rect.height / 2;
       if (clientY < mid) {
-        insertBefore = other;
+        targetIndex = i;
         break;
       }
     }
 
-    const next =
-      insertBefore === null
-        ? source.nextSibling === null && source.parentElement?.lastElementChild === source
-          ? null
-          : "end"
-        : insertBefore;
+    const allRows = Array.from(
+      listEl.querySelectorAll<HTMLElement>(".watchlist-row"),
+    );
+    const currentIndex = allRows.indexOf(source);
+    if (currentIndex < 0 || currentIndex === targetIndex) return;
 
-    if (next === "end") {
-      if (listEl.lastElementChild === source) return;
+    if (targetIndex >= others.length) {
       flipRows(() => listEl.appendChild(source));
-    } else if (next instanceof HTMLElement) {
-      if (source.nextElementSibling === next) return;
-      flipRows(() => listEl.insertBefore(source, next));
+    } else {
+      const ref = others[targetIndex];
+      flipRows(() => listEl.insertBefore(source, ref));
     }
   }
 
@@ -713,8 +867,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
 
       row.addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return;
-        const t = e.target as HTMLElement | null;
-        if (t?.closest?.(".row-remove")) return;
 
         const sourceId = row.dataset.id;
         if (!sourceId) return;
@@ -789,11 +941,15 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
           row.removeEventListener("pointercancel", finish);
 
           if (!dragging) {
-            // Click selection
+            // Click selection — re-click sole selection toggles off
             if (range) {
               selectRange(sourceId);
             } else if (multi) {
               toggleSelect(sourceId);
+            } else if (selected.has(sourceId) && selected.size === 1) {
+              selected.delete(sourceId);
+              anchorId = null;
+              applySelectionClasses();
             } else {
               selectSingle(sourceId);
             }
@@ -832,17 +988,6 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
       });
     });
 
-    listEl.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const id = btn.dataset.remove;
-        if (!id) return;
-        selected.delete(id);
-        void invoke("remove_symbol", { id }).catch((err) => {
-          console.error("remove_symbol failed", err);
-        });
-      });
-    });
   }
 
   function setItems(next: WatchlistItem[]): void {

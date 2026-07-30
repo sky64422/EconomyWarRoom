@@ -421,10 +421,10 @@ mod tests {
                 .map(|s| Quote {
                     symbol: s.clone(),
                     price: 1.0,
-                    currency: "USD".into(),
                     change_percent: Some(0.0),
                     as_of: "t".into(),
                     source: "mock".into(),
+                    ..Default::default()
                 })
                 .collect())
         }

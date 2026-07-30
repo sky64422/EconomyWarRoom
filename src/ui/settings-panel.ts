@@ -24,7 +24,7 @@ const THEMES: { value: ThemeMode; label: string }[] = [
   { value: "system", label: "System" },
 ];
 
-const REFRESH_PRESETS = [5, 10, 15, 30, 60, 120] as const;
+const REFRESH_PRESETS = [2, 3, 5, 10, 15, 30, 60] as const;
 
 export function mountSettingsPanel(
   root: HTMLElement,

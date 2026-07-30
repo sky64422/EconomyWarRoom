@@ -43,6 +43,51 @@ pub struct Quote {
     pub change_percent: Option<f64>,
     pub as_of: String,
     pub source: String,
+    /// Previous session close (yesterday's reference).
+    #[serde(default)]
+    pub previous_close: Option<f64>,
+    /// Official regular-session price (close when market has ended).
+    #[serde(default)]
+    pub regular_price: Option<f64>,
+    /// Regular-session % change vs [`previous_close`].
+    #[serde(default)]
+    pub regular_change_percent: Option<f64>,
+    /// Pre/post extended-session price when applicable.
+    #[serde(default)]
+    pub extended_price: Option<f64>,
+    /// Extended-session % change vs [`regular_price`].
+    #[serde(default)]
+    pub extended_change_percent: Option<f64>,
+    /// Close from the prior trading day (for "yesterday's" move).
+    #[serde(default)]
+    pub prior_close: Option<f64>,
+    /// % change on the day that ended at [`previous_close`].
+    #[serde(default)]
+    pub previous_day_change_percent: Option<f64>,
+    /// Yahoo market state hint: `regular`, `pre`, `post`, `closed`, etc.
+    #[serde(default)]
+    pub market_state: Option<String>,
+}
+
+impl Default for Quote {
+    fn default() -> Self {
+        Self {
+            symbol: String::new(),
+            price: 0.0,
+            currency: "USD".into(),
+            change_percent: None,
+            as_of: String::new(),
+            source: String::new(),
+            previous_close: None,
+            regular_price: None,
+            regular_change_percent: None,
+            extended_price: None,
+            extended_change_percent: None,
+            prior_close: None,
+            previous_day_change_percent: None,
+            market_state: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -97,7 +142,7 @@ pub struct AppSettings {
 }
 
 fn default_quote_refresh_secs() -> u64 {
-    10
+    3
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -78,7 +78,7 @@ pub fn parse_quote_from_chart(json: &Value) -> Result<Quote, String> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| "symbol".to_string())?
         .to_string();
-    let price = meta
+    let regular_price = meta
         .get("regularMarketPrice")
         .and_then(|v| v.as_f64())
         .ok_or_else(|| "price".to_string())?;
@@ -87,11 +87,77 @@ pub fn parse_quote_from_chart(json: &Value) -> Result<Quote, String> {
         .and_then(|v| v.as_str())
         .unwrap_or("USD")
         .to_string();
-    let prev = meta
+    let previous_close = meta
         .get("previousClose")
         .or_else(|| meta.get("chartPreviousClose"))
         .and_then(|v| v.as_f64());
-    let change_percent = prev.filter(|p| *p != 0.0).map(|p| (price - p) / p * 100.0);
+    let prior_close = meta
+        .get("regularMarketPreviousClose")
+        .and_then(|v| v.as_f64());
+    let regular_change_percent = previous_close
+        .filter(|p| *p != 0.0)
+        .map(|p| (regular_price - p) / p * 100.0);
+    let previous_day_change_percent = match (previous_close, prior_close) {
+        (Some(pc), Some(prior)) if prior != 0.0 => Some((pc - prior) / prior * 100.0),
+        _ => None,
+    };
+    let market_state = meta
+        .get("marketState")
+        .or_else(|| meta.get("regularMarketState"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_ascii_lowercase());
+
+    let pre_price = meta.get("preMarketPrice").and_then(|v| v.as_f64());
+    let post_price = meta.get("postMarketPrice").and_then(|v| v.as_f64());
+    let pre_change = meta
+        .get("preMarketChangePercent")
+        .and_then(|v| v.as_f64());
+    let post_change = meta
+        .get("postMarketChangePercent")
+        .and_then(|v| v.as_f64());
+
+    let (extended_price, extended_change_percent) = match market_state.as_deref() {
+        Some("pre") | Some("prepre") => (pre_price, pre_change),
+        Some("post") | Some("postpost") => (post_price, post_change),
+        Some("closed") => {
+            if post_price.is_some() {
+                (post_price, post_change)
+            } else {
+                (pre_price, pre_change)
+            }
+        }
+        _ => {
+            if post_price.is_some() {
+                (post_price, post_change)
+            } else if pre_price.is_some() {
+                (pre_price, pre_change)
+            } else {
+                (None, None)
+            }
+        }
+    };
+
+    let extended_change_percent = extended_change_percent.or_else(|| {
+        extended_price
+            .filter(|_| regular_price != 0.0)
+            .map(|ext| (ext - regular_price) / regular_price * 100.0)
+    });
+
+    let in_extended = extended_price.is_some()
+        && matches!(
+            market_state.as_deref(),
+            Some("pre") | Some("prepre") | Some("post") | Some("postpost") | Some("closed")
+        );
+
+    let (price, change_percent) = if in_extended {
+        (
+            extended_price.unwrap_or(regular_price),
+            extended_change_percent.or(regular_change_percent),
+        )
+    } else {
+        (regular_price, regular_change_percent)
+    };
+
     Ok(Quote {
         symbol,
         price,
@@ -99,6 +165,14 @@ pub fn parse_quote_from_chart(json: &Value) -> Result<Quote, String> {
         change_percent,
         as_of: chrono::Utc::now().to_rfc3339(),
         source: "yahoo".into(),
+        previous_close,
+        regular_price: Some(regular_price),
+        regular_change_percent,
+        extended_price,
+        extended_change_percent,
+        prior_close,
+        previous_day_change_percent,
+        market_state,
     })
 }
 
@@ -166,12 +240,60 @@ mod tests {
         assert!(q.change_percent.unwrap() > 0.0);
         assert_eq!(q.currency, "USD");
         assert_eq!(q.source, "yahoo");
+        assert_eq!(q.previous_close, Some(188.0));
+        assert_eq!(q.regular_price, Some(190.5));
         let s = parse_sparkline_from_chart(&v).unwrap();
         assert_eq!(s.symbol, "AAPL");
         assert_eq!(s.points.len(), 3);
         assert_eq!(s.previous_close, Some(188.0));
         assert_eq!(s.points[0].t, 1000);
         assert!((s.points[2].close - 190.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parses_post_market_quote() {
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "AAPL",
+                  "regularMarketPrice": 190.0,
+                  "previousClose": 188.0,
+                  "postMarketPrice": 191.5,
+                  "postMarketChangePercent": 0.79,
+                  "marketState": "POST",
+                  "currency": "USD"
+                }
+              }]
+            }
+        });
+        let q = parse_quote_from_chart(&v).unwrap();
+        assert_eq!(q.price, 191.5);
+        assert_eq!(q.change_percent, Some(0.79));
+        assert_eq!(q.regular_price, Some(190.0));
+        assert_eq!(q.extended_price, Some(191.5));
+        assert_eq!(q.extended_change_percent, Some(0.79));
+        assert_eq!(q.market_state.as_deref(), Some("post"));
+    }
+
+    #[test]
+    fn computes_extended_change_when_percent_missing() {
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "AAPL",
+                  "regularMarketPrice": 200.0,
+                  "previousClose": 195.0,
+                  "postMarketPrice": 202.0,
+                  "marketState": "POST",
+                  "currency": "USD"
+                }
+              }]
+            }
+        });
+        let q = parse_quote_from_chart(&v).unwrap();
+        assert_eq!(q.extended_change_percent, Some(1.0));
     }
 
     #[test]

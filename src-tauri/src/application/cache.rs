@@ -58,10 +58,10 @@ mod tests {
         Quote {
             symbol: sym.into(),
             price,
-            currency: "USD".into(),
             change_percent: Some(1.0),
             as_of: "2026-01-01T00:00:00Z".into(),
             source: "test".into(),
+            ..Default::default()
         }
     }
 

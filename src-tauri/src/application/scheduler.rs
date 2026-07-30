@@ -425,10 +425,9 @@ mod tests {
         Quote {
             symbol: sym.into(),
             price,
-            currency: "USD".into(),
-            change_percent: None,
             as_of: "2026-01-01T00:00:00Z".into(),
             source: "mock".into(),
+            ..Default::default()
         }
     }
 

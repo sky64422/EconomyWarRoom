@@ -39,6 +39,14 @@ export interface Quote {
   change_percent: number | null;
   as_of: string;
   source: string;
+  previous_close?: number | null;
+  regular_price?: number | null;
+  regular_change_percent?: number | null;
+  extended_price?: number | null;
+  extended_change_percent?: number | null;
+  prior_close?: number | null;
+  previous_day_change_percent?: number | null;
+  market_state?: string | null;
 }
 
 export interface SparklinePoint {

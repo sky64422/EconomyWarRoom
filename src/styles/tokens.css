@@ -44,15 +44,15 @@
    * symbol | spark | metrics  as fr shares of the card content box.
    * Resize → all three scale together; only pad/gap stay small fixed chrome.
    */
-  --row-min-h: 48px;
-  /* ~38% / 35% / 27% */
-  --row-col-symbol: 1.4fr;
-  --row-col-spark: 1.3fr;
-  --row-col-metrics: 1fr;
-  --spark-h: 28px;
-  --row-action-w: 22px;
-  --row-pad-x: 12px;
-  --row-col-gap: 8px;
+  --row-min-h: 46px;
+  --row-pad-y: 6px;
+  --row-pad-x: 11px;
+  /* symbol | spark + metrics */
+  --row-col-symbol: 3.9em;
+  --row-col-gap: 7px;
+  --row-market-gap: 8px;
+  --price-change-gap: 6px;
+  --spark-h: 24px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));
   --sparkline-neutral: rgba(0, 0, 0, calc(0.35 * var(--fg-opacity)));

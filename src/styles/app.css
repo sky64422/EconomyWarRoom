@@ -215,29 +215,40 @@ body {
 
 /*
  * Proportional triptych — shares of content width, not magic px widths.
- * ~30% symbol · ~39% spark · ~31% metrics (from fr weights below).
+ * ~34% symbol · ~33% spark · ~33% metrics (from fr weights below).
  */
-.watchlist-row {
-  position: relative;
-  display: grid;
-  grid-template-columns:
-    minmax(0, var(--row-col-symbol))
-    minmax(0, var(--row-col-spark))
-    minmax(0, var(--row-col-metrics));
-  align-items: center;
-  justify-items: stretch;
-  column-gap: var(--row-col-gap);
+.watchlist-card {
+  box-sizing: border-box;
+  width: 100%;
   min-height: var(--row-min-h);
-  padding: 7px var(--row-pad-x);
+  padding: var(--row-pad-y) var(--row-pad-x);
   border: 1px solid var(--border);
   border-radius: var(--radius-row);
   background: var(--bg-row-hover);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease;
+}
+
+.watchlist-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, var(--row-col-symbol)) minmax(0, 1fr);
+  align-items: center;
+  justify-items: stretch;
+  column-gap: var(--row-col-gap);
   cursor: pointer;
   touch-action: none; /* pointer reorder; avoid scroll competing on touch */
   user-select: none;
   outline: none;
-  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease;
+}
+
+.row-market {
+  display: grid;
+  grid-template-columns: minmax(52px, 1fr) auto;
+  align-items: center;
+  gap: var(--row-market-gap);
+  min-width: 0;
+  width: 100%;
 }
 
 /* Soft pastel tints ??mix % tracks --tint-strength (opacity slider) */
@@ -291,27 +302,21 @@ body {
     0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
-.watchlist-row > *:not(.row-remove) {
+.watchlist-row > * {
   pointer-events: none;
   user-select: none;
 }
 
 .row-sparkline-wrap {
-  /* min-width:0 — grid/fr children otherwise keep SVG intrinsic min and refuse to grow */
   box-sizing: border-box;
-  width: 100%;
   min-width: 0;
-  max-width: 100%;
   height: var(--spark-h);
   display: block;
   overflow: hidden;
-  justify-self: stretch;
 }
 
 .row-metrics {
   box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -319,7 +324,44 @@ body {
   gap: 2px;
   margin: 0;
   padding: 0;
-  justify-self: stretch;
+}
+
+.row-quote {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--price-change-gap);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+  line-height: 1.15;
+}
+
+.row-quote--primary {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.row-quote--primary .row-change {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.row-quote--secondary {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  opacity: 0.72;
+}
+
+.row-quote--secondary .row-change {
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.row-quote .row-change[hidden] {
+  display: none;
 }
 
 .watchlist-row:hover:not(.is-selected) {
@@ -356,18 +398,14 @@ body {
   will-change: transform;
 }
 
-.drag-ghost .row-remove {
-  display: none;
-}
-
 .row-symbol {
   box-sizing: border-box;
   min-width: 0;
   max-width: 100%;
   width: 100%;
   font-weight: 600;
-  font-size: 14px;
-  letter-spacing: -0.025em;
+  font-size: 11px;
+  letter-spacing: -0.015em;
   line-height: 1.15;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -375,6 +413,7 @@ body {
   align-self: center;
   justify-self: stretch;
   text-align: left;
+  color: color-mix(in srgb, var(--text) 92%, var(--text-secondary));
 }
 
 .row-sparkline {
@@ -392,26 +431,20 @@ body {
 
 .row-price {
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  font-size: 14px;
-  width: 100%;
+  font-weight: inherit;
   text-align: right;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.15;
+  line-height: 1.1;
 }
 
 .row-change {
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  font-weight: 600;
-  width: 100%;
+  font-weight: inherit;
   text-align: right;
   color: var(--text-secondary);
   white-space: nowrap;
-  line-height: 1.15;
+  line-height: 1.1;
   transition: opacity 0.12s ease, color 0.12s ease;
 }
 
@@ -423,43 +456,7 @@ body {
   color: var(--down);
 }
 
-.row-remove {
-  /* Hover-only control: overlays the card so idle layout stays balanced */
-  position: absolute;
-  top: 50%;
-  right: 4px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--row-action-w);
-  height: var(--row-action-w);
-  margin: 0;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--bg-row-hover) 70%, transparent);
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  transform: translateY(-50%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
-}
-
-.watchlist-row:hover .row-remove {
-  opacity: var(--fg-opacity, 1);
-  pointer-events: auto;
-}
-
-.row-remove:hover {
-  background: var(--bg-row-active);
-  color: var(--down);
-}
-
-/* ?��?Add (simple centered control, same card size as rows) ?��?*/
+/* + Add (simple centered control, same card size as rows) */
 .watchlist-footer {
   flex: 0 0 auto;
   padding: 0;
@@ -467,29 +464,19 @@ body {
 }
 
 .add-card {
-  box-sizing: border-box;
-  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: var(--row-min-h);
   margin: 0;
-  padding: 6px var(--row-pad-x);
-  /* Same default chrome as untinted watchlist rows */
-  border: 1px solid var(--border);
-  border-radius: var(--radius-row);
-  background: var(--bg-row-hover);
   color: var(--text-secondary);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: -0.01em;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
 .add-card:hover {
-  background: var(--bg-row-active);
   border-color: color-mix(in srgb, var(--text) 20%, transparent);
   color: var(--text);
 }
@@ -943,7 +930,7 @@ body {
   background: rgba(10, 132, 255, 0.2);
 }
 
-/* Floating pastel tint picker (right-click on card) */
+/* Floating card menu (right-click): tint + remove */
 .tint-menu {
   position: fixed;
   z-index: 20000;
@@ -963,6 +950,42 @@ body {
   letter-spacing: 0.04em;
   color: var(--text-secondary);
   margin-bottom: 8px;
+}
+
+.tint-menu-divider {
+  height: 1px;
+  margin: 10px 0 8px;
+  background: var(--border);
+}
+
+.tint-menu-action {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.tint-menu-action:hover {
+  background: var(--bg-row-active);
+}
+
+.tint-menu-action--danger {
+  color: var(--down);
+}
+
+.tint-menu-action--danger:hover {
+  background: color-mix(in srgb, var(--down) 14%, transparent);
+  color: var(--down);
 }
 
 .tint-swatches {

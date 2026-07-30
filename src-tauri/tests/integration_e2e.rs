@@ -43,10 +43,10 @@ impl MarketDataProvider for CountingProvider {
             .map(|s| Quote {
                 symbol: s.clone(),
                 price: 42.0,
-                currency: "USD".into(),
                 change_percent: Some(1.5),
                 as_of: "t".into(),
                 source: "counting".into(),
+                ..Default::default()
             })
             .collect())
     }
@@ -206,10 +206,9 @@ async fn e2e_rate_limit_does_not_wipe_cache() {
                     .map(|s| Quote {
                         symbol: s.clone(),
                         price: 99.0,
-                        currency: "USD".into(),
-                        change_percent: None,
                         as_of: "t".into(),
                         source: "flaky".into(),
+                        ..Default::default()
                     })
                     .collect();
                 *self.last_good.0.lock().unwrap() = quotes.clone();

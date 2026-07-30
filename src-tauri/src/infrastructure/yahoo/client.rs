@@ -41,7 +41,11 @@ impl YahooProvider {
         let resp = self
             .client
             .get(&url)
-            .query(&[("range", range), ("interval", interval)])
+            .query(&[
+                ("range", range),
+                ("interval", interval),
+                ("includePrePost", "true"),
+            ])
             .send()
             .await
             .map_err(|e| e.to_string())?;

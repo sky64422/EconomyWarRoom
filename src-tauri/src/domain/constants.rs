@@ -7,11 +7,11 @@ impl RefreshPolicy {
     pub const TICK: Duration = Duration::from_secs(1);
     pub const BATCH_SIZE: usize = 4;
     /// Default min seconds between quote fetches for the same symbol.
-    pub const MIN_QUOTE_INTERVAL: Duration = Duration::from_secs(10);
+    pub const MIN_QUOTE_INTERVAL: Duration = Duration::from_secs(3);
     /// User-configurable quote interval bounds (seconds).
-    pub const QUOTE_REFRESH_SECS_MIN: u64 = 5;
+    pub const QUOTE_REFRESH_SECS_MIN: u64 = 2;
     pub const QUOTE_REFRESH_SECS_MAX: u64 = 120;
-    pub const QUOTE_REFRESH_SECS_DEFAULT: u64 = 10;
+    pub const QUOTE_REFRESH_SECS_DEFAULT: u64 = 3;
     pub const MAX_CONCURRENT: usize = 3;
     pub const SPARKLINE_MIN_INTERVAL: Duration = Duration::from_secs(300);
     pub const BACKOFF_INITIAL: Duration = Duration::from_secs(5);
@@ -102,7 +102,7 @@ mod tests {
     #[test]
     fn refresh_policy_durations() {
         assert_eq!(RefreshPolicy::TICK, Duration::from_secs(1));
-        assert_eq!(RefreshPolicy::MIN_QUOTE_INTERVAL, Duration::from_secs(10));
+        assert_eq!(RefreshPolicy::MIN_QUOTE_INTERVAL, Duration::from_secs(3));
         assert_eq!(
             RefreshPolicy::SPARKLINE_MIN_INTERVAL,
             Duration::from_secs(300)
@@ -116,7 +116,7 @@ mod tests {
             RefreshPolicy::QUOTE_REFRESH_SECS_MIN
         );
         assert_eq!(
-            clamp_quote_refresh_secs(10),
+            clamp_quote_refresh_secs(3),
             RefreshPolicy::QUOTE_REFRESH_SECS_DEFAULT
         );
         assert_eq!(
