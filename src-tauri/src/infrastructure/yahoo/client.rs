@@ -1,5 +1,4 @@
 use super::parse::{parse_quote_from_chart, parse_search_results, parse_sparkline_from_chart};
-use crate::domain::constants::SparklinePolicy;
 use crate::domain::types::{AssetKind, Quote, Sparkline, SymbolSuggestion};
 use crate::ports::market_data::{MarketDataProvider, ProviderLimits};
 use async_trait::async_trait;
@@ -118,9 +117,9 @@ impl MarketDataProvider for YahooProvider {
     async fn fetch_quotes(&self, symbols: &[String]) -> Result<Vec<Quote>, String> {
         let mut out = Vec::new();
         for sym in symbols {
-            let json = self
-                .chart_json(sym, SparklinePolicy::RANGE, SparklinePolicy::INTERVAL)
-                .await?;
+            // 1m bars + includePrePost so pre/post last print is available when meta
+            // omits preMarketPrice / marketState (common on chart API).
+            let json = self.chart_json(sym, "1d", "1m").await?;
             out.push(parse_quote_from_chart(&json)?);
         }
         Ok(out)

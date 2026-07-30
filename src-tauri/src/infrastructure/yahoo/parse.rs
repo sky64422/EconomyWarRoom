@@ -66,7 +66,94 @@ pub fn parse_search_results(json: &Value, query: &str, limit: usize) -> Vec<Symb
     out
 }
 
+/// `[start, end)` bounds for a named period under `meta.currentTradingPeriod`.
+fn trading_period_bounds(meta: &Value, name: &str) -> Option<(i64, i64)> {
+    let p = meta.pointer(&format!("/currentTradingPeriod/{name}"))?;
+    let start = p.get("start")?.as_i64()?;
+    let end = p.get("end")?.as_i64()?;
+    if end > start {
+        Some((start, end))
+    } else {
+        None
+    }
+}
+
+/// Last non-null close whose bar time falls in `[start, end)`.
+fn last_close_in_period(result: &Value, start: i64, end: i64) -> Option<f64> {
+    let timestamps = result.get("timestamp")?.as_array()?;
+    let closes = result.pointer("/indicators/quote/0/close")?.as_array()?;
+    let mut last = None;
+    for (i, t) in timestamps.iter().enumerate() {
+        let Some(ts) = t.as_i64() else {
+            continue;
+        };
+        if ts < start || ts >= end {
+            continue;
+        }
+        if let Some(c) = closes.get(i).and_then(|c| c.as_f64()) {
+            last = Some(c);
+        }
+    }
+    last
+}
+
+/// Prefer Yahoo `marketState`; else derive from `currentTradingPeriod` vs `now_secs`.
+fn resolve_market_state(meta: &Value, now_secs: i64) -> Option<String> {
+    if let Some(s) = meta
+        .get("marketState")
+        .or_else(|| meta.get("regularMarketState"))
+        .and_then(|v| v.as_str())
+    {
+        return Some(s.to_ascii_lowercase());
+    }
+
+    let pre = trading_period_bounds(meta, "pre");
+    let regular = trading_period_bounds(meta, "regular");
+    let post = trading_period_bounds(meta, "post");
+    if pre.is_none() && regular.is_none() && post.is_none() {
+        return None;
+    }
+
+    if let Some((s, e)) = pre {
+        if now_secs >= s && now_secs < e {
+            return Some("pre".into());
+        }
+    }
+    if let Some((s, e)) = regular {
+        if now_secs >= s && now_secs < e {
+            return Some("regular".into());
+        }
+    }
+    if let Some((s, e)) = post {
+        if now_secs >= s && now_secs < e {
+            return Some("post".into());
+        }
+    }
+    // Outside all windows (overnight / weekend) — treat as closed for extended last print.
+    Some("closed".into())
+}
+
+fn is_extended_state(state: Option<&str>) -> bool {
+    matches!(
+        state,
+        Some("pre") | Some("prepre") | Some("post") | Some("postpost") | Some("closed")
+    )
+}
+
+fn change_pct(from: f64, to: f64) -> Option<f64> {
+    if from == 0.0 || !from.is_finite() || !to.is_finite() {
+        None
+    } else {
+        Some((to - from) / from * 100.0)
+    }
+}
+
 pub fn parse_quote_from_chart(json: &Value) -> Result<Quote, String> {
+    parse_quote_from_chart_at(json, chrono::Utc::now().timestamp())
+}
+
+/// Same as [`parse_quote_from_chart`] but with an injectable clock (tests + session inference).
+pub fn parse_quote_from_chart_at(json: &Value, now_secs: i64) -> Result<Quote, String> {
     let result = json
         .pointer("/chart/result/0")
         .ok_or_else(|| "missing chart.result".to_string())?;
@@ -94,60 +181,57 @@ pub fn parse_quote_from_chart(json: &Value) -> Result<Quote, String> {
     let prior_close = meta
         .get("regularMarketPreviousClose")
         .and_then(|v| v.as_f64());
-    let regular_change_percent = previous_close
-        .filter(|p| *p != 0.0)
-        .map(|p| (regular_price - p) / p * 100.0);
+    let regular_change_percent = previous_close.and_then(|p| change_pct(p, regular_price));
     let previous_day_change_percent = match (previous_close, prior_close) {
-        (Some(pc), Some(prior)) if prior != 0.0 => Some((pc - prior) / prior * 100.0),
+        (Some(pc), Some(prior)) => change_pct(prior, pc),
         _ => None,
     };
-    let market_state = meta
-        .get("marketState")
-        .or_else(|| meta.get("regularMarketState"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_ascii_lowercase());
 
-    let pre_price = meta.get("preMarketPrice").and_then(|v| v.as_f64());
-    let post_price = meta.get("postMarketPrice").and_then(|v| v.as_f64());
-    let pre_change = meta
-        .get("preMarketChangePercent")
-        .and_then(|v| v.as_f64());
-    let post_change = meta
+    let market_state = resolve_market_state(meta, now_secs);
+
+    // Meta fields are often missing on chart API — fall back to last bar in the period.
+    let meta_pre = meta.get("preMarketPrice").and_then(|v| v.as_f64());
+    let meta_post = meta.get("postMarketPrice").and_then(|v| v.as_f64());
+    let meta_pre_chg = meta.get("preMarketChangePercent").and_then(|v| v.as_f64());
+    let meta_post_chg = meta
         .get("postMarketChangePercent")
         .and_then(|v| v.as_f64());
 
-    let (extended_price, extended_change_percent) = match market_state.as_deref() {
-        Some("pre") | Some("prepre") => (pre_price, pre_change),
-        Some("post") | Some("postpost") => (post_price, post_change),
+    let candle_pre = trading_period_bounds(meta, "pre")
+        .and_then(|(s, e)| last_close_in_period(result, s, e));
+    let candle_post = trading_period_bounds(meta, "post")
+        .and_then(|(s, e)| last_close_in_period(result, s, e));
+
+    let pre_price = meta_pre.or(candle_pre);
+    let post_price = meta_post.or(candle_post);
+
+    let (extended_price, extended_change_meta) = match market_state.as_deref() {
+        Some("pre") | Some("prepre") => (pre_price, meta_pre_chg),
+        Some("post") | Some("postpost") => (post_price, meta_post_chg),
         Some("closed") => {
+            // After hours print preferred; else last pre if that's all we have.
             if post_price.is_some() {
-                (post_price, post_change)
+                (post_price, meta_post_chg)
             } else {
-                (pre_price, pre_change)
+                (pre_price, meta_pre_chg)
             }
         }
-        _ => {
-            if post_price.is_some() {
-                (post_price, post_change)
-            } else if pre_price.is_some() {
-                (pre_price, pre_change)
-            } else {
-                (None, None)
-            }
-        }
+        // Regular / open / unknown with no session: do not surface stale AH as live.
+        _ => (None, None),
     };
 
-    let extended_change_percent = extended_change_percent.or_else(|| {
-        extended_price
-            .filter(|_| regular_price != 0.0)
-            .map(|ext| (ext - regular_price) / regular_price * 100.0)
+    // Only treat as extended when session is non-regular *and* we have a print that is not
+    // identical noise to the regular mark (allows candle fallback during pre/post).
+    let extended_price = extended_price.filter(|ext| {
+        is_extended_state(market_state.as_deref())
+            && (ext - regular_price).abs() > 1e-6
     });
 
-    let in_extended = extended_price.is_some()
-        && matches!(
-            market_state.as_deref(),
-            Some("pre") | Some("prepre") | Some("post") | Some("postpost") | Some("closed")
-        );
+    let extended_change_percent = extended_change_meta
+        .filter(|c| c.is_finite())
+        .or_else(|| extended_price.and_then(|ext| change_pct(regular_price, ext)));
+
+    let in_extended = extended_price.is_some();
 
     let (price, change_percent) = if in_extended {
         (
@@ -294,6 +378,117 @@ mod tests {
         });
         let q = parse_quote_from_chart(&v).unwrap();
         assert_eq!(q.extended_change_percent, Some(1.0));
+    }
+
+    #[test]
+    fn pre_market_from_candles_when_meta_fields_missing() {
+        // Chart API often omits marketState / preMarketPrice; only period + bars remain.
+        let pre_start = 1_000_000i64;
+        let pre_end = 1_003_600;
+        let reg_start = pre_end;
+        let reg_end = reg_start + 23_400;
+        let post_start = reg_end;
+        let post_end = post_start + 14_400;
+        let now = pre_start + 1_800; // mid pre (strictly before pre_end)
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "TSLA",
+                  "regularMarketPrice": 298.32,
+                  "previousClose": 307.44,
+                  "currency": "USD",
+                  "currentTradingPeriod": {
+                    "pre": { "start": pre_start, "end": pre_end },
+                    "regular": { "start": reg_start, "end": reg_end },
+                    "post": { "start": post_start, "end": post_end }
+                  }
+                },
+                "timestamp": [pre_start + 60, pre_start + 120, pre_start + 180],
+                "indicators": {
+                  "quote": [{ "close": [300.0, 302.5, 304.28] }]
+                }
+              }]
+            }
+        });
+        let q = parse_quote_from_chart_at(&v, now).unwrap();
+        assert_eq!(q.market_state.as_deref(), Some("pre"));
+        assert!((q.price - 304.28).abs() < 1e-9);
+        assert_eq!(q.extended_price, Some(304.28));
+        assert_eq!(q.regular_price, Some(298.32));
+        // Extended % vs regular close
+        let ext_chg = q.extended_change_percent.unwrap();
+        assert!((ext_chg - ((304.28 - 298.32) / 298.32 * 100.0)).abs() < 1e-6);
+        // Regular session % vs previous close
+        let reg_chg = q.regular_change_percent.unwrap();
+        assert!((reg_chg - ((298.32 - 307.44) / 307.44 * 100.0)).abs() < 1e-6);
+        assert!((reg_chg - (-2.97)).abs() < 0.02);
+    }
+
+    #[test]
+    fn regular_session_does_not_surface_stale_post_print() {
+        let reg_start = 2_000_000i64;
+        let reg_end = reg_start + 23_400;
+        let now = reg_start + 3_600;
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "AAPL",
+                  "regularMarketPrice": 190.0,
+                  "previousClose": 188.0,
+                  "postMarketPrice": 191.5,
+                  "currency": "USD",
+                  "currentTradingPeriod": {
+                    "pre": { "start": reg_start - 5_400, "end": reg_start },
+                    "regular": { "start": reg_start, "end": reg_end },
+                    "post": { "start": reg_end, "end": reg_end + 14_400 }
+                  }
+                },
+                "timestamp": [reg_start + 60],
+                "indicators": { "quote": [{ "close": [190.0] }] }
+              }]
+            }
+        });
+        let q = parse_quote_from_chart_at(&v, now).unwrap();
+        assert_eq!(q.market_state.as_deref(), Some("regular"));
+        assert_eq!(q.extended_price, None);
+        assert_eq!(q.price, 190.0);
+        assert!(q.regular_change_percent.unwrap() > 0.0);
+    }
+
+    #[test]
+    fn post_market_last_candle_preferred_over_missing_meta() {
+        let post_start = 3_000_000i64;
+        let post_end = post_start + 14_400;
+        let reg_end = post_start;
+        let reg_start = reg_end - 23_400;
+        let now = post_start + 600;
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "MSFT",
+                  "regularMarketPrice": 400.0,
+                  "previousClose": 395.0,
+                  "currency": "USD",
+                  "currentTradingPeriod": {
+                    "pre": { "start": reg_start - 5_400, "end": reg_start },
+                    "regular": { "start": reg_start, "end": reg_end },
+                    "post": { "start": post_start, "end": post_end }
+                  }
+                },
+                "timestamp": [post_start + 60, post_start + 300],
+                "indicators": { "quote": [{ "close": [401.0, 402.5] }] }
+              }]
+            }
+        });
+        let q = parse_quote_from_chart_at(&v, now).unwrap();
+        assert_eq!(q.market_state.as_deref(), Some("post"));
+        assert_eq!(q.extended_price, Some(402.5));
+        assert_eq!(q.price, 402.5);
+        let chg = q.extended_change_percent.unwrap();
+        assert!((chg - 0.625).abs() < 1e-6);
     }
 
     #[test]

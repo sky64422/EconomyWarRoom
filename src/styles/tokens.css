@@ -40,18 +40,24 @@
   --space-4: 16px;
   --pad-x: var(--space-3);
   /*
-   * Proportional row (no px clamp tuning):
-   * symbol | spark | metrics  as fr shares of the card content box.
-   * Resize → all three scale together; only pad/gap stay small fixed chrome.
+   * Proportional triptych — three fr shares of the card content box.
+   * symbol | spark | metrics; resize scales all three; pad/gap stay fixed chrome.
+   * (Price text length must NOT steal width from the spark column.)
    */
   --row-min-h: 46px;
   --row-pad-y: 6px;
   --row-pad-x: 11px;
-  /* symbol | spark + metrics */
-  --row-col-symbol: 3.9em;
+  /* ~26% symbol · ~28% spark · ~45% metrics — room for price + % + moon */
+  --row-fr-symbol: 1.15fr;
+  --row-fr-spark: 1.25fr;
+  --row-fr-metrics: 2fr;
   --row-col-gap: 7px;
-  --row-market-gap: 8px;
-  --price-change-gap: 6px;
+  --price-change-gap: 5px;
+  /* Quote type scale (primary = live/extended, secondary = reference) */
+  --price-primary-size: 11.5px;
+  --price-primary-change-size: 9.5px;
+  --price-secondary-size: 10.5px;
+  --price-secondary-change-size: 9px;
   --spark-h: 24px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));

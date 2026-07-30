@@ -214,8 +214,9 @@ body {
 }
 
 /*
- * Proportional triptych — shares of content width, not magic px widths.
- * ~34% symbol · ~33% spark · ~33% metrics (from fr weights below).
+ * Proportional triptych — fr shares of content width.
+ * ~26% symbol · ~28% spark · ~45% metrics (1.15 / 1.25 / 2).
+ * .row-market uses display:contents so spark + metrics are real grid columns.
  */
 .watchlist-card {
   box-sizing: border-box;
@@ -232,7 +233,10 @@ body {
 .watchlist-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, var(--row-col-symbol)) minmax(0, 1fr);
+  grid-template-columns:
+    minmax(0, var(--row-fr-symbol))
+    minmax(0, var(--row-fr-spark))
+    minmax(0, var(--row-fr-metrics));
   align-items: center;
   justify-items: stretch;
   column-gap: var(--row-col-gap);
@@ -242,13 +246,9 @@ body {
   outline: none;
 }
 
+/* Lift spark + metrics into the row grid (true 3-column proportions). */
 .row-market {
-  display: grid;
-  grid-template-columns: minmax(52px, 1fr) auto;
-  align-items: center;
-  gap: var(--row-market-gap);
-  min-width: 0;
-  width: 100%;
+  display: contents;
 }
 
 /* Soft pastel tints ??mix % tracks --tint-strength (opacity slider) */
@@ -310,9 +310,11 @@ body {
 .row-sparkline-wrap {
   box-sizing: border-box;
   min-width: 0;
+  width: 100%;
   height: var(--spark-h);
   display: block;
   overflow: hidden;
+  align-self: center;
 }
 
 .row-metrics {
@@ -324,6 +326,9 @@ body {
   gap: 2px;
   margin: 0;
   padding: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
 .row-quote {
@@ -338,30 +343,63 @@ body {
 }
 
 .row-quote--primary {
-  font-size: 11.5px;
+  font-size: var(--price-primary-size);
   font-weight: 600;
   color: var(--text);
 }
 
+.row-quote--primary .row-price {
+  font-size: inherit;
+  font-weight: 600;
+}
+
 .row-quote--primary .row-change {
-  font-size: 10px;
+  font-size: var(--price-primary-change-size);
   font-weight: 600;
 }
 
 .row-quote--secondary {
-  font-size: 9.5px;
+  font-size: var(--price-secondary-size);
   font-weight: 500;
   color: var(--text-secondary);
   opacity: 0.72;
 }
 
+.row-quote--secondary .row-price {
+  font-size: inherit;
+  font-weight: 500;
+}
+
 .row-quote--secondary .row-change {
-  font-size: 9px;
+  font-size: var(--price-secondary-change-size);
   font-weight: 500;
 }
 
 .row-quote .row-change[hidden] {
   display: none;
+}
+
+/* Extended-hours moon (AssetStocker-style nights_stay cue) */
+.row-ext-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin-right: -2px;
+  color: color-mix(in srgb, var(--text-secondary) 88%, #8b9cff);
+  opacity: 0.9;
+  line-height: 0;
+  transform: translateY(0.5px);
+}
+
+.row-ext-badge[hidden] {
+  display: none;
+}
+
+.row-ext-icon {
+  display: block;
+  width: 10px;
+  height: 10px;
 }
 
 .watchlist-row:hover:not(.is-selected) {
@@ -404,8 +442,8 @@ body {
   max-width: 100%;
   width: 100%;
   font-weight: 600;
-  font-size: 11px;
-  letter-spacing: -0.015em;
+  font-size: 12.5px;
+  letter-spacing: -0.02em;
   line-height: 1.15;
   overflow: hidden;
   text-overflow: ellipsis;
