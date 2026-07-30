@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "economy-war-room"
 version = "0.1.21"
 description = "EconomyWarRoom floating market watchlist widget"
