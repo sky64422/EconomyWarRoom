@@ -475,7 +475,7 @@ body {
   white-space: nowrap;
   align-self: center;
   justify-self: stretch;
-  text-align: left;
+  text-align: center;
   color: color-mix(in srgb, var(--text) 92%, var(--text-secondary));
 }
 
