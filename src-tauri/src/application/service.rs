@@ -224,6 +224,22 @@ impl AppCore {
         Ok(opacity)
     }
 
+    /// Persist watchlist column `fr` ratios (symbol · spark · metrics).
+    pub fn set_column_ratios(
+        &self,
+        ratios: crate::domain::types::ColumnRatios,
+    ) -> Result<crate::domain::types::ColumnRatios, String> {
+        use crate::domain::constants::clamp_column_ratios;
+        let ratios = clamp_column_ratios(ratios);
+        let mut persisted = self
+            .persisted
+            .lock()
+            .map_err(|_| "state lock poisoned".to_string())?;
+        persisted.settings.column_ratios = ratios;
+        self.persist_locked(&persisted)?;
+        Ok(ratios)
+    }
+
     /// Persist quote refresh interval (seconds) and update the scheduler.
     pub async fn set_quote_refresh_secs(&self, secs: u64) -> Result<u64, String> {
         let secs = clamp_quote_refresh_secs(secs);
@@ -494,6 +510,15 @@ mod tests {
         core.set_theme(ThemeMode::Dark).unwrap();
         let op = core.set_opacity(0.1).unwrap();
         assert!((op - 0.35).abs() < 1e-9);
+        let cols = core
+            .set_column_ratios(crate::domain::types::ColumnRatios {
+                symbol: 2.0,
+                spark: 1.0,
+                metrics: 1.5,
+            })
+            .unwrap();
+        assert!((cols.symbol - 2.0).abs() < 1e-9);
+        assert!((core.get_state().unwrap().settings.column_ratios.spark - 1.0).abs() < 1e-9);
         let geo = core
             .save_window_geometry(WindowGeometry {
                 x: 1.0,

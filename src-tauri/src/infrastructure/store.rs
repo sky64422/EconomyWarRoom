@@ -1,9 +1,10 @@
 use crate::domain::constants::{
-    clamp_opacity, clamp_quote_refresh_secs, HotkeyPolicy, OpacityPolicy, RefreshPolicy,
-    WindowPolicy,
+    clamp_column_ratios, clamp_opacity, clamp_quote_refresh_secs, HotkeyPolicy, OpacityPolicy,
+    RefreshPolicy, WindowPolicy,
 };
 use crate::domain::types::{
-    AppSettings, AssetKind, CardTint, PersistedState, ThemeMode, WatchlistItem, WindowGeometry,
+    AppSettings, AssetKind, CardTint, ColumnRatios, PersistedState, ThemeMode, WatchlistItem,
+    WindowGeometry,
 };
 use std::path::{Path, PathBuf};
 
@@ -39,6 +40,7 @@ pub fn default_state() -> PersistedState {
             hotkey: HotkeyPolicy::DEFAULT.into(),
             autostart: true,
             quote_refresh_secs: RefreshPolicy::QUOTE_REFRESH_SECS_DEFAULT,
+            column_ratios: ColumnRatios::default(),
         },
     }
 }
@@ -62,6 +64,7 @@ pub fn save_state(app_data_dir: &Path, state: &PersistedState) -> Result<(), Str
     cloned.settings.opacity = clamp_opacity(cloned.settings.opacity);
     cloned.settings.quote_refresh_secs =
         clamp_quote_refresh_secs(cloned.settings.quote_refresh_secs);
+    cloned.settings.column_ratios = clamp_column_ratios(cloned.settings.column_ratios);
     let json = serde_json::to_string_pretty(&cloned).map_err(|e| e.to_string())?;
     std::fs::write(path, json).map_err(|e| e.to_string())
 }
@@ -97,6 +100,22 @@ mod tests {
         std::fs::write(&path, "{not-json").unwrap();
         let loaded = load_state(dir.path());
         assert_eq!(loaded.watchlist[0].symbol, "AAPL");
+    }
+
+    #[test]
+    fn missing_column_ratios_defaults() {
+        let dir = tempdir().unwrap();
+        let path = state_path(dir.path());
+        // Older files omit column_ratios entirely.
+        let state = default_state();
+        let json = serde_json::to_value(&state).unwrap();
+        let mut obj = json.as_object().unwrap().clone();
+        let mut settings = obj.get("settings").unwrap().as_object().unwrap().clone();
+        settings.remove("column_ratios");
+        obj.insert("settings".into(), serde_json::Value::Object(settings));
+        std::fs::write(&path, serde_json::to_string(&obj).unwrap()).unwrap();
+        let loaded = load_state(dir.path());
+        assert_eq!(loaded.settings.column_ratios, ColumnRatios::default());
     }
 
     #[test]

@@ -203,6 +203,17 @@ pub async fn set_quote_refresh_secs(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn set_column_ratios(
+    state: State<'_, AppHandleState>,
+    ratios: crate::domain::types::ColumnRatios,
+) -> Result<crate::domain::types::ColumnRatios, String> {
+    state.core.set_column_ratios(ratios).map_err(|e| {
+        note_err(&state, "set_column_ratios", &e);
+        e
+    })
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub async fn hide_widget(app: AppHandle, state: State<'_, AppHandleState>) -> Result<(), String> {
     set_visibility(&app, &state, false).await.map_err(|e| {
         note_err(&state, "hide_widget", &e);

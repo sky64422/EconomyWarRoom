@@ -68,6 +68,36 @@ pub fn clamp_opacity(value: f64) -> f64 {
     value.clamp(OpacityPolicy::MIN, OpacityPolicy::MAX)
 }
 
+/// Watchlist triptych column shares (CSS `fr` units): symbol · spark · metrics.
+pub struct ColumnRatioPolicy;
+
+impl ColumnRatioPolicy {
+    pub const DEFAULT_SYMBOL: f64 = 1.15;
+    pub const DEFAULT_SPARK: f64 = 1.25;
+    pub const DEFAULT_METRICS: f64 = 2.0;
+    pub const MIN: f64 = 0.45;
+    pub const MAX: f64 = 8.0;
+}
+
+/// Clamp / sanitize column ratios (finite, within bounds). Invalid → defaults.
+pub fn clamp_column_ratios(
+    ratios: crate::domain::types::ColumnRatios,
+) -> crate::domain::types::ColumnRatios {
+    use crate::domain::types::ColumnRatios;
+    let sanitize = |v: f64, default: f64| {
+        if v.is_finite() {
+            v.clamp(ColumnRatioPolicy::MIN, ColumnRatioPolicy::MAX)
+        } else {
+            default
+        }
+    };
+    ColumnRatios {
+        symbol: sanitize(ratios.symbol, ColumnRatioPolicy::DEFAULT_SYMBOL),
+        spark: sanitize(ratios.spark, ColumnRatioPolicy::DEFAULT_SPARK),
+        metrics: sanitize(ratios.metrics, ColumnRatioPolicy::DEFAULT_METRICS),
+    }
+}
+
 /// Clamp window size to policy minimums (position unchanged).
 pub fn clamp_geometry(
     geometry: &crate::domain::types::WindowGeometry,
@@ -97,6 +127,39 @@ mod tests {
         assert_eq!(clamp_opacity(OpacityPolicy::MAX), OpacityPolicy::MAX);
         assert_eq!(clamp_opacity(1.5), OpacityPolicy::MAX);
         assert_eq!(clamp_opacity(100.0), OpacityPolicy::MAX);
+    }
+
+    #[test]
+    fn clamp_column_ratios_bounds_and_nan() {
+        use crate::domain::types::ColumnRatios;
+        let ok = clamp_column_ratios(ColumnRatios {
+            symbol: 1.15,
+            spark: 1.25,
+            metrics: 2.0,
+        });
+        assert!((ok.symbol - 1.15).abs() < 1e-9);
+        let low = clamp_column_ratios(ColumnRatios {
+            symbol: 0.01,
+            spark: 0.01,
+            metrics: 0.01,
+        });
+        assert_eq!(low.symbol, ColumnRatioPolicy::MIN);
+        assert_eq!(low.spark, ColumnRatioPolicy::MIN);
+        assert_eq!(low.metrics, ColumnRatioPolicy::MIN);
+        let high = clamp_column_ratios(ColumnRatios {
+            symbol: 99.0,
+            spark: 99.0,
+            metrics: 99.0,
+        });
+        assert_eq!(high.symbol, ColumnRatioPolicy::MAX);
+        let bad = clamp_column_ratios(ColumnRatios {
+            symbol: f64::NAN,
+            spark: f64::INFINITY,
+            metrics: -1.0,
+        });
+        assert_eq!(bad.symbol, ColumnRatioPolicy::DEFAULT_SYMBOL);
+        assert_eq!(bad.spark, ColumnRatioPolicy::DEFAULT_SPARK);
+        assert_eq!(bad.metrics, ColumnRatioPolicy::MIN);
     }
 
     #[test]

@@ -8,6 +8,7 @@ import {
 } from "./settings-panel";
 import { mountWatchlist } from "./watchlist";
 import type { PersistedState, Quote, Sparkline, ThemeMode } from "./types";
+import { DEFAULT_COLUMN_RATIOS } from "./types";
 
 export async function mountApp(root: HTMLElement): Promise<void> {
   root.innerHTML = `
@@ -36,7 +37,11 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   applyThemeToDocument(theme);
   applyPanelOpacity(panel, opacity);
 
-  const watchlist = mountWatchlist(watchlistRoot);
+  const columnRatios = {
+    ...DEFAULT_COLUMN_RATIOS,
+    ...(state.settings.column_ratios ?? {}),
+  };
+  const watchlist = mountWatchlist(watchlistRoot, { columnRatios });
   watchlist.setItems(state.watchlist ?? []);
 
   const settings = mountSettingsPanel(

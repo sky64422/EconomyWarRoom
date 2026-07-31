@@ -68,6 +68,19 @@ export interface WindowGeometry {
   height: number;
 }
 
+/** CSS fr shares for symbol · spark · metrics columns. */
+export interface ColumnRatios {
+  symbol: number;
+  spark: number;
+  metrics: number;
+}
+
+export const DEFAULT_COLUMN_RATIOS: ColumnRatios = {
+  symbol: 1.15,
+  spark: 1.25,
+  metrics: 2.0,
+};
+
 export interface AppSettings {
   theme: ThemeMode;
   opacity: number;
@@ -75,6 +88,7 @@ export interface AppSettings {
   hotkey: string;
   autostart: boolean;
   quote_refresh_secs?: number;
+  column_ratios?: ColumnRatios;
 }
 
 export interface PersistedState {

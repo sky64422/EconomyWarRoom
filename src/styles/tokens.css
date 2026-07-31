@@ -47,10 +47,12 @@
   --row-min-h: 46px;
   --row-pad-y: 6px;
   --row-pad-x: 11px;
-  /* ~26% symbol · ~28% spark · ~45% metrics — room for price + % */
+  /* ~26% symbol · ~28% spark · ~45% metrics — room for price + % (user-resizable) */
   --row-fr-symbol: 1.15fr;
   --row-fr-spark: 1.25fr;
   --row-fr-metrics: 2fr;
+  /* Fixed hit strip between columns (replaces column-gap while resizing) */
+  --row-resize-hit: 7px;
   --row-col-gap: 7px;
   --price-change-gap: 5px;
   /* Quote type scale (primary = live/extended, secondary = reference) */

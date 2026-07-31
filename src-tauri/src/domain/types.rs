@@ -129,6 +129,25 @@ pub struct SymbolSuggestion {
     pub exchange: Option<String>,
 }
 
+/// CSS `fr` shares for watchlist columns (symbol · sparkline · metrics).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ColumnRatios {
+    pub symbol: f64,
+    pub spark: f64,
+    pub metrics: f64,
+}
+
+impl Default for ColumnRatios {
+    fn default() -> Self {
+        use crate::domain::constants::ColumnRatioPolicy;
+        Self {
+            symbol: ColumnRatioPolicy::DEFAULT_SYMBOL,
+            spark: ColumnRatioPolicy::DEFAULT_SPARK,
+            metrics: ColumnRatioPolicy::DEFAULT_METRICS,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppSettings {
     pub theme: ThemeMode,
@@ -139,6 +158,9 @@ pub struct AppSettings {
     /// Seconds between quote refreshes per symbol (clamped on write).
     #[serde(default = "default_quote_refresh_secs")]
     pub quote_refresh_secs: u64,
+    /// Proportional column widths; omitted in older state files → defaults.
+    #[serde(default)]
+    pub column_ratios: ColumnRatios,
 }
 
 fn default_quote_refresh_secs() -> u64 {

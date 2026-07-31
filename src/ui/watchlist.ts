@@ -4,12 +4,13 @@ import { sparklineProgress, sparklineSvgMarkup, sparklineTone } from "./sparklin
 import type {
   AssetKind,
   CardTint,
+  ColumnRatios,
   Quote,
   Sparkline,
   SymbolSuggestion,
   WatchlistItem,
 } from "./types";
-import { CARD_TINTS } from "./types";
+import { CARD_TINTS, DEFAULT_COLUMN_RATIOS } from "./types";
 
 /**
  * SVG coordinate system only — CSS width is the proportional spark column.
@@ -19,6 +20,11 @@ const SPARK_W = 100;
 const SPARK_H = 28;
 const SPARK_TICK_MS = 1000;
 const DRAG_THRESHOLD_PX = 6;
+/** Matches --row-resize-hit; two strips between three content columns. */
+const RESIZE_HIT_PX = 7;
+const MIN_SYMBOL_PX = 44;
+const MIN_SPARK_PX = 36;
+const MIN_METRICS_PX = 64;
 
 /** Local fallback catalog (substring filter) when network is slow/offline. */
 const LOCAL_SYMBOLS: SymbolSuggestion[] = [
@@ -41,7 +47,44 @@ export interface WatchlistController {
   setItems: (items: WatchlistItem[]) => void;
   setQuotes: (quotes: Quote[]) => void;
   setSparklines: (sparks: Sparkline[]) => void;
+  setColumnRatios: (ratios: ColumnRatios) => void;
   destroy: () => void;
+}
+
+function applyColumnRatiosCss(el: HTMLElement, r: ColumnRatios): void {
+  el.style.setProperty("--row-fr-symbol", `${r.symbol}fr`);
+  el.style.setProperty("--row-fr-spark", `${r.spark}fr`);
+  el.style.setProperty("--row-fr-metrics", `${r.metrics}fr`);
+}
+
+/** Drag edge 0 = symbol|spark, 1 = spark|metrics. Keeps third column fixed in px space. */
+export function resizeColumnRatios(
+  edge: 0 | 1,
+  dx: number,
+  start: ColumnRatios,
+  freePx: number,
+): ColumnRatios {
+  const sum = start.symbol + start.spark + start.metrics;
+  if (!(sum > 0) || !(freePx > 0) || !Number.isFinite(dx)) return start;
+  const toPx = (fr: number) => (fr / sum) * freePx;
+  const toFr = (px: number) => (px / freePx) * sum;
+  let s = toPx(start.symbol);
+  let p = toPx(start.spark);
+  let m = toPx(start.metrics);
+  if (edge === 0) {
+    const maxS = s + p - MIN_SPARK_PX;
+    s = Math.min(Math.max(s + dx, MIN_SYMBOL_PX), Math.max(MIN_SYMBOL_PX, maxS));
+    p = freePx - m - s;
+  } else {
+    const maxP = p + m - MIN_METRICS_PX;
+    p = Math.min(Math.max(p + dx, MIN_SPARK_PX), Math.max(MIN_SPARK_PX, maxP));
+    m = freePx - s - p;
+  }
+  return {
+    symbol: Math.max(0.45, toFr(Math.max(0, s))),
+    spark: Math.max(0.45, toFr(Math.max(0, p))),
+    metrics: Math.max(0.45, toFr(Math.max(0, m))),
+  };
 }
 
 function guessAssetKind(symbol: string): AssetKind {
@@ -273,12 +316,19 @@ function saveAddCardTint(tint: CardTint): void {
 
 type TintTarget = { kind: "item"; id: string } | { kind: "add" };
 
-export function mountWatchlist(root: HTMLElement): WatchlistController {
+export function mountWatchlist(
+  root: HTMLElement,
+  opts?: { columnRatios?: ColumnRatios },
+): WatchlistController {
   let items: WatchlistItem[] = [];
   const quotes = new Map<string, Quote>();
   const sparks = new Map<string, Sparkline>();
   const selected = new Set<string>();
   let anchorId: string | null = null;
+  let columnRatios: ColumnRatios = {
+    ...DEFAULT_COLUMN_RATIOS,
+    ...(opts?.columnRatios ?? {}),
+  };
 
   let dragId: string | null = null;
   let pendingFullRender = false;
@@ -304,6 +354,79 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
 
   const listEl = root.querySelector("#watchlist-list") as HTMLElement;
   const footerEl = root.querySelector("#watchlist-footer") as HTMLElement;
+  applyColumnRatiosCss(root, columnRatios);
+
+  function setColumnRatios(ratios: ColumnRatios): void {
+    columnRatios = {
+      symbol: ratios.symbol,
+      spark: ratios.spark,
+      metrics: ratios.metrics,
+    };
+    applyColumnRatiosCss(root, columnRatios);
+  }
+
+  function persistColumnRatios(ratios: ColumnRatios): void {
+    void invoke<ColumnRatios>("set_column_ratios", { ratios }).then(
+      (clamped) => setColumnRatios(clamped),
+      (err) => console.error("set_column_ratios failed", err),
+    );
+  }
+
+  function bindColumnResizers(): void {
+    listEl.querySelectorAll<HTMLElement>(".row-col-resize").forEach((handle) => {
+      handle.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const edgeRaw = handle.dataset.edge;
+        const edge: 0 | 1 = edgeRaw === "1" ? 1 : 0;
+        const startX = e.clientX;
+        const startRatios = { ...columnRatios };
+        const sampleRow = handle.closest<HTMLElement>(".watchlist-row");
+        const rowW = sampleRow?.clientWidth ?? listEl.clientWidth;
+        const freePx = Math.max(1, rowW - RESIZE_HIT_PX * 2);
+
+        listEl.classList.add("is-col-resizing");
+        listEl
+          .querySelectorAll<HTMLElement>(`.row-col-resize[data-edge="${edge}"]`)
+          .forEach((h) => h.classList.add("is-active"));
+
+        try {
+          handle.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+
+        const onMove = (ev: PointerEvent) => {
+          const next = resizeColumnRatios(edge, ev.clientX - startX, startRatios, freePx);
+          setColumnRatios(next);
+        };
+
+        const onUp = (ev: PointerEvent) => {
+          try {
+            handle.releasePointerCapture(ev.pointerId);
+          } catch {
+            /* ignore */
+          }
+          handle.removeEventListener("pointermove", onMove);
+          handle.removeEventListener("pointerup", onUp);
+          handle.removeEventListener("pointercancel", onUp);
+          listEl.classList.remove("is-col-resizing");
+          listEl
+            .querySelectorAll<HTMLElement>(".row-col-resize.is-active")
+            .forEach((h) => h.classList.remove("is-active"));
+          const next = resizeColumnRatios(edge, ev.clientX - startX, startRatios, freePx);
+          setColumnRatios(next);
+          persistColumnRatios(next);
+        };
+
+        handle.addEventListener("pointermove", onMove);
+        handle.addEventListener("pointerup", onUp);
+        handle.addEventListener("pointercancel", onUp);
+      });
+    });
+  }
 
   function orderedIdsFromDom(): string[] {
     return Array.from(listEl.querySelectorAll<HTMLElement>(".watchlist-row"))
@@ -524,12 +647,14 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
               data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}"
               data-tint="${tint}" title="Click to select · drag to reorder · right-click menu">
               <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
+              <div class="row-col-resize" data-edge="0" role="separator" aria-orientation="vertical" aria-label="Resize symbol and sparkline" title="Drag to resize columns"></div>
               <div class="row-market">
                 <div class="row-sparkline-wrap">
                   <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
                     ${sparkMarkup}
                   </svg>
                 </div>
+                <div class="row-col-resize" data-edge="1" role="separator" aria-orientation="vertical" aria-label="Resize sparkline and price" title="Drag to resize columns"></div>
                 ${metricsMarkup(item.symbol, priceRows)}
               </div>
             </div>
@@ -538,6 +663,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
         .join("");
     }
     bindRowEvents();
+    bindColumnResizers();
   }
 
   /** Update price / change / sparkline without rebuilding rows (preserves DnD). */
@@ -879,6 +1005,8 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
 
       row.addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return;
+        // Column resize grips handle their own pointer stream.
+        if ((e.target as Element | null)?.closest?.(".row-col-resize")) return;
 
         const sourceId = row.dataset.id;
         if (!sourceId) return;
@@ -1089,6 +1217,7 @@ export function mountWatchlist(root: HTMLElement): WatchlistController {
     setItems,
     setQuotes,
     setSparklines,
+    setColumnRatios,
     destroy: () => {
       if (searchTimer) clearTimeout(searchTimer);
       stopSparklineTicker();

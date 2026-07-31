@@ -222,6 +222,7 @@ pub fn run() {
             commands::set_opacity,
             commands::set_autostart,
             commands::set_quote_refresh_secs,
+            commands::set_column_ratios,
             commands::hide_widget,
             commands::toggle_widget_visibility,
             commands::save_window_geometry,
