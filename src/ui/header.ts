@@ -43,26 +43,38 @@ async function checkForUpdates(btn: HTMLButtonElement): Promise<void> {
   const originalTitle = btn.getAttribute("title") ?? "Check for updates";
   btn.disabled = true;
   btn.classList.add("busy");
-  btn.setAttribute("title", "Checking...");
+  btn.setAttribute("title", "Checking for updates…");
   try {
+    // true → install started and process should restart (invoke may abort)
+    // false → already latest
     const hasUpdate = await invoke<boolean>("check_for_updates");
-    btn.setAttribute("title", hasUpdate ? "Updating..." : "Up to date");
+    if (hasUpdate) {
+      btn.setAttribute("title", "Update installed — restarting…");
+      return;
+    }
+    btn.setAttribute("title", "Already up to date");
     window.setTimeout(() => {
       if (btn.isConnected) {
         btn.setAttribute("title", originalTitle);
         btn.disabled = false;
         btn.classList.remove("busy");
       }
-    }, 2000);
+    }, 2500);
   } catch (err) {
     console.error("check_for_updates failed", err);
-    btn.setAttribute("title", "Check failed");
+    const msg =
+      typeof err === "string"
+        ? err
+        : err && typeof err === "object" && "message" in err
+          ? String((err as { message: unknown }).message)
+          : "Update check failed";
+    btn.setAttribute("title", msg.slice(0, 120));
     window.setTimeout(() => {
       if (btn.isConnected) {
         btn.setAttribute("title", originalTitle);
         btn.disabled = false;
         btn.classList.remove("busy");
       }
-    }, 2000);
+    }, 5000);
   }
 }

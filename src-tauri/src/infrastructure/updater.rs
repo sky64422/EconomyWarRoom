@@ -23,11 +23,22 @@ pub fn spawn_update_check(app: AppHandle) {
     });
 }
 
+/// Check GitHub `latest.json`, install if newer, then **restart** so the new binary loads.
+///
+/// Returns:
+/// - `Ok(true)` only if an update was applied (normally does not return — process restarts)
+/// - `Ok(false)` when already on the latest published version
 pub async fn check_and_install_update(app: &AppHandle) -> Result<bool, String> {
     note(app, DiagLevel::Info, "updater check started");
 
-    let updater = app.updater().map_err(|e| e.to_string())?;
-    match updater.check().await.map_err(|e| e.to_string())? {
+    let updater = app
+        .updater()
+        .map_err(|e| format!("updater init failed: {e}"))?;
+    match updater
+        .check()
+        .await
+        .map_err(|e| format!("updater check failed: {e}"))?
+    {
         Some(update) => {
             note(
                 app,
@@ -40,9 +51,10 @@ pub async fn check_and_install_update(app: &AppHandle) -> Result<bool, String> {
             update
                 .download_and_install(|_, _| {}, || {})
                 .await
-                .map_err(|e| e.to_string())?;
-            note(app, DiagLevel::Info, "update installed");
-            Ok(true)
+                .map_err(|e| format!("updater install failed: {e}"))?;
+            note(app, DiagLevel::Info, "update installed; restarting");
+            // Without restart the old process keeps running and the UI looks unchanged.
+            app.restart();
         }
         None => {
             note(app, DiagLevel::Info, "no update available");
