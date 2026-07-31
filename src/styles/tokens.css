@@ -44,7 +44,7 @@
    * symbol | spark | metrics; resize scales all three; pad/gap stay fixed chrome.
    * (Price text length must NOT steal width from the spark column.)
    */
-  --row-min-h: 46px;
+  --row-min-h: 50px;
   --row-pad-y: 6px;
   --row-pad-x: 11px;
   /* ~26% symbol · ~28% spark · ~45% metrics — room for price + % (user-resizable) */
@@ -55,12 +55,14 @@
   --row-resize-hit: 7px;
   --row-col-gap: 7px;
   --price-change-gap: 5px;
+  /* Space between primary (latest) and secondary (reference) price lines */
+  --price-row-gap: 4px;
   /* Quote type scale (primary = live/extended, secondary = reference) */
   --price-primary-size: 11.5px;
   --price-primary-change-size: 9.5px;
-  --price-secondary-size: 10.5px;
+  --price-secondary-size: 10px;
   --price-secondary-change-size: 9px;
-  --spark-h: 24px;
+  --spark-h: 26px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));
   --sparkline-neutral: rgba(0, 0, 0, calc(0.35 * var(--fg-opacity)));

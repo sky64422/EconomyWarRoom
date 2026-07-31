@@ -273,6 +273,33 @@ function patchMetricsRow(
   }
 }
 
+/**
+ * % used to color the sparkline.
+ * Sparklines are regular-session day series (fixed after the close), so in
+ * pre/post we must use regular-session move vs prior close — not AH %.
+ */
+function sparklineChangePercent(
+  q: Quote | undefined,
+  sparkPrevClose: number | null,
+): number | null {
+  if (!q) return null;
+  const previousClose = q.previous_close ?? sparkPrevClose ?? null;
+  const regularPrice = q.regular_price ?? q.price;
+  if (isExtendedQuote(q)) {
+    return (
+      q.regular_change_percent ??
+      pctChange(previousClose, regularPrice) ??
+      null
+    );
+  }
+  return (
+    q.change_percent ??
+    q.regular_change_percent ??
+    pctChange(previousClose, regularPrice) ??
+    null
+  );
+}
+
 function toneForChange(
   pct: number | null | undefined,
   fallback: ReturnType<typeof sparklineTone>,
@@ -622,7 +649,7 @@ export function mountWatchlist(
           const q = quotes.get(item.symbol);
           const sp = sparks.get(item.symbol);
           const points = sp?.points ?? [];
-          const pct = q?.change_percent ?? null;
+          const pct = sparklineChangePercent(q, sp?.previous_close ?? null);
           const tone = toneForChange(pct, sparklineTone(points));
           const stroke = strokeForTone(tone);
           const progress = sparklineProgress(points, item.asset_kind);
@@ -680,7 +707,7 @@ export function mountWatchlist(
       const svg = row.querySelector<SVGElement>("[data-spark]");
       if (svg && sp && item) {
         const points = sp.points ?? [];
-        const pct = q?.change_percent ?? null;
+        const pct = sparklineChangePercent(q, sp.previous_close ?? null);
         const tone = toneForChange(pct, sparklineTone(points));
         const stroke = strokeForTone(tone);
         const progress = sparklineProgress(points, item.asset_kind);

@@ -371,7 +371,7 @@ body {
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
-  gap: 2px;
+  gap: var(--price-row-gap);
   margin: 0;
   padding: 0;
   min-width: 0;
@@ -387,7 +387,7 @@ body {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-align: right;
-  line-height: 1.15;
+  line-height: 1.25;
 }
 
 .row-quote--primary {
