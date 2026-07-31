@@ -2,14 +2,16 @@ use crate::application::cache::{QuoteCache, SparklineCache};
 use crate::domain::constants::{RefreshPolicy, SparklinePolicy};
 use crate::domain::types::WatchlistItem;
 use crate::ports::market_data::MarketDataProvider;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::task::JoinSet;
 
 /// Pure round-robin batch picker for stale symbols.
 ///
 /// Respects `min_interval` via `last_fetch`, prefers `priority_symbol` first when stale,
 /// advances `cursor` so subsequent calls continue around the watchlist.
+/// Skips symbols listed in `exclude` (e.g. already in-flight this tick).
 pub fn pick_batch(
     items: &[WatchlistItem],
     last_fetch: &HashMap<String, Instant>,
@@ -18,13 +20,14 @@ pub fn pick_batch(
     batch_size: usize,
     cursor: &mut usize,
     priority_symbol: Option<&str>,
+    exclude: &HashSet<String>,
 ) -> Vec<String> {
     if items.is_empty() || batch_size == 0 {
         return vec![];
     }
     let mut out = Vec::new();
     if let Some(sym) = priority_symbol {
-        if items.iter().any(|i| i.symbol == sym) {
+        if !exclude.contains(sym) && items.iter().any(|i| i.symbol == sym) {
             let stale = last_fetch
                 .get(sym)
                 .map(|t| now.duration_since(*t) >= min_interval)
@@ -42,7 +45,7 @@ pub fn pick_batch(
         }
         let idx = (start + offset) % n;
         let sym = &items[idx].symbol;
-        if out.iter().any(|s| s == sym) {
+        if exclude.contains(sym) || out.iter().any(|s| s == sym) {
             continue;
         }
         let stale = last_fetch
@@ -60,7 +63,20 @@ pub fn pick_batch(
 /// Max sparkline fetches attempted in a single tick (avoid API burst).
 const SPARKLINE_FETCHES_PER_TICK: usize = 1;
 
-/// Quote refresh scheduler: round-robin batches, min interval, pause when hidden.
+/// Result of one scheduler tick — used to emit UI events only when caches changed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TickOutcome {
+    pub quotes_updated: bool,
+    pub sparklines_updated: bool,
+}
+
+impl TickOutcome {
+    pub fn any(self) -> bool {
+        self.quotes_updated || self.sparklines_updated
+    }
+}
+
+/// Quote refresh scheduler: fair RR worker pipeline, min interval, pause when hidden.
 pub struct QuoteScheduler {
     visible: bool,
     watchlist: Vec<WatchlistItem>,
@@ -71,10 +87,13 @@ pub struct QuoteScheduler {
     cursor: usize,
     priority: Option<String>,
     provider: Arc<dyn MarketDataProvider>,
-    /// When set, skip network work until this instant.
+    /// When set, skip **quote** network work until this instant.
     backoff_until: Option<Instant>,
-    /// Current backoff duration; doubles on each error up to [`RefreshPolicy::BACKOFF_MAX`].
+    /// Current quote backoff duration; doubles on each error up to [`RefreshPolicy::BACKOFF_MAX`].
     backoff: Duration,
+    /// When set, skip **sparkline** network work until this instant (independent of quotes).
+    spark_backoff_until: Option<Instant>,
+    spark_backoff: Duration,
     /// Last quote/sparkline provider error message (for diagnostics).
     last_error: Option<String>,
     /// Provider errors since last [`drain_diag_notes`] (for ring buffer, not spammy success logs).
@@ -97,6 +116,8 @@ impl QuoteScheduler {
             provider,
             backoff_until: None,
             backoff: RefreshPolicy::BACKOFF_INITIAL,
+            spark_backoff_until: None,
+            spark_backoff: RefreshPolicy::BACKOFF_INITIAL,
             last_error: None,
             pending_diag: Vec::new(),
             min_quote_interval: RefreshPolicy::MIN_QUOTE_INTERVAL,
@@ -115,21 +136,24 @@ impl QuoteScheduler {
             .map(|u| Instant::now() < u)
             .unwrap_or(false);
         let err = self.last_error.as_deref().unwrap_or("(none)");
+        let spark_backoff_active = self
+            .spark_backoff_until
+            .map(|u| Instant::now() < u)
+            .unwrap_or(false);
         format!(
-            "visible={} watchlist_len={} quote_interval_secs={} backoff_active={} backoff_secs={} last_error={}",
+            "visible={} watchlist_len={} quote_interval_ms={} backoff_active={} spark_backoff_active={} backoff_secs={} last_error={}",
             self.visible,
             self.watchlist.len(),
-            self.min_quote_interval.as_secs(),
+            self.min_quote_interval.as_millis(),
             backoff_active,
+            spark_backoff_active,
             self.backoff.as_secs_f64(),
             err
         )
     }
 
     pub fn set_min_quote_interval(&mut self, interval: Duration) {
-        self.min_quote_interval = interval.max(Duration::from_secs(
-            RefreshPolicy::QUOTE_REFRESH_SECS_MIN,
-        ));
+        self.min_quote_interval = interval.max(RefreshPolicy::MIN_QUOTE_INTERVAL);
     }
 
     pub fn min_quote_interval(&self) -> Duration {
@@ -141,6 +165,7 @@ impl QuoteScheduler {
             // Force-refresh: mark all symbols stale so the next tick fetches immediately.
             self.last_quote_fetch.clear();
             self.backoff_until = None;
+            self.spark_backoff_until = None;
         }
         self.visible = visible;
     }
@@ -149,7 +174,7 @@ impl QuoteScheduler {
         self.visible
     }
 
-    /// Whether network work is currently suppressed due to error backoff.
+    /// Whether quote network work is currently suppressed due to error backoff.
     pub fn is_backing_off(&self) -> bool {
         self.backoff_until
             .map(|until| Instant::now() < until)
@@ -172,21 +197,33 @@ impl QuoteScheduler {
         &self.sparkline_cache
     }
 
-    /// One scheduler tick: no-op when not visible or in backoff; otherwise refresh quotes
-    /// and at most one stale sparkline.
-    pub async fn tick_once(&mut self) {
+    /// One scheduler tick: worker-pool pipeline for quotes (complete → cache immediately),
+    /// then at most one sparkline. Independent backoffs for quote vs spark.
+    pub async fn tick_once(&mut self) -> TickOutcome {
+        let mut outcome = TickOutcome::default();
         if !self.visible {
-            return;
+            return outcome;
         }
         if self.watchlist.is_empty() {
-            return;
+            return outcome;
         }
 
+        outcome.quotes_updated = self.pump_quote_pipeline().await;
+        outcome.sparklines_updated = self.maybe_fetch_sparkline().await;
+        outcome
+    }
+
+    /// Fair RR pipeline: keep up to `max_concurrent` single-symbol fetches in flight.
+    /// Each completion updates the cache immediately (streaming within the tick).
+    /// Continues until no stale work remains or quote backoff trips.
+    async fn pump_quote_pipeline(&mut self) -> bool {
         let now = Instant::now();
-        if let Some(until) = self.backoff_until {
-            if now < until {
-                return;
-            }
+        if self
+            .backoff_until
+            .map(|until| now < until)
+            .unwrap_or(false)
+        {
+            return false;
         }
 
         let min_interval = self
@@ -194,56 +231,109 @@ impl QuoteScheduler {
             .limits()
             .min_interval
             .max(self.min_quote_interval);
-        let priority = self.priority.take();
-        let batch = pick_batch(
-            &self.watchlist,
-            &self.last_quote_fetch,
-            now,
-            min_interval,
-            RefreshPolicy::BATCH_SIZE,
-            &mut self.cursor,
-            priority.as_deref(),
-        );
+        let max_workers = self
+            .provider
+            .limits()
+            .max_concurrent
+            .max(1)
+            .min(RefreshPolicy::MAX_CONCURRENT);
 
-        if !batch.is_empty() {
-            match self.provider.fetch_quotes(&batch).await {
-                Ok(quotes) => {
+        let mut in_flight: HashSet<String> = HashSet::new();
+        let mut join_set: JoinSet<(String, Result<Vec<crate::domain::types::Quote>, String>)> =
+            JoinSet::new();
+        let mut stop_dispatch = false;
+        let mut any_updated = false;
+        let mut priority = self.priority.take();
+
+        loop {
+            // Fill free worker slots with next stale symbols (RR + optional priority).
+            while !stop_dispatch && in_flight.len() < max_workers {
+                let now = Instant::now();
+                let batch = pick_batch(
+                    &self.watchlist,
+                    &self.last_quote_fetch,
+                    now,
+                    min_interval,
+                    1,
+                    &mut self.cursor,
+                    priority.as_deref(),
+                    &in_flight,
+                );
+                priority = None; // only first fill uses priority
+                let Some(sym) = batch.into_iter().next() else {
+                    break;
+                };
+                in_flight.insert(sym.clone());
+                let provider = self.provider.clone();
+                join_set.spawn(async move {
+                    let result = provider.fetch_quotes(std::slice::from_ref(&sym)).await;
+                    (sym, result)
+                });
+            }
+
+            if join_set.is_empty() {
+                break;
+            }
+
+            let Some(joined) = join_set.join_next().await else {
+                break;
+            };
+
+            match joined {
+                Ok((sym, Ok(quotes))) => {
+                    in_flight.remove(&sym);
                     self.backoff = RefreshPolicy::BACKOFF_INITIAL;
-                    self.backoff_until = None;
-                    self.last_error = None;
-
                     let fetched_at = Instant::now();
-                    for q in quotes {
-                        self.last_quote_fetch.insert(q.symbol.clone(), fetched_at);
-                        self.quote_cache.put(q);
-                    }
-                    // Mark requested symbols as fetched even if provider omitted them,
-                    // so we do not hammer missing symbols every tick.
-                    for sym in &batch {
-                        self.last_quote_fetch
-                            .entry(sym.clone())
-                            .or_insert(fetched_at);
+                    if quotes.is_empty() {
+                        // Provider returned ok but omitted symbol — mark to avoid tight retry.
+                        self.last_quote_fetch.insert(sym, fetched_at);
+                    } else {
+                        // Successful quote work clears quote backoff (spark backoff is separate).
+                        if !stop_dispatch {
+                            self.backoff_until = None;
+                        }
+                        self.last_error = None;
+                        for q in quotes {
+                            self.last_quote_fetch.insert(q.symbol.clone(), fetched_at);
+                            self.quote_cache.put(q);
+                            any_updated = true;
+                        }
                     }
                 }
-                Err(err) => {
-                    // Keep existing cache; back off network work.
-                    let msg = format!("quotes: {err}");
+                Ok((sym, Err(err))) => {
+                    in_flight.remove(&sym);
+                    let msg = format!("quotes {sym}: {err}");
                     self.last_error = Some(msg.clone());
                     self.pending_diag.push(msg);
                     self.backoff_until = Some(Instant::now() + self.backoff);
                     self.backoff = (self.backoff * 2).min(RefreshPolicy::BACKOFF_MAX);
-                    return;
+                    stop_dispatch = true;
+                    // Do not mark last_quote_fetch — retry after backoff.
+                }
+                Err(e) => {
+                    let msg = format!("quotes join: {e}");
+                    self.last_error = Some(msg.clone());
+                    self.pending_diag.push(msg);
+                    stop_dispatch = true;
                 }
             }
         }
 
-        self.maybe_fetch_sparkline().await;
+        any_updated
     }
 
     /// Fetch up to [`SPARKLINE_FETCHES_PER_TICK`] stale sparklines.
-    async fn maybe_fetch_sparkline(&mut self) {
+    /// Returns true if the sparkline cache changed.
+    async fn maybe_fetch_sparkline(&mut self) -> bool {
         let now = Instant::now();
+        if let Some(until) = self.spark_backoff_until {
+            if now < until {
+                return false;
+            }
+        }
+
         let mut fetched = 0usize;
+        let mut updated = false;
         let symbols: Vec<String> = self.watchlist.iter().map(|i| i.symbol.clone()).collect();
 
         for sym in symbols {
@@ -268,20 +358,25 @@ impl QuoteScheduler {
                     let at = Instant::now();
                     self.last_spark_fetch.insert(sym, at);
                     self.sparkline_cache.put(spark);
+                    self.spark_backoff = RefreshPolicy::BACKOFF_INITIAL;
+                    self.spark_backoff_until = None;
                     self.last_error = None;
                     fetched += 1;
+                    updated = true;
                 }
                 Err(err) => {
-                    // Same backoff path as quote errors to protect the provider.
+                    // Spark-only backoff — do not pause quote polling.
                     let msg = format!("sparkline {sym}: {err}");
                     self.last_error = Some(msg.clone());
                     self.pending_diag.push(msg);
-                    self.backoff_until = Some(Instant::now() + self.backoff);
-                    self.backoff = (self.backoff * 2).min(RefreshPolicy::BACKOFF_MAX);
-                    return;
+                    self.spark_backoff_until = Some(Instant::now() + self.spark_backoff);
+                    self.spark_backoff =
+                        (self.spark_backoff * 2).min(RefreshPolicy::BACKOFF_MAX);
+                    return updated;
                 }
             }
         }
+        updated
     }
 }
 
@@ -305,6 +400,10 @@ mod tests {
         }
     }
 
+    fn empty_exclude() -> HashSet<String> {
+        HashSet::new()
+    }
+
     #[test]
     fn round_robin_respects_batch_and_staleness() {
         let items = vec![item("A", 0), item("B", 1), item("C", 2), item("D", 3)];
@@ -320,6 +419,7 @@ mod tests {
             2,
             &mut cursor,
             None,
+            &empty_exclude(),
         );
         assert!(!batch.contains(&"A".to_string()));
         assert_eq!(batch.len(), 2);
@@ -339,8 +439,31 @@ mod tests {
             2,
             &mut cursor,
             Some("C"),
+            &empty_exclude(),
         );
         assert_eq!(batch[0], "C");
+    }
+
+    #[test]
+    fn pick_batch_skips_excluded() {
+        let items = vec![item("A", 0), item("B", 1), item("C", 2)];
+        let now = Instant::now();
+        let last = HashMap::new();
+        let mut cursor = 0;
+        let mut exclude = HashSet::new();
+        exclude.insert("A".into());
+        let batch = pick_batch(
+            &items,
+            &last,
+            now,
+            Duration::from_secs(1),
+            2,
+            &mut cursor,
+            None,
+            &exclude,
+        );
+        assert!(!batch.contains(&"A".to_string()));
+        assert_eq!(batch.len(), 2);
     }
 
     struct MockProvider {
@@ -348,6 +471,8 @@ mod tests {
         calls: AtomicUsize,
         spark_calls: AtomicUsize,
         fail_quotes: AtomicBool,
+        /// Artificial latency so pipeline concurrency is observable.
+        delay_ms: u64,
     }
 
     impl MockProvider {
@@ -357,6 +482,7 @@ mod tests {
                 calls: AtomicUsize::new(0),
                 spark_calls: AtomicUsize::new(0),
                 fail_quotes: AtomicBool::new(false),
+                delay_ms: 0,
             }
         }
 
@@ -386,14 +512,16 @@ mod tests {
         fn limits(&self) -> ProviderLimits {
             ProviderLimits {
                 max_concurrent: 2,
-                // Below RefreshPolicy::MIN_QUOTE_INTERVAL so policy floor still applies.
-                min_interval: Duration::from_secs(1),
+                min_interval: Duration::from_millis(1),
                 prefers_batch: true,
             }
         }
 
         async fn fetch_quotes(&self, symbols: &[String]) -> Result<Vec<Quote>, String> {
             self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.delay_ms > 0 {
+                tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+            }
             if self.fail_quotes.load(Ordering::SeqCst) {
                 return Err("rate_limited".into());
             }
@@ -437,8 +565,9 @@ mod tests {
         let mut sched = QuoteScheduler::new(provider.clone());
         sched.set_watchlist(vec![item("A", 0)]);
         sched.set_visible(false);
-        sched.tick_once().await;
+        let out = sched.tick_once().await;
         assert_eq!(provider.call_count(), 0);
+        assert!(!out.any());
     }
 
     #[tokio::test]
@@ -447,8 +576,10 @@ mod tests {
         let mut sched = QuoteScheduler::new(provider.clone());
         sched.set_watchlist(vec![item("A", 0), item("B", 1)]);
         sched.set_visible(true);
-        sched.tick_once().await;
-        assert_eq!(provider.call_count(), 1);
+        let out = sched.tick_once().await;
+        // Phase 2: one provider call per symbol.
+        assert_eq!(provider.call_count(), 2);
+        assert!(out.quotes_updated);
         assert_eq!(sched.quote_cache().get("A").map(|q| q.price), Some(10.0));
         assert_eq!(sched.quote_cache().get("B").map(|q| q.price), Some(20.0));
     }
@@ -459,10 +590,11 @@ mod tests {
         provider.set_fail_quotes(true);
         let mut sched = QuoteScheduler::new(provider);
         sched.set_watchlist(vec![item("MSFT", 0)]);
-        sched.tick_once().await;
+        let out = sched.tick_once().await;
+        assert!(!out.quotes_updated);
         let notes = sched.drain_diag_notes();
         assert_eq!(notes.len(), 1);
-        assert!(notes[0].contains("quotes:"));
+        assert!(notes[0].contains("quotes"));
         assert!(sched.drain_diag_notes().is_empty());
     }
 
@@ -492,9 +624,10 @@ mod tests {
         sched.set_visible(true);
 
         assert!(sched.sparkline_cache().get("A").is_none());
-        sched.tick_once().await;
+        let out = sched.tick_once().await;
 
         assert_eq!(provider.spark_call_count(), 1);
+        assert!(out.sparklines_updated);
         assert!(sched.sparkline_cache().get("A").is_some());
         assert_eq!(
             sched.sparkline_cache().get("A").map(|s| s.symbol.as_str()),
@@ -525,8 +658,9 @@ mod tests {
         let provider = Arc::new(MockProvider::new(vec![]));
         let mut sched = QuoteScheduler::new(provider.clone());
         sched.set_visible(true);
-        sched.tick_once().await;
+        let out = sched.tick_once().await;
         assert_eq!(provider.call_count(), 0);
+        assert!(!out.any());
     }
 
     #[tokio::test]
@@ -564,7 +698,8 @@ mod tests {
             Duration::from_secs(1),
             0,
             &mut cursor,
-            None
+            None,
+            &empty_exclude()
         )
         .is_empty());
         assert!(pick_batch(
@@ -574,7 +709,8 @@ mod tests {
             Duration::from_secs(1),
             2,
             &mut cursor,
-            None
+            None,
+            &empty_exclude()
         )
         .is_empty());
     }
@@ -603,14 +739,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sparkline_failure_applies_backoff() {
+    async fn sparkline_failure_applies_spark_only_backoff() {
         let provider = Arc::new(FailSparkProvider {
             inner: MockProvider::new(vec![quote("A", 10.0)]),
         });
         let mut sched = QuoteScheduler::new(provider);
         sched.set_watchlist(vec![item("A", 0)]);
-        sched.tick_once().await;
-        assert!(sched.backoff_until.is_some());
+        let out = sched.tick_once().await;
+        // Quotes still succeed; spark failure must not freeze quote polling.
+        assert!(out.quotes_updated);
+        assert!(!out.sparklines_updated);
+        assert!(sched.backoff_until.is_none());
+        assert!(sched.spark_backoff_until.is_some());
+        assert!(sched.quote_cache().get("A").is_some());
         assert!(sched.sparkline_cache().get("A").is_none());
+    }
+
+    #[tokio::test]
+    async fn pipeline_fetches_all_stale_with_worker_cap() {
+        // 4 symbols, max_concurrent=2 → still all cached after one tick (pipeline refill).
+        let provider = Arc::new(MockProvider::new(vec![
+            quote("A", 1.0),
+            quote("B", 2.0),
+            quote("C", 3.0),
+            quote("D", 4.0),
+        ]));
+        let mut sched = QuoteScheduler::new(provider.clone());
+        sched.set_watchlist(vec![
+            item("A", 0),
+            item("B", 1),
+            item("C", 2),
+            item("D", 3),
+        ]);
+        let out = sched.tick_once().await;
+        assert!(out.quotes_updated);
+        assert_eq!(provider.call_count(), 4);
+        for s in ["A", "B", "C", "D"] {
+            assert!(sched.quote_cache().get(s).is_some(), "missing {s}");
+        }
+    }
+
+    #[tokio::test]
+    async fn second_tick_without_stale_skips_quotes() {
+        let provider = Arc::new(MockProvider::new(vec![quote("A", 1.0)]));
+        let mut sched = QuoteScheduler::new(provider.clone());
+        sched.set_watchlist(vec![item("A", 0)]);
+        let out1 = sched.tick_once().await;
+        assert!(out1.quotes_updated);
+        let calls = provider.call_count();
+        let out2 = sched.tick_once().await;
+        assert!(!out2.quotes_updated);
+        assert_eq!(provider.call_count(), calls);
     }
 }

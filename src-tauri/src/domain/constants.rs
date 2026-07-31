@@ -4,25 +4,42 @@ use std::time::Duration;
 pub struct RefreshPolicy;
 
 impl RefreshPolicy {
-    pub const TICK: Duration = Duration::from_secs(1);
+    /// Scheduler loop cadence (shorter than network RTT so we pick work promptly).
+    pub const TICK: Duration = Duration::from_millis(500);
     pub const BATCH_SIZE: usize = 4;
-    /// Default min seconds between quote fetches for the same symbol.
-    pub const MIN_QUOTE_INTERVAL: Duration = Duration::from_secs(3);
-    /// User-configurable quote interval bounds (seconds).
-    pub const QUOTE_REFRESH_SECS_MIN: u64 = 2;
-    pub const QUOTE_REFRESH_SECS_MAX: u64 = 120;
-    pub const QUOTE_REFRESH_SECS_DEFAULT: u64 = 3;
+    /// Default min interval between quote fetches for the same symbol.
+    pub const MIN_QUOTE_INTERVAL: Duration = Duration::from_millis(500);
+    /// User-configurable quote interval bounds (**milliseconds** in persisted field
+    /// `quote_refresh_secs`; legacy values 1..=120 are treated as whole seconds).
+    pub const QUOTE_REFRESH_MS_MIN: u64 = 250;
+    pub const QUOTE_REFRESH_MS_MAX: u64 = 120_000;
+    pub const QUOTE_REFRESH_MS_DEFAULT: u64 = 500;
+    /// @deprecated name — use QUOTE_REFRESH_MS_*; kept for call-site clarity.
+    pub const QUOTE_REFRESH_SECS_MIN: u64 = 250;
+    pub const QUOTE_REFRESH_SECS_MAX: u64 = 120_000;
+    pub const QUOTE_REFRESH_SECS_DEFAULT: u64 = 500;
     pub const MAX_CONCURRENT: usize = 3;
     pub const SPARKLINE_MIN_INTERVAL: Duration = Duration::from_secs(300);
     pub const BACKOFF_INITIAL: Duration = Duration::from_secs(5);
     pub const BACKOFF_MAX: Duration = Duration::from_secs(120);
 }
 
-/// Clamp user quote refresh interval (seconds).
-pub fn clamp_quote_refresh_secs(secs: u64) -> u64 {
-    secs.clamp(
-        RefreshPolicy::QUOTE_REFRESH_SECS_MIN,
-        RefreshPolicy::QUOTE_REFRESH_SECS_MAX,
+/// Normalize + clamp quote refresh.
+///
+/// Persisted field is historically named `quote_refresh_secs`. Values in **1..=120**
+/// are treated as **legacy whole seconds** (multiplied by 1000). Larger values are
+/// milliseconds (e.g. 500 → 500ms, 1000 → 1s).
+pub fn clamp_quote_refresh_secs(stored: u64) -> u64 {
+    let ms = if (1..=120).contains(&stored) {
+        stored.saturating_mul(1000)
+    } else if stored == 0 {
+        RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT
+    } else {
+        stored
+    };
+    ms.clamp(
+        RefreshPolicy::QUOTE_REFRESH_MS_MIN,
+        RefreshPolicy::QUOTE_REFRESH_MS_MAX,
     )
 }
 
@@ -164,8 +181,11 @@ mod tests {
 
     #[test]
     fn refresh_policy_durations() {
-        assert_eq!(RefreshPolicy::TICK, Duration::from_secs(1));
-        assert_eq!(RefreshPolicy::MIN_QUOTE_INTERVAL, Duration::from_secs(3));
+        assert_eq!(RefreshPolicy::TICK, Duration::from_millis(500));
+        assert_eq!(
+            RefreshPolicy::MIN_QUOTE_INTERVAL,
+            Duration::from_millis(500)
+        );
         assert_eq!(
             RefreshPolicy::SPARKLINE_MIN_INTERVAL,
             Duration::from_secs(300)
@@ -174,17 +194,20 @@ mod tests {
 
     #[test]
     fn clamp_quote_refresh_secs_bounds() {
+        // 0 → default ms
         assert_eq!(
-            clamp_quote_refresh_secs(1),
-            RefreshPolicy::QUOTE_REFRESH_SECS_MIN
+            clamp_quote_refresh_secs(0),
+            RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT
         );
+        // Legacy whole seconds 1..=120 → ms
+        assert_eq!(clamp_quote_refresh_secs(1), 1000);
+        assert_eq!(clamp_quote_refresh_secs(3), 3000);
+        // Explicit milliseconds
+        assert_eq!(clamp_quote_refresh_secs(500), 500);
+        assert_eq!(clamp_quote_refresh_secs(250), 250);
         assert_eq!(
-            clamp_quote_refresh_secs(3),
-            RefreshPolicy::QUOTE_REFRESH_SECS_DEFAULT
-        );
-        assert_eq!(
-            clamp_quote_refresh_secs(999),
-            RefreshPolicy::QUOTE_REFRESH_SECS_MAX
+            clamp_quote_refresh_secs(999_999),
+            RefreshPolicy::QUOTE_REFRESH_MS_MAX
         );
     }
 

@@ -24,7 +24,8 @@ const THEMES: { value: ThemeMode; label: string }[] = [
   { value: "system", label: "System" },
 ];
 
-const REFRESH_PRESETS = [2, 3, 5, 10, 15, 30, 60] as const;
+/** Price refresh presets in milliseconds (matches Rust clamp / storage). */
+const REFRESH_PRESETS = [250, 500, 1000, 2000, 3000, 5000, 10000, 30000, 60000] as const;
 
 export function mountSettingsPanel(
   root: HTMLElement,
@@ -113,9 +114,9 @@ export function mountSettingsPanel(
 
     root.querySelectorAll<HTMLButtonElement>("[data-refresh]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const secs = Number(btn.dataset.refresh);
-        if (!Number.isFinite(secs)) return;
-        void applyQuoteRefresh(secs);
+        const ms = Number(btn.dataset.refresh);
+        if (!Number.isFinite(ms)) return;
+        void applyQuoteRefresh(ms);
       });
     });
 
@@ -135,11 +136,12 @@ export function mountSettingsPanel(
     });
   }
 
-  async function applyQuoteRefresh(secs: number): Promise<void> {
-    quoteRefreshSecs = secs;
+  /** `ms` is milliseconds; backend param name remains `secs` for API compatibility. */
+  async function applyQuoteRefresh(ms: number): Promise<void> {
+    quoteRefreshSecs = ms;
     render();
     try {
-      const applied = await invoke<number>("set_quote_refresh_secs", { secs });
+      const applied = await invoke<number>("set_quote_refresh_secs", { secs: ms });
       quoteRefreshSecs = applied;
       if (visible) render();
     } catch (err) {
@@ -242,8 +244,12 @@ export function mountSettingsPanel(
   };
 }
 
-function formatRefresh(secs: number): string {
+/** Format refresh interval stored as milliseconds. */
+function formatRefresh(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const secs = ms / 1000;
   if (secs >= 60 && secs % 60 === 0) return `${secs / 60}m`;
+  if (Number.isInteger(secs)) return `${secs}s`;
   return `${secs}s`;
 }
 

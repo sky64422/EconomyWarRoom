@@ -31,7 +31,8 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   const state = await invoke<PersistedState>("get_state");
   const theme: ThemeMode = state.settings.theme ?? "system";
   const opacity = state.settings.opacity ?? 0.92;
-  const quoteRefreshSecs = state.settings.quote_refresh_secs ?? 3;
+  // Stored as ms (legacy 1..=120 = whole seconds, normalized on Rust load).
+  const quoteRefreshSecs = state.settings.quote_refresh_secs ?? 500;
   const autostart = state.settings.autostart ?? true;
 
   applyThemeToDocument(theme);
@@ -41,6 +42,7 @@ export async function mountApp(root: HTMLElement): Promise<void> {
     ...DEFAULT_COLUMN_RATIOS,
     ...(state.settings.column_ratios ?? {}),
   };
+
   const watchlist = mountWatchlist(watchlistRoot, { columnRatios });
   watchlist.setItems(state.watchlist ?? []);
 

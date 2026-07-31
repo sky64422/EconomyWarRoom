@@ -8,7 +8,7 @@ use crate::application::diagnostics::{
 };
 use crate::application::scheduler::QuoteScheduler;
 use crate::domain::constants::{
-    clamp_geometry, clamp_opacity, clamp_quote_refresh_secs, RefreshPolicy,
+    clamp_geometry, clamp_opacity, clamp_quote_refresh_secs,
 };
 use crate::domain::types::{
     AssetKind, CardTint, PersistedState, Quote, Sparkline, ThemeMode, WatchlistItem, WindowGeometry,
@@ -240,22 +240,25 @@ impl AppCore {
         Ok(ratios)
     }
 
-    /// Persist quote refresh interval (seconds) and update the scheduler.
+    /// Persist quote refresh interval and update the scheduler.
+    ///
+    /// `secs` is the historical parameter name; value is **milliseconds** after clamp
+    /// (legacy 1..=120 are treated as whole seconds — see [`clamp_quote_refresh_secs`]).
     pub async fn set_quote_refresh_secs(&self, secs: u64) -> Result<u64, String> {
-        let secs = clamp_quote_refresh_secs(secs);
+        let ms = clamp_quote_refresh_secs(secs);
         {
             let mut persisted = self
                 .persisted
                 .lock()
                 .map_err(|_| "state lock poisoned".to_string())?;
-            persisted.settings.quote_refresh_secs = secs;
+            persisted.settings.quote_refresh_secs = ms;
             self.persist_locked(&persisted)?;
         }
         {
             let mut sched = self.scheduler.lock().await;
-            sched.set_min_quote_interval(Duration::from_secs(secs));
+            sched.set_min_quote_interval(Duration::from_millis(ms));
         }
-        Ok(secs)
+        Ok(ms)
     }
 
     pub fn quote_refresh_secs(&self) -> Result<u64, String> {
@@ -270,11 +273,9 @@ impl AppCore {
 
     /// Apply persisted quote interval onto the scheduler (call once at bootstrap).
     pub async fn apply_quote_refresh_to_scheduler(&self) -> Result<(), String> {
-        let secs = self.quote_refresh_secs()?;
+        let ms = self.quote_refresh_secs()?;
         let mut sched = self.scheduler.lock().await;
-        sched.set_min_quote_interval(Duration::from_secs(secs.max(
-            RefreshPolicy::QUOTE_REFRESH_SECS_MIN,
-        )));
+        sched.set_min_quote_interval(Duration::from_millis(ms));
         Ok(())
     }
 

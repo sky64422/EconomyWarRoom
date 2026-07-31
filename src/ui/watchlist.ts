@@ -238,18 +238,48 @@ function metricsMarkup(
   `;
 }
 
+/** Stable key for displayed metrics (skip DOM write when unchanged). */
+function metricsFingerprint(rows: PriceRows): string {
+  const p = (r: PriceRow) =>
+    `${r.price ?? ""}:${r.change ?? ""}`;
+  return `${p(rows.primary)}|${p(rows.secondary)}`;
+}
+
+/** Cheap spark identity — enough to skip redraw when Yahoo sends the same series. */
+function sparkFingerprint(sp: Sparkline | undefined): string {
+  if (!sp) return "";
+  const last = sp.points.length ? sp.points[sp.points.length - 1] : null;
+  return `${sp.as_of}|${sp.points.length}|${last?.t ?? ""}|${last?.close ?? ""}|${sp.previous_close ?? ""}`;
+}
+
+interface PatchMetricsResult {
+  changed: boolean;
+  primaryPriceChanged: boolean;
+}
+
 function patchMetricsRow(
   row: HTMLElement,
   rows: PriceRows,
-): void {
+): PatchMetricsResult {
+  const fp = metricsFingerprint(rows);
+  const prevFp = row.dataset.metricsFp ?? "";
+  if (fp === prevFp) {
+    return { changed: false, primaryPriceChanged: false };
+  }
+
+  const prevPrimaryPrice = row.dataset.primaryPrice ?? "";
+  const nextPrimaryPrice =
+    rows.primary.price != null ? formatPrice(rows.primary.price) : "--";
+  const primaryPriceChanged =
+    prevFp !== "" && prevPrimaryPrice !== "" && prevPrimaryPrice !== nextPrimaryPrice;
+
   const primaryPriceEl = row.querySelector<HTMLElement>("[data-price-primary]");
   const primaryChangeEl = row.querySelector<HTMLElement>("[data-change-primary]");
   const secondaryPriceEl = row.querySelector<HTMLElement>("[data-price-secondary]");
   const secondaryChangeEl = row.querySelector<HTMLElement>("[data-change-secondary]");
 
   if (primaryPriceEl) {
-    primaryPriceEl.textContent =
-      rows.primary.price != null ? formatPrice(rows.primary.price) : "--";
+    primaryPriceEl.textContent = nextPrimaryPrice;
   }
   if (primaryChangeEl) {
     const txt = formatChangeParen(rows.primary.change);
@@ -271,6 +301,10 @@ function patchMetricsRow(
     const cls = changeClass(rows.secondary.change);
     if (cls) secondaryChangeEl.classList.add(cls);
   }
+
+  row.dataset.metricsFp = fp;
+  row.dataset.primaryPrice = nextPrimaryPrice;
+  return { changed: true, primaryPriceChanged };
 }
 
 /**
@@ -343,9 +377,17 @@ function saveAddCardTint(tint: CardTint): void {
 
 type TintTarget = { kind: "item"; id: string } | { kind: "add" };
 
+/** Soft settle hint — longer ease, less frequent (avoid gimmicky strobe). */
+const PRICE_FLASH_COOLDOWN_MS = 1400;
+const PRICE_FLASH_MS = 560;
+
+export interface WatchlistMountOptions {
+  columnRatios?: ColumnRatios;
+}
+
 export function mountWatchlist(
   root: HTMLElement,
-  opts?: { columnRatios?: ColumnRatios },
+  opts?: WatchlistMountOptions,
 ): WatchlistController {
   let items: WatchlistItem[] = [];
   const quotes = new Map<string, Quote>();
@@ -369,6 +411,8 @@ export function mountWatchlist(
   let sparkTickTimer: ReturnType<typeof setInterval> | null = null;
   let tintMenuEl: HTMLElement | null = null;
   let addCardTint: CardTint = loadAddCardTint();
+  /** symbol → last flash timestamp */
+  const lastPriceFlashAt = new Map<string, number>();
 
   root.innerHTML = `
     <div class="watchlist-view">
@@ -693,36 +737,84 @@ export function mountWatchlist(
     bindColumnResizers();
   }
 
-  /** Update price / change / sparkline without rebuilding rows (preserves DnD). */
-  function patchMarketCells(): void {
+  function maybeFlashPrimaryPrice(row: HTMLElement, symbol: string): void {
+    const now = Date.now();
+    const prev = lastPriceFlashAt.get(symbol) ?? 0;
+    if (now - prev < PRICE_FLASH_COOLDOWN_MS) return;
+    lastPriceFlashAt.set(symbol, now);
+    row.classList.remove("row-price-tick");
+    // Restart CSS animation if class was already present.
+    void row.offsetWidth;
+    row.classList.add("row-price-tick");
+    window.setTimeout(() => {
+      if (row.isConnected) row.classList.remove("row-price-tick");
+    }, PRICE_FLASH_MS);
+  }
+
+  function paintSparkSvg(
+    svg: SVGElement,
+    item: WatchlistItem,
+    q: Quote | undefined,
+    sp: Sparkline,
+  ): void {
+    const points = sp.points ?? [];
+    const pct = sparklineChangePercent(q, sp.previous_close ?? null);
+    const tone = toneForChange(pct, sparklineTone(points));
+    const stroke = strokeForTone(tone);
+    const progress = sparklineProgress(points, item.asset_kind);
+    svg.innerHTML = sparklineSvgMarkup(
+      points,
+      SPARK_W,
+      SPARK_H,
+      {
+        id: `spark-${escapeAttr(item.id)}`,
+        assetKind: item.asset_kind,
+        stroke,
+        progress,
+      },
+      sp.previous_close ?? null,
+    );
+  }
+
+  /**
+   * Update price / spark without rebuilding rows (preserves DnD).
+   * - `full`: metrics if changed + spark if data changed (or force for tone)
+   * - `spark-tick`: only spark progress animation; skip metrics (stable numbers)
+   */
+  function patchMarketCells(mode: "full" | "spark-tick" = "full"): void {
     const byId = new Map(items.map((item) => [item.id, item]));
+
     listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((row) => {
       const symbol = row.dataset.symbol;
       if (!symbol) return;
       const item = row.dataset.id ? byId.get(row.dataset.id) : undefined;
       const q = quotes.get(symbol);
       const sp = sparks.get(symbol);
-      patchMetricsRow(row, resolvePriceRows(q, sp?.previous_close ?? null));
+
+      if (mode === "full") {
+        const metrics = patchMetricsRow(
+          row,
+          resolvePriceRows(q, sp?.previous_close ?? null),
+        );
+        if (metrics.primaryPriceChanged) {
+          maybeFlashPrimaryPrice(row, symbol);
+        }
+      }
 
       const svg = row.querySelector<SVGElement>("[data-spark]");
       if (svg && sp && item) {
-        const points = sp.points ?? [];
-        const pct = sparklineChangePercent(q, sp.previous_close ?? null);
-        const tone = toneForChange(pct, sparklineTone(points));
-        const stroke = strokeForTone(tone);
-        const progress = sparklineProgress(points, item.asset_kind);
-        svg.innerHTML = sparklineSvgMarkup(
-          points,
-          SPARK_W,
-          SPARK_H,
-          {
-            id: `spark-${escapeAttr(item.id)}`,
-            assetKind: item.asset_kind,
-            stroke,
-            progress,
-          },
-          sp.previous_close ?? null,
-        );
+        if (mode === "spark-tick") {
+          paintSparkSvg(svg, item, q, sp);
+          return;
+        }
+        const sfp = sparkFingerprint(sp);
+        const toneKey = String(sparklineChangePercent(q, sp.previous_close ?? null) ?? "");
+        const fullSparkKey = `${sfp}|${toneKey}`;
+        if (row.dataset.sparkFp === fullSparkKey) {
+          return;
+        }
+        row.dataset.sparkFp = fullSparkKey;
+        paintSparkSvg(svg, item, q, sp);
       }
     });
   }
@@ -733,7 +825,7 @@ export function mountWatchlist(
     sparkTickTimer = setInterval(() => {
       if (document.hidden) return;
       if (listEl.querySelector(".watchlist-row")) {
-        patchMarketCells();
+        patchMarketCells("spark-tick");
       }
     }, SPARK_TICK_MS);
   }

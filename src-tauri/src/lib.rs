@@ -175,17 +175,23 @@ pub fn run() {
                     if !state.core.is_visible() {
                         continue;
                     }
-                    {
+                    let outcome = {
                         let mut sched = state.core.scheduler.lock().await;
-                        sched.tick_once().await;
+                        let outcome = sched.tick_once().await;
                         for msg in sched.drain_diag_notes() {
                             state.core.note_throttled_default(DiagLevel::Warn, msg);
                         }
+                        outcome
+                    };
+                    // Phase 2: emit only when caches actually changed (less UI thrash).
+                    if outcome.quotes_updated {
+                        let quotes = state.core.get_quotes().await;
+                        let _ = app_handle.emit("quotes-updated", quotes);
                     }
-                    let quotes = state.core.get_quotes().await;
-                    let sparks = state.core.get_sparklines().await;
-                    let _ = app_handle.emit("quotes-updated", quotes);
-                    let _ = app_handle.emit("sparklines-updated", sparks);
+                    if outcome.sparklines_updated {
+                        let sparks = state.core.get_sparklines().await;
+                        let _ = app_handle.emit("sparklines-updated", sparks);
+                    }
                 }
             });
 

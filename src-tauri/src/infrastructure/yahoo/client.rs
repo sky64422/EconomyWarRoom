@@ -2,17 +2,26 @@ use super::parse::{
     enrich_quote_prior_from_daily, parse_quote_from_chart, parse_search_results,
     parse_sparkline_from_chart,
 };
+use crate::domain::constants::RefreshPolicy;
 use crate::domain::types::{AssetKind, Quote, Sparkline, SymbolSuggestion};
 use crate::ports::market_data::{MarketDataProvider, ProviderLimits};
 use async_trait::async_trait;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const DEFAULT_BASE: &str = "https://query1.finance.yahoo.com";
 
+/// Cached prior-close enrichment so we avoid a second daily chart call every tick.
+type PriorCache = Arc<Mutex<HashMap<String, (f64, Option<f64>)>>>;
+
 pub struct YahooProvider {
     client: reqwest::Client,
     base_url: String,
+    prior_cache: PriorCache,
 }
 
 impl YahooProvider {
@@ -30,18 +39,19 @@ impl YahooProvider {
         Ok(Self {
             client,
             base_url: base_url.into().trim_end_matches('/').to_string(),
+            prior_cache: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
-    async fn chart_json(
-        &self,
+    async fn chart_json_with(
+        client: &reqwest::Client,
+        base_url: &str,
         symbol: &str,
         range: &str,
         interval: &str,
     ) -> Result<serde_json::Value, String> {
-        let url = format!("{}/v8/finance/chart/{symbol}", self.base_url);
-        let resp = self
-            .client
+        let url = format!("{base_url}/v8/finance/chart/{symbol}");
+        let resp = client
             .get(&url)
             .query(&[
                 ("range", range),
@@ -58,6 +68,58 @@ impl YahooProvider {
             return Err(format!("http {}", resp.status()));
         }
         resp.json().await.map_err(|e| e.to_string())
+    }
+
+    async fn chart_json(
+        &self,
+        symbol: &str,
+        range: &str,
+        interval: &str,
+    ) -> Result<serde_json::Value, String> {
+        Self::chart_json_with(&self.client, &self.base_url, symbol, range, interval).await
+    }
+
+    async fn fetch_one_quote(
+        client: &reqwest::Client,
+        base_url: &str,
+        prior_cache: &PriorCache,
+        sym: &str,
+    ) -> Result<Quote, String> {
+        // 1m bars + includePrePost so pre/post last print is available when meta
+        // omits preMarketPrice / marketState (common on chart API).
+        let json = Self::chart_json_with(client, base_url, sym, "1d", "1m").await?;
+        let mut quote = parse_quote_from_chart(&json)?;
+
+        if quote.prior_close.is_none() || quote.previous_day_change_percent.is_none() {
+            // Session cache first — skips a second HTTP for crypto / thin meta.
+            let cached = prior_cache
+                .lock()
+                .ok()
+                .and_then(|g| g.get(sym).copied());
+            if let Some((prior, pct)) = cached {
+                if quote.prior_close.is_none() {
+                    quote.prior_close = Some(prior);
+                }
+                if quote.previous_day_change_percent.is_none() {
+                    quote.previous_day_change_percent = pct;
+                }
+            } else if let Ok(daily) =
+                Self::chart_json_with(client, base_url, sym, "5d", "1d").await
+            {
+                enrich_quote_prior_from_daily(&mut quote, &daily);
+                if let Some(prior) = quote.prior_close {
+                    if let Ok(mut g) = prior_cache.lock() {
+                        g.insert(sym.to_string(), (prior, quote.previous_day_change_percent));
+                    }
+                }
+            }
+        } else if let Some(prior) = quote.prior_close {
+            if let Ok(mut g) = prior_cache.lock() {
+                g.insert(sym.to_string(), (prior, quote.previous_day_change_percent));
+            }
+        }
+
+        Ok(quote)
     }
 
     /// Yahoo symbol lookup (`/v1/finance/search`) — used for add-flow autocomplete.
@@ -111,28 +173,65 @@ impl MarketDataProvider for YahooProvider {
 
     fn limits(&self) -> ProviderLimits {
         ProviderLimits {
-            max_concurrent: 3,
-            min_interval: Duration::from_secs(10),
+            max_concurrent: RefreshPolicy::MAX_CONCURRENT,
+            // Soft client throttle (not a documented Yahoo SLA). Live smokes were
+            // clean well below this with serial batches; parallel caps concurrency.
+            min_interval: RefreshPolicy::MIN_QUOTE_INTERVAL,
             prefers_batch: false, // per-symbol chart
         }
     }
 
     async fn fetch_quotes(&self, symbols: &[String]) -> Result<Vec<Quote>, String> {
-        let mut out = Vec::new();
+        if symbols.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let max_c = self.limits().max_concurrent.max(1);
+        let sem = Arc::new(Semaphore::new(max_c));
+        let mut join_set = JoinSet::new();
+
         for sym in symbols {
-            // 1m bars + includePrePost so pre/post last print is available when meta
-            // omits preMarketPrice / marketState (common on chart API).
-            let json = self.chart_json(sym, "1d", "1m").await?;
-            let mut quote = parse_quote_from_chart(&json)?;
-            // Crypto (and some equities) omit regularMarketPreviousClose — without it the
-            // UI secondary row has no prior-day %. Recover from daily bars when needed.
-            if quote.prior_close.is_none() || quote.previous_day_change_percent.is_none() {
-                if let Ok(daily) = self.chart_json(sym, "5d", "1d").await {
-                    enrich_quote_prior_from_daily(&mut quote, &daily);
+            let client = self.client.clone();
+            let base = self.base_url.clone();
+            let prior = self.prior_cache.clone();
+            let sym = sym.clone();
+            let sem = sem.clone();
+            join_set.spawn(async move {
+                let _permit = sem
+                    .acquire()
+                    .await
+                    .map_err(|_| "semaphore closed".to_string())?;
+                Self::fetch_one_quote(&client, &base, &prior, &sym).await
+            });
+        }
+
+        let mut out = Vec::new();
+        let mut last_err: Option<String> = None;
+        let mut saw_rate_limit = false;
+
+        while let Some(joined) = join_set.join_next().await {
+            match joined {
+                Ok(Ok(q)) => out.push(q),
+                Ok(Err(e)) => {
+                    if e.contains("rate_limited") {
+                        saw_rate_limit = true;
+                    }
+                    last_err = Some(e);
+                }
+                Err(e) => {
+                    last_err = Some(e.to_string());
                 }
             }
-            out.push(quote);
         }
+
+        if out.is_empty() {
+            return Err(if saw_rate_limit {
+                "rate_limited".into()
+            } else {
+                last_err.unwrap_or_else(|| "all quotes failed".into())
+            });
+        }
+        // Partial success: return whatever we got (caller marks only those symbols).
         Ok(out)
     }
 
@@ -195,6 +294,29 @@ mod tests {
             .unwrap();
         assert_eq!(quotes.len(), 1);
         assert!((quotes[0].price - 110.0).abs() < 1e-9);
+    }
+
+    #[tokio::test]
+    async fn fetch_quotes_partial_success_skips_failed_symbol() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v8/finance/chart/AAPL"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(chart_body("AAPL", 110.0)))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/v8/finance/chart/MSFT"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+
+        let provider = YahooProvider::with_base_url(server.uri()).unwrap();
+        let quotes = provider
+            .fetch_quotes(&[String::from("AAPL"), String::from("MSFT")])
+            .await
+            .unwrap();
+        assert_eq!(quotes.len(), 1);
+        assert_eq!(quotes[0].symbol, "AAPL");
     }
 
     #[tokio::test]

@@ -81,6 +81,28 @@ body {
   line-height: 1;
 }
 
+/*
+ * Price update hint — soft ease, not a blink.
+ * Metrics wash only; numbers stay fully legible (no opacity flicker).
+ */
+@keyframes row-price-settle {
+  0% {
+    background-color: color-mix(in srgb, var(--text) 7%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.watchlist-row .row-metrics {
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.watchlist-row.row-price-tick .row-metrics {
+  animation: row-price-settle 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 .header-actions {
   display: flex;
   align-items: center;

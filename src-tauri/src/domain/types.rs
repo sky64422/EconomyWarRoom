@@ -155,7 +155,10 @@ pub struct AppSettings {
     pub window: WindowGeometry,
     pub hotkey: String,
     pub autostart: bool,
-    /// Seconds between quote refreshes per symbol (clamped on write).
+    /// Quote refresh interval per symbol.
+    ///
+    /// Field name is historical (`_secs`). Stored unit is **milliseconds** after
+    /// clamp; legacy files with 1..=120 are interpreted as whole seconds on load.
     #[serde(default = "default_quote_refresh_secs")]
     pub quote_refresh_secs: u64,
     /// Proportional column widths; omitted in older state files → defaults.
@@ -164,7 +167,7 @@ pub struct AppSettings {
 }
 
 fn default_quote_refresh_secs() -> u64 {
-    3
+    crate::domain::constants::RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
