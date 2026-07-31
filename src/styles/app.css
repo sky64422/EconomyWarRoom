@@ -379,29 +379,6 @@ body {
   display: none;
 }
 
-/* Extended-hours moon (AssetStocker-style nights_stay cue) */
-.row-ext-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  margin-right: -2px;
-  color: color-mix(in srgb, var(--text-secondary) 88%, #8b9cff);
-  opacity: 0.9;
-  line-height: 0;
-  transform: translateY(0.5px);
-}
-
-.row-ext-badge[hidden] {
-  display: none;
-}
-
-.row-ext-icon {
-  display: block;
-  width: 10px;
-  height: 10px;
-}
-
 .watchlist-row:hover:not(.is-selected) {
   border-color: color-mix(in srgb, var(--text) 20%, transparent);
 }

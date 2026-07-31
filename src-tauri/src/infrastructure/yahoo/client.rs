@@ -1,4 +1,7 @@
-use super::parse::{parse_quote_from_chart, parse_search_results, parse_sparkline_from_chart};
+use super::parse::{
+    enrich_quote_prior_from_daily, parse_quote_from_chart, parse_search_results,
+    parse_sparkline_from_chart,
+};
 use crate::domain::types::{AssetKind, Quote, Sparkline, SymbolSuggestion};
 use crate::ports::market_data::{MarketDataProvider, ProviderLimits};
 use async_trait::async_trait;
@@ -120,7 +123,15 @@ impl MarketDataProvider for YahooProvider {
             // 1m bars + includePrePost so pre/post last print is available when meta
             // omits preMarketPrice / marketState (common on chart API).
             let json = self.chart_json(sym, "1d", "1m").await?;
-            out.push(parse_quote_from_chart(&json)?);
+            let mut quote = parse_quote_from_chart(&json)?;
+            // Crypto (and some equities) omit regularMarketPreviousClose — without it the
+            // UI secondary row has no prior-day %. Recover from daily bars when needed.
+            if quote.prior_close.is_none() || quote.previous_day_change_percent.is_none() {
+                if let Ok(daily) = self.chart_json(sym, "5d", "1d").await {
+                    enrich_quote_prior_from_daily(&mut quote, &daily);
+                }
+            }
+            out.push(quote);
         }
         Ok(out)
     }

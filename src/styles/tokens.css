@@ -47,7 +47,7 @@
   --row-min-h: 46px;
   --row-pad-y: 6px;
   --row-pad-x: 11px;
-  /* ~26% symbol · ~28% spark · ~45% metrics — room for price + % + moon */
+  /* ~26% symbol · ~28% spark · ~45% metrics — room for price + % */
   --row-fr-symbol: 1.15fr;
   --row-fr-spark: 1.25fr;
   --row-fr-metrics: 2fr;

@@ -95,27 +95,12 @@ interface PriceRow {
 interface PriceRows {
   primary: PriceRow;
   secondary: PriceRow;
-  /** True when primary is pre/post (show moon badge like AssetStocker). */
-  extended: boolean;
-  /** Tooltip for the moon badge. */
-  sessionLabel: string;
 }
-
-/** Compact moon (Material-style nights_stay) for extended-hours rows. */
-const EXT_MOON_SVG = `<svg class="row-ext-icon" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true" focusable="false"><path fill="currentColor" d="M11.1 12.08c-2.33-4.51-.5-8.48.53-10.07C6.27 2.2 1.98 6.59 1.98 12c0 .14.02.28.02.42.62-.27 1.29-.42 2-.42 1.66 0 3.18.83 4.1 2.15 1.67.48 2.9 1.89 3.2 3.55 1.26.56 2.33 1.53 3.05 2.75 1.35-.2 2.52-.85 3.4-1.77-1.38-2.18-3.63-3.8-6.65-6.6z"/></svg>`;
 
 function isExtendedSession(state: string | null | undefined): boolean {
   if (!state) return false;
   const s = state.toLowerCase();
   return s === "pre" || s === "prepre" || s === "post" || s === "postpost" || s === "closed";
-}
-
-function sessionLabelFor(state: string | null | undefined): string {
-  const s = (state ?? "").toLowerCase();
-  if (s === "pre" || s === "prepre") return "Pre-market";
-  if (s === "post" || s === "postpost") return "After hours";
-  if (s === "closed") return "Extended hours";
-  return "Extended hours";
 }
 
 function extendedChangePercent(q: Quote): number | null {
@@ -144,11 +129,11 @@ function pctChange(from: number | null | undefined, to: number | null | undefine
   return ((to - from) / from) * 100;
 }
 
-/** Primary = live/extended; secondary = reference close row (muted). */
+/** Primary = latest (live/extended); secondary = reference (regular close or prior). */
 function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): PriceRows {
   const empty: PriceRow = { price: null, change: null };
   if (!q) {
-    return { primary: empty, secondary: empty, extended: false, sessionLabel: "" };
+    return { primary: empty, secondary: empty };
   }
 
   const previousClose = q.previous_close ?? sparkPrevClose ?? null;
@@ -171,8 +156,6 @@ function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): 
         price: regularPrice ?? null,
         change: regularChange,
       },
-      extended: true,
-      sessionLabel: sessionLabelFor(q.market_state),
     };
   }
 
@@ -185,8 +168,6 @@ function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): 
       price: previousClose,
       change: priorChange,
     },
-    extended: false,
-    sessionLabel: "",
   };
 }
 
@@ -201,13 +182,11 @@ function metricsMarkup(
     rows.secondary.price != null ? formatPrice(rows.secondary.price) : "--";
   const secondaryChange = formatChangeParen(rows.secondary.change, true);
   const secondaryCls = changeClass(rows.secondary.change);
-  const extHidden = rows.extended ? "" : " hidden";
-  const extTitle = rows.sessionLabel || "Extended hours";
 
   return `
     <div class="row-metrics">
       <div class="row-quote row-quote--primary">
-        <span class="row-ext-badge" data-ext-badge="${escapeAttr(symbol)}" title="${escapeAttr(extTitle)}" aria-label="${escapeAttr(extTitle)}"${extHidden}>${EXT_MOON_SVG}</span><span class="row-price" data-price-primary="${escapeAttr(symbol)}">${escapeHtml(primaryPrice)}</span><span class="row-change ${primaryCls}" data-change-primary="${escapeAttr(symbol)}"${primaryChange ? "" : " hidden"}>${escapeHtml(primaryChange)}</span>
+        <span class="row-price" data-price-primary="${escapeAttr(symbol)}">${escapeHtml(primaryPrice)}</span><span class="row-change ${primaryCls}" data-change-primary="${escapeAttr(symbol)}"${primaryChange ? "" : " hidden"}>${escapeHtml(primaryChange)}</span>
       </div>
       <div class="row-quote row-quote--secondary">
         <span class="row-price" data-price-secondary="${escapeAttr(symbol)}">${escapeHtml(secondaryPrice)}</span><span class="row-change ${secondaryCls}" data-change-secondary="${escapeAttr(symbol)}"${secondaryChange ? "" : " hidden"}>${escapeHtml(secondaryChange)}</span>
@@ -224,7 +203,6 @@ function patchMetricsRow(
   const primaryChangeEl = row.querySelector<HTMLElement>("[data-change-primary]");
   const secondaryPriceEl = row.querySelector<HTMLElement>("[data-price-secondary]");
   const secondaryChangeEl = row.querySelector<HTMLElement>("[data-change-secondary]");
-  const extBadgeEl = row.querySelector<HTMLElement>("[data-ext-badge]");
 
   if (primaryPriceEl) {
     primaryPriceEl.textContent =
@@ -249,12 +227,6 @@ function patchMetricsRow(
     secondaryChangeEl.classList.remove("up", "down");
     const cls = changeClass(rows.secondary.change);
     if (cls) secondaryChangeEl.classList.add(cls);
-  }
-  if (extBadgeEl) {
-    extBadgeEl.hidden = !rows.extended;
-    const label = rows.sessionLabel || "Extended hours";
-    extBadgeEl.title = label;
-    extBadgeEl.setAttribute("aria-label", label);
   }
 }
 
