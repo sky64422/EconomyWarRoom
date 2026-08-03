@@ -10,14 +10,15 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 
 | | |
 |--|--|
-| **Shape** | Tall floating panel, always on top, freely draggable (content-hug min height) |
+| **Shape** | Tall floating panel, always on top, freely draggable (content-hug min height); **tray-only** (no taskbar button) |
 | **MVP assets** | US equities + crypto (providers extensible later) |
-| **Rows** | Symbol · sparkline (1d/5m) · price / change % (left → right) |
-| **Watchlist** | Add via bottom **+** · remove · drag reorder · multi-select · pastel tints (right-click) |
-| **Toggle** | `Ctrl+Shift+Space` **or** in-UI hide (hide only; app stays running) |
-| **Look** | Light / dark / system · translucent **glass** · adjustable opacity |
-| **Settings** | Theme · opacity · **price refresh** · **launch at login** · diagnostics · quit |
-| **Updates** | In-app updater (header ↻ + release auto-check) |
+| **Rows** | Symbol · sparkline (1d/5m) · price / change % (left → right); **resizable columns** |
+| **Quotes** | Live + **pre/post** primary; secondary regular/prior-day context |
+| **Watchlist** | Add via bottom **+** · remove (context menu / Delete) · drag reorder · multi-select · pastel tints |
+| **Toggle** | `Ctrl+Shift+Space`, tray click, **or** in-UI hide (hide only; app stays running) |
+| **Look** | Light / dark / system · translucent **glass** · adjustable opacity · Pretendard |
+| **Settings** | Theme · opacity · **price refresh** (ms presets) · **launch at login** · diagnostics · quit |
+| **Updates** | In-app updater (header ↻ + release auto-check + restart after install) |
 | **Startup** | Autostart on login (toggleable) · widget visible on launch |
 | **Stack** | [Tauri](https://tauri.app/) 2 — Rust core + vanilla TypeScript / Vite UI |
 | **Data** | Free Yahoo-style chart API + **rate-limited scheduler** (backoff on 429) |
@@ -30,18 +31,19 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 |------|--------|
 | Core widget + glass UI | Done |
 | Yahoo quotes / sparklines + scheduler | Done |
-| Hotkey / hide / settings / JSON persist | Done |
+| Hotkey / hide / tray / settings / JSON persist | Done |
 | Card tint · multi-select · quote interval · autostart UI · updater | Done |
-| Content-hug min window · card layout polish | Done (latest GitHub release **v0.1.7**) |
-| Automated tests + coverage gate | Done (~98% business logic; ~63 unit tests) |
-| Manual OS smoke (Windows long run) | Still recommended — see [TODO](docs/TODO.md) P5-2 / P5-3 |
+| Content-hug min · extended quotes · resizable columns · denser UI | Done (latest GitHub release **v0.1.30**) |
+| Automated tests + coverage gate | Done (~98% business logic; ~78 unit tests) |
+| Manual OS smoke (Windows long run) | Optional — see [windows-dev.md](docs/windows-dev.md) §5 |
+| Open feature backlog | Thin — see [TODO](docs/TODO.md) |
 
 ### Continuing on a new machine (especially Windows)
 
 | Start here | Purpose |
 |------------|---------|
-| **[docs/HANDOFF.md](docs/HANDOFF.md)** | **Read first** — project sync-up for humans & AI agents |
 | [docs/windows-dev.md](docs/windows-dev.md) | Windows prerequisites, first run, troubleshooting |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module layout and data flow |
 | [AGENTS.md](AGENTS.md) | Short rules for coding agents |
 
 ```powershell
@@ -56,7 +58,7 @@ npm run run:exe
 | [Architecture](docs/ARCHITECTURE.md) | Current module layout and data flow |
 | [Design spec](docs/superpowers/specs/2026-07-22-economy-war-room-design.md) | Goals, decisions, non-goals |
 | [MVP plan](docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md) | Implementation task breakdown (complete) |
-| [TODO](docs/TODO.md) | Phase checklist + remaining manual smoke |
+| [TODO](docs/TODO.md) | Open implementation candidates only |
 | [Testing](docs/testing.md) | Unit / integration / risk / coverage policy |
 
 ## Architecture (short)
@@ -65,9 +67,10 @@ npm run run:exe
 Web UI (src/)          Tauri bridge              Rust (src-tauri/)
   glass list      ←→   commands / events   ←→   AppCore service
   DnD / select / +      invoke + emit            QuoteScheduler + queue
-  theme / opacity                                MarketDataProvider (Yahoo)
-  refresh / login                                JSON store (app data dir)
-  update icon                                    updater plugin
+  columns / tint                                 MarketDataProvider (Yahoo)
+  theme / opacity                                JSON store (app data dir)
+  refresh / login                                updater + system tray
+  update icon
 ```
 
 - **Layers:** `domain` → `ports` → `application` (scheduler, queue, **AppCore**) → `infrastructure` (Yahoo, store, window, updater).
@@ -148,15 +151,16 @@ npm run run:exe
 
 | Action | How |
 |--------|-----|
-| Toggle visibility | **`Ctrl+Shift+Space`** (global hotkey) |
-| Hide widget | Header **hide** button (process keeps running; polling pauses) |
+| Toggle visibility | **`Ctrl+Shift+Space`**, **tray left-click**, or header hide |
+| Hide widget | Header **hide** / tray Hide (process keeps running; polling pauses) |
 | Check for updates | Header **↻** (left of settings) |
-| Quit | **Settings → Quit** (hide alone does not exit) |
+| Quit | **Settings → Quit** or **tray → Quit** (hide alone does not exit) |
 | Theme / opacity / refresh / login | Settings panel |
 | Select cards | Click · **Ctrl** toggle · **Shift** range |
-| Delete selected | **Delete** or **Backspace** |
+| Delete selected | **Delete** or **Backspace** · right-click **Remove** |
 | Card color | Right-click card → pastel swatch |
-| Watchlist | Bottom **+** · drag to reorder · per-row **x** |
+| Column widths | Drag edges between symbol / spark / metrics |
+| Watchlist | Bottom **+** · drag to reorder |
 | Publish release | See [docs/release.md](docs/release.md) · `npm run release:publish` |
 
 Default seed watchlist: **AAPL**, **BTC-USD**.
@@ -170,7 +174,8 @@ JSON under the OS app data directory (Tauri `app_data_dir`), file name roughly `
 - Opacity (clamped ~0.35–1.0)  
 - Window geometry  
 - **Autostart** flag (launch at login)  
-- **quote_refresh_secs** (5–120, default 10)  
+- **quote_refresh_secs** — field name historical; stored as **milliseconds** (default 500; legacy 1–120 = seconds)  
+- **column_ratios** (symbol / spark / metrics `fr` shares)  
 - Hotkey string (default `Ctrl+Shift+Space`)  
 
 ## Design references

@@ -1,7 +1,7 @@
 # Windows development guide
 
 **Audience:** Developers (and coding agents) setting up EconomyWarRoom on **Windows 10/11**.  
-**Companion:** [HANDOFF.md](./HANDOFF.md) (project context), [ARCHITECTURE.md](./ARCHITECTURE.md).
+**Companion:** [ARCHITECTURE.md](./ARCHITECTURE.md), [TODO.md](./TODO.md).
 
 ---
 
@@ -58,8 +58,8 @@ npm install
 npm run run:exe
 ```
 
-**Expected:** frameless tall window, glass panel, seed symbols **AAPL** and **BTC-USD**, quotes filling after network calls.
-Settings includes theme, opacity, price refresh, and **Launch at login**. Header has **↻** (updates), settings, hide.
+**Expected:** frameless tall window, glass panel, **no taskbar button**, system **tray** icon, seed symbols **AAPL** and **BTC-USD**, quotes filling after network calls.
+Settings includes theme, opacity, price refresh (ms presets), and **Launch at login**. Header has **↻** (updates), settings, hide.
 
 ### Frontend only (no native window)
 
@@ -142,18 +142,21 @@ State JSON is under Tauri app data, roughly:
 
 **Toolchain on this Windows host (2026-07-22):** Node 24 + npm, Rust `stable-x86_64-pc-windows-msvc`, VS Build Tools 2022 (Desktop C++ / MSVC), WebView2, `npm install` complete. Unit lib tests pass. **UI smoke below still open.**
 
-Do these once after first successful launch — update [TODO.md](./TODO.md) when done:
+Do these once after first successful launch (optional ops checklist; not tracked as build work in TODO):
 
 - [ ] Window always on top, frameless, tall  
+- [ ] **No taskbar button**; tray icon present (left-click toggle; menu Show/Hide/Quit)  
 - [ ] Drag move; resize; restart → geometry restored  
 - [ ] Theme: light / dark / system  
 - [ ] Opacity slider changes panel transparency  
 - [ ] Seed quotes + sparklines for AAPL / BTC-USD  
 - [ ] **+** add symbol (e.g. `MSFT`); try several symbols for density  
 - [ ] Drag reorder; restart → order kept  
-- [ ] Remove symbol (row **x** and keyboard **Delete** with selection)  
+- [ ] Remove symbol (context menu **Remove** and keyboard **Delete** with selection)  
 - [ ] Multi-select (Ctrl / Shift) and right-click pastel card tint  
-- [ ] Settings → Price refresh interval  
+- [ ] Drag column edges; restart → column ratios kept  
+- [ ] Pre/post: extended primary + secondary reference when market state applies  
+- [ ] Settings → Price refresh interval (ms presets)  
 - [ ] Header hide; `Ctrl+Shift+Space` shows again; no network thrash while hidden  
 - [ ] Settings = compact sheet **above** watchlist (list remains usable)  
 - [ ] Max height: extra space goes to quote list, not a hollow settings panel  
@@ -162,7 +165,7 @@ Do these once after first successful launch — update [TODO.md](./TODO.md) when
 - [ ] Card order: symbol · sparkline · price  
 - [ ] Header **↻** update check (release build) · `npm run release:publish` for new versions  
 - [ ] Settings → Copy diagnostics works  
-- [ ] Settings → Quit fully exits  
+- [ ] Settings → Quit **or tray Quit** fully exits  
 - [ ] Settings → **Launch at login** toggle; check Startup apps / Task Manager  
 
 ---
@@ -175,6 +178,7 @@ Do these once after first successful launch — update [TODO.md](./TODO.md) when
 | WebView2 errors | Install WebView2 Evergreen Runtime |
 | `tauri` not found | `npm install` from repo root; use `npm run tauri dev` not bare `tauri` |
 | Hotkey does nothing | Another app owns `Ctrl+Shift+Space`; check console for register errors; temporarily close conflicting tools |
+| Window “disappeared” / no taskbar entry | Expected tray-only mode — use tray left-click, tray Show, or hotkey |
 | Transparent window black/opaque | GPU driver update; Windows “Transparency effects” on; still usable with higher opacity |
 | Yahoo quotes empty / errors | Network/firewall; 429 backoff is normal under load; check logs; offline = last cache only |
 | Antivirus blocks first run | Allow `target/debug/economy-war-room.exe` or project folder |
@@ -193,7 +197,6 @@ Do these once after first successful launch — update [TODO.md](./TODO.md) when
 EconomyWarRoom/
   src/                 # Vite + TS UI
   src-tauri/           # Rust + Tauri
-  docs/HANDOFF.md      # Start here for AI/human sync
   docs/windows-dev.md  # This file
   docs/ARCHITECTURE.md
   docs/testing.md
@@ -216,7 +219,8 @@ EconomyWarRoom/
 
 ## 9. Related
 
-- [HANDOFF.md](./HANDOFF.md) — product + agent starter prompt  
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — module layout  
+- [TODO.md](./TODO.md) — remaining checklist  
 - [Tauri Windows prerequisites](https://tauri.app/start/prerequisites/#windows)  
 
 ---

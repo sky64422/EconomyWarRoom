@@ -1,12 +1,12 @@
 # Testing & Coverage
 
-**Updated:** 2026-07-23
+**Updated:** 2026-08-03
 
 ## Snapshot
 
 | Metric | Value |
 |--------|--------|
-| Unit tests (`cargo test --lib`) | ~63 |
+| Unit tests (`cargo test --lib`) | ~78 |
 | Integration (`integration_e2e`) | 4 |
 | Risk scenarios (`risk_scenarios`) | 7 |
 | Coverage gate | **≥ 85%** business logic |
@@ -16,11 +16,11 @@
 
 | Layer | Location | Purpose |
 |-------|----------|---------|
-| Unit | `src-tauri/src/**` `#[cfg(test)]` | Domain, scheduler, queue, parse, store, **AppCore**, Yahoo wiremock |
+| Unit | `src-tauri/src/**` `#[cfg(test)]` | Domain, scheduler, queue, parse, store, **AppCore**, diagnostics, Yahoo wiremock |
 | HTTP mock | `yahoo/client` + **wiremock** | 200 / 429 / 5xx without live Yahoo |
 | Integration | `src-tauri/tests/integration_e2e.rs` | Store + AppCore + scheduler + mock Yahoo HTTP pipeline |
 | Risk | `src-tauri/tests/risk_scenarios.rs` | Rate limit, hide pause, corrupt JSON, invalid IDs |
-| GUI smoke | Manual `npm run run:exe` | Hotkey, window chrome (not in automated coverage) |
+| GUI smoke | Manual `npm run run:exe` | Hotkey, tray, window chrome (not in automated coverage) |
 
 ## Commands
 
@@ -48,7 +48,7 @@ HTML report: `src-tauri/target/coverage/tarpaulin-report.html`
 **Included in the gate:**
 
 - `domain/`
-- `application/` (`cache`, `queue`, `scheduler`, **`service`**)
+- `application/` (`cache`, `queue`, `scheduler`, **`service`**, `diagnostics`)
 - `infrastructure/store`, `infrastructure/yahoo`
 - `ports/`, `state/`
 
@@ -57,7 +57,7 @@ HTML report: `src-tauri/target/coverage/tarpaulin-report.html`
 | File | Why |
 |------|-----|
 | `src/main.rs` | Binary entry |
-| `src/lib.rs` | Tauri `run()`, plugins, hotkey registration, tick loop wiring |
+| `src/lib.rs` | Tauri `run()`, plugins, hotkey/tray registration, tick loop wiring |
 | `src/infrastructure/window_ctl.rs` | Needs live `WebviewWindow` |
 | `src/commands.rs` | Thin adapters over `AppCore` (logic covered in `application/service.rs`) |
 
@@ -81,6 +81,14 @@ Rationale: Tauri WebView APIs do not run headlessly in this CI shape. Product ri
 - Yahoo mock HTTP end-to-end into quote + sparkline caches  
 - Seed default state save/load  
 
+## Unit coverage highlights (beyond MVP)
+
+- Extended / pre-post parse paths and prior-close derivation  
+- Crypto prior-day enrichment from daily bars when meta gaps  
+- Column ratio clamp / default on missing settings  
+- Quote refresh legacy seconds → ms normalization  
+- Diagnostics ring FIFO + throttle  
+
 ## Frontend
 
 - Automated UI e2e: **not yet**  
@@ -90,4 +98,6 @@ Rationale: Tauri WebView APIs do not run headlessly in this CI shape. Product ri
 ## Related
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md)  
-- [TODO.md](./TODO.md) manual smoke (P5-2 / P5-3)  
+- [TODO.md](./TODO.md) open implementation candidates  
+- [windows-dev.md](./windows-dev.md) §5 manual OS smoke  
+
