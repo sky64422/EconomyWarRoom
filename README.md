@@ -34,7 +34,8 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | Hotkey / hide / tray / settings / JSON persist | Done |
 | Card tint · multi-select · quote interval · autostart UI · updater | Done |
 | Content-hug min · extended quotes · resizable columns · denser UI | Done |
-| Settings overlay · compact refresh · dark-only · Copy Log footer | Done (latest GitHub release **v0.1.32**) |
+| Settings overlay · compact refresh · dark-only · Copy Log footer | Done |
+| Update badge + background download → restart | Done (latest GitHub release **v0.1.33**) |
 | Automated tests + coverage gate | Done (~98% business logic; ~78 unit tests) |
 | Manual OS smoke (Windows long run) | Optional — see [windows-dev.md](docs/windows-dev.md) §5 |
 | Open feature backlog | Thin — see [TODO](docs/TODO.md) |

@@ -2,7 +2,7 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Latest published (as of doc update):** **v0.1.32** on GitHub Releases.
+**Latest published (as of doc update):** **v0.1.33** on GitHub Releases.
 
 ---
 
@@ -22,9 +22,16 @@ That file must list a **higher semver** than the installed app, a signed install
 | Bump version | `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` (and commit) |
 | Signed `tauri build` | Produces NSIS/MSI + `.sig` (`createUpdaterArtifacts`) |
 | GitHub Release | Hosts installer + **`latest.json`** as release assets |
-| Users on prior release builds | Header ↻ / startup check installs the new package |
+| Users on prior release builds | Startup check **badges** header ↻ when newer; click ↻ installs + restarts |
 
-`npm run tauri dev` **skips** startup auto-check (`debug_assertions`). Prefer a **release** install when testing updates.
+`npm run tauri dev` **skips** startup update check (`debug_assertions`). Prefer a **release** install when testing updates.
+
+### Client UX (Electron-like)
+
+1. ~30s after launch (release): check `latest.json`.  
+2. If newer → badge ↻ + **background download** (`update-available` → progress → `update-ready`).  
+3. When ready → tooltip `Update x.y.z ready — click to restart`; click installs cached package + restarts.  
+4. Manual ↻ with nothing pending: check → download → install in one shot.
 
 ---
 

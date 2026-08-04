@@ -148,6 +148,57 @@ body {
   pointer-events: none;
 }
 
+/* Soft update badge on header ↻ — downloading pulse, ready solid. */
+.icon-btn.update-available {
+  position: relative;
+  color: var(--accent);
+}
+
+.icon-btn.update-available::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 35%, transparent);
+  pointer-events: none;
+}
+
+.icon-btn.update-downloading::after {
+  animation: update-dot-pulse 1.8s ease-in-out infinite;
+}
+
+.icon-btn.update-ready {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.icon-btn.update-ready::after {
+  animation: none;
+  opacity: 1;
+}
+
+@keyframes update-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn.update-downloading::after {
+    animation: none;
+  }
+}
+
 /* ?��?Main content ?��?*/
 .content {
   position: relative;

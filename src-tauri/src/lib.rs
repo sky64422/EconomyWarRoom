@@ -128,6 +128,7 @@ pub fn run() {
             }
 
             app.manage(handle_state);
+            app.manage(updater::PendingUpdateState::default());
 
             if let Some(state) = app.try_state::<AppHandleState>() {
                 let core = state.core.clone();
