@@ -18,10 +18,43 @@ export interface SettingsPanelOptions {
 /** Price refresh presets in milliseconds (matches Rust clamp / storage). */
 const REFRESH_PRESETS = [250, 1000, 10_000, 60_000] as const;
 
+/** Opacity slider uses whole percent steps of 5 (35%…100%). */
+const OPACITY_MIN_PCT = 35;
+const OPACITY_MAX_PCT = 100;
+const OPACITY_STEP_PCT = 5;
+
 function nearestRefreshPreset(ms: number): number {
   return REFRESH_PRESETS.reduce((best, p) =>
     Math.abs(p - ms) < Math.abs(best - ms) ? p : best,
   );
+}
+
+function snapOpacityPct(pct: number): number {
+  const clamped = Math.min(OPACITY_MAX_PCT, Math.max(OPACITY_MIN_PCT, pct));
+  return Math.round(clamped / OPACITY_STEP_PCT) * OPACITY_STEP_PCT;
+}
+
+function opacityToPct(o: number): number {
+  return snapOpacityPct(Math.round(o * 100));
+}
+
+function pctToOpacity(pct: number): number {
+  return snapOpacityPct(pct) / 100;
+}
+
+/** Fill width on the meter track (0–100% of the 35–100 range). */
+function meterFillPct(pct: number): number {
+  const snapped = snapOpacityPct(pct);
+  return ((snapped - OPACITY_MIN_PCT) / (OPACITY_MAX_PCT - OPACITY_MIN_PCT)) * 100;
+}
+
+function opacityTicksHtml(): string {
+  const parts: string[] = [];
+  for (let p = OPACITY_MIN_PCT; p <= OPACITY_MAX_PCT; p += OPACITY_STEP_PCT) {
+    const major = p % 10 === 0 || p === OPACITY_MIN_PCT || p === OPACITY_MAX_PCT;
+    parts.push(`<span class="opacity-tick${major ? " major" : ""}"></span>`);
+  }
+  return parts.join("");
 }
 
 export function mountSettingsPanel(
@@ -34,7 +67,7 @@ export function mountSettingsPanel(
   },
   options: SettingsPanelOptions = {},
 ): SettingsPanelController {
-  let opacity = initial.opacity;
+  let opacity = pctToOpacity(opacityToPct(initial.opacity));
   // Snap legacy/custom intervals onto the compact preset row for chip UI.
   let quoteRefreshSecs = nearestRefreshPreset(initial.quoteRefreshSecs);
   let autostart = initial.autostart;
@@ -44,12 +77,19 @@ export function mountSettingsPanel(
   root.classList.add("settings-panel", "hidden");
 
   function render(): void {
+    const pct = opacityToPct(opacity);
     root.innerHTML = `
       <div class="settings-section">
-        <div class="settings-label">Opacity</div>
-        <div class="opacity-row">
-          <input type="range" id="opacity-range" min="0.35" max="1" step="0.01" value="${opacity}" />
-          <span class="opacity-value" id="opacity-value">${Math.round(opacity * 100)}%</span>
+        <div class="settings-label-row opacity-label-row">
+          <div class="settings-label">Opacity</div>
+          <span class="opacity-value" id="opacity-value">${pct}%</span>
+        </div>
+        <div class="opacity-meter" style="--opacity-fill: ${meterFillPct(pct)}%">
+          <div class="opacity-meter-fill" aria-hidden="true"></div>
+          <div class="opacity-meter-ticks" aria-hidden="true">${opacityTicksHtml()}</div>
+          <input type="range" id="opacity-range" class="opacity-meter-input"
+            min="${OPACITY_MIN_PCT}" max="${OPACITY_MAX_PCT}" step="${OPACITY_STEP_PCT}"
+            value="${pct}" aria-label="Opacity" />
         </div>
       </div>
       <div class="settings-section">
@@ -83,15 +123,23 @@ export function mountSettingsPanel(
 
     const range = root.querySelector("#opacity-range") as HTMLInputElement;
     const valueEl = root.querySelector("#opacity-value") as HTMLElement;
+    const meter = root.querySelector(".opacity-meter") as HTMLElement;
+
+    const paintOpacity = (pct: number) => {
+      const snapped = snapOpacityPct(pct);
+      opacity = pctToOpacity(snapped);
+      range.value = String(snapped);
+      valueEl.textContent = `${snapped}%`;
+      meter.style.setProperty("--opacity-fill", `${meterFillPct(snapped)}%`);
+      options.onOpacityChange?.(opacity);
+    };
+
     range.addEventListener("input", () => {
-      const v = Number(range.value);
-      opacity = v;
-      valueEl.textContent = `${Math.round(v * 100)}%`;
-      options.onOpacityChange?.(v);
+      paintOpacity(Number(range.value));
     });
     range.addEventListener("change", () => {
-      const v = Number(range.value);
-      void invoke("set_opacity", { opacity: v }).catch((err) => {
+      paintOpacity(Number(range.value));
+      void invoke("set_opacity", { opacity }).catch((err) => {
         console.error("set_opacity failed", err);
       });
     });
@@ -175,24 +223,30 @@ export function mountSettingsPanel(
   void listen<number>("opacity-updated", (e) => {
     const v = e.payload;
     if (typeof v !== "number" || !Number.isFinite(v)) return;
-    opacity = v;
-    options.onOpacityChange?.(v);
+    opacity = pctToOpacity(opacityToPct(v));
+    options.onOpacityChange?.(opacity);
     if (visible) {
+      const pct = opacityToPct(opacity);
       const range = root.querySelector("#opacity-range") as HTMLInputElement | null;
       const valueEl = root.querySelector("#opacity-value") as HTMLElement | null;
-      if (range) range.value = String(v);
-      if (valueEl) valueEl.textContent = `${Math.round(v * 100)}%`;
+      const meter = root.querySelector(".opacity-meter") as HTMLElement | null;
+      if (range) range.value = String(pct);
+      if (valueEl) valueEl.textContent = `${pct}%`;
+      meter?.style.setProperty("--opacity-fill", `${meterFillPct(pct)}%`);
     }
   }).then((u) => unlisteners.push(u));
 
   return {
     setOpacity: (o) => {
-      opacity = o;
+      opacity = pctToOpacity(opacityToPct(o));
       if (visible) {
+        const pct = opacityToPct(opacity);
         const range = root.querySelector("#opacity-range") as HTMLInputElement | null;
         const valueEl = root.querySelector("#opacity-value") as HTMLElement | null;
-        if (range) range.value = String(o);
-        if (valueEl) valueEl.textContent = `${Math.round(o * 100)}%`;
+        const meter = root.querySelector(".opacity-meter") as HTMLElement | null;
+        if (range) range.value = String(pct);
+        if (valueEl) valueEl.textContent = `${pct}%`;
+        meter?.style.setProperty("--opacity-fill", `${meterFillPct(pct)}%`);
       }
     },
     setQuoteRefreshSecs: (s) => {
