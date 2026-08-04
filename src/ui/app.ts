@@ -48,19 +48,26 @@ export async function mountApp(root: HTMLElement): Promise<void> {
 
   const settings = mountSettingsPanel(
     settingsRoot,
-    { theme, opacity, quoteRefreshSecs, autostart },
+    {
+      theme,
+      opacity,
+      quoteRefreshSecs,
+      autostart,
+      hotkey: state.settings.hotkey,
+    },
     {
       onThemeChange: (t) => applyThemeToDocument(t),
       onOpacityChange: (o) => applyPanelOpacity(panel, o),
     },
   );
 
-  const scheduleHug = await setupGeometryPersistence(panel);
+  // Geometry hug tracks watchlist only; settings is an overlay (no size snap).
+  await setupGeometryPersistence(panel);
 
   function toggleSettings(): void {
     settingsOpen = !settingsOpen;
-    // Keep watchlist visible; settings is a compact sheet above the list so tall
-    // windows still grow the quote area (not empty settings chrome).
+    // Overlay only: list fades out under an opaque settings sheet. Window size
+    // stays put (no content-hug grow/shrink for the sheet).
     if (settingsOpen) {
       settings.show();
       panel.classList.add("settings-open");
@@ -69,11 +76,6 @@ export async function mountApp(root: HTMLElement): Promise<void> {
       panel.classList.remove("settings-open");
     }
     setSettingsButtonActive(headerRoot, settingsOpen);
-    // After layout, snap window height to content (grow open / shrink close).
-    requestAnimationFrame(() => {
-      scheduleHug(true);
-      window.setTimeout(() => scheduleHug(true), 50);
-    });
   }
 
   renderHeader(headerRoot, { onSettings: toggleSettings });
@@ -94,7 +96,8 @@ export async function mountApp(root: HTMLElement): Promise<void> {
 }
 
 /**
- * True glass height (header + settings + rows + +Add), ignoring window clamp.
+ * True glass height (header + rows + +Add), ignoring window clamp.
+ * Settings is an absolute overlay and must not inflate this measure.
  *
  * getBoundingClientRect under max-height:100% / watchlist max-height:100vh shrinks
  * with the window, so setMinSize was ratcheting down and hid +Add.
@@ -126,9 +129,8 @@ function measureContentHugHeight(panel: HTMLElement): number {
     const hug = Math.ceil(panel.getBoundingClientRect().height) + 1;
     if (hug >= 80) return hug;
 
-    // Structural fallback: header + list rows/empty + footer (+ settings if open).
+    // Structural fallback: header + list rows/empty + footer (settings is overlay).
     const header = panel.querySelector<HTMLElement>("#header-root");
-    const settings = panel.querySelector<HTMLElement>(".settings-panel:not(.hidden)");
     const rows = panel.querySelector<HTMLElement>(".watchlist-rows");
     const empty = panel.querySelector<HTMLElement>(".watchlist-empty");
     const footer = panel.querySelector<HTMLElement>(".watchlist-footer");
@@ -143,7 +145,6 @@ function measureContentHugHeight(panel: HTMLElement): number {
     }
     return Math.ceil(
       (header?.offsetHeight ?? 38) +
-        (settings?.offsetHeight ?? 0) +
         (rows?.scrollHeight ?? empty?.scrollHeight ?? 0) +
         (footer?.scrollHeight ?? 52) +
         padGap +
@@ -199,7 +200,7 @@ async function setupGeometryPersistence(
         const grew = minHeight > lastContentMinH + 0.5;
         const shrank = minHeight < lastContentMinH - 0.5;
         const changed = Math.abs(minHeight - lastContentMinH) >= 1;
-        // Snap when content grew/shrank (settings sheet), or explicit fit (boot).
+        // Snap when content grew/shrank (rows/footer), or explicit fit (boot).
         const fit = opts.growIfNeeded || grew || shrank;
         if (!changed && !opts.growIfNeeded) return;
         lastContentMinH = minHeight;

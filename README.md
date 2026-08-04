@@ -17,7 +17,7 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | **Watchlist** | Add via bottom **+** · remove (context menu / Delete) · drag reorder · multi-select · pastel tints |
 | **Toggle** | `Ctrl+Shift+Space`, tray click, **or** in-UI hide (hide only; app stays running) |
 | **Look** | Light / dark / system · translucent **glass** · adjustable opacity · Pretendard |
-| **Settings** | Theme · opacity · **price refresh** (ms presets) · **launch at login** · diagnostics · quit |
+| **Settings** | Overlay sheet · theme · opacity · **refresh** (0.25s / 1s / 10s / 1m) · launch at login · **Copy Log** / Quit |
 | **Updates** | In-app updater (header ↻ + release auto-check + restart after install) |
 | **Startup** | Autostart on login (toggleable) · widget visible on launch |
 | **Stack** | [Tauri](https://tauri.app/) 2 — Rust core + vanilla TypeScript / Vite UI |
@@ -33,7 +33,8 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | Yahoo quotes / sparklines + scheduler | Done |
 | Hotkey / hide / tray / settings / JSON persist | Done |
 | Card tint · multi-select · quote interval · autostart UI · updater | Done |
-| Content-hug min · extended quotes · resizable columns · denser UI | Done (latest GitHub release **v0.1.30**) |
+| Content-hug min · extended quotes · resizable columns · denser UI | Done |
+| Settings overlay · compact refresh presets · Copy Log footer | Done (latest GitHub release **v0.1.31**) |
 | Automated tests + coverage gate | Done (~98% business logic; ~78 unit tests) |
 | Manual OS smoke (Windows long run) | Optional — see [windows-dev.md](docs/windows-dev.md) §5 |
 | Open feature backlog | Thin — see [TODO](docs/TODO.md) |

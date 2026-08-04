@@ -2,7 +2,7 @@
 
 **Scope:** open **implementation** candidates only. Shipped work is not listed.  
 **Product:** floating watchlist widget (not portfolio). See [ARCHITECTURE.md](./ARCHITECTURE.md), [README.md](../README.md).  
-**Updated:** 2026-08-03
+**Updated:** 2026-08-04
 
 Do **not** start portfolio / P&L / SQLite / broker work without a new design.
 

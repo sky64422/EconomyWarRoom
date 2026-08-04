@@ -150,6 +150,7 @@ body {
 
 /* ?��?Main content ?��?*/
 .content {
+  position: relative;
   flex: 0 1 auto;
   min-height: 0;
   display: flex;
@@ -163,29 +164,40 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: opacity 0.15s ease;
 }
 
-/* Settings is content-sized sheet above the list ??not a full-height takeover. */
+/* Settings: absolute overlay over the watchlist — no layout growth / window hug. */
 #settings-root {
-  flex: 0 0 auto;
-  max-height: min(42vh, 320px);
-  display: flex;
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: none;
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
+  /* Out of document flow so content height stays watchlist-sized. */
+  pointer-events: auto;
 }
 
 #settings-root:not(:has(.settings-panel:not(.hidden))) {
   display: none;
 }
 
-/* Fallback when :has() unsupported ??JS also toggles .settings-open on .panel */
+/* Fallback when :has() unsupported — JS also toggles .settings-open on .panel */
 .panel:not(.settings-open) #settings-root {
   display: none;
 }
 
 .panel.settings-open #settings-root {
   display: flex;
+}
+
+/* Existing list fully transparent under the opaque settings sheet. */
+.panel.settings-open #watchlist-root {
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* ?��?Watchlist ?��?*/
@@ -199,7 +211,7 @@ body {
 
 .watchlist {
   /* Fill remaining panel under header; scroll only if window > content min
-     and list still overflows (e.g. settings open). Do NOT use 100vh ??fudge:
+     and list still overflows. Do NOT use 100vh — fudge:
      that was ~8px short of real content and forced a useless scrollbar. */
   flex: 1 1 auto;
   min-height: 0;
@@ -820,19 +832,24 @@ body {
   color: var(--down);
 }
 
-/* ?��?Settings panel (compact card; no flex-grow empty gap) ?��?*/
+/* Settings overlay card — opaque fill so the faded list never shows through. */
 .settings-panel {
-  flex: 0 0 auto;
-  height: auto;
-  max-height: inherit;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
   overflow-y: auto;
   padding: 12px 14px 14px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(var(--bg-glass-rgb-active), 0.18);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.1);
+  border: none;
+  border-bottom: none;
+  /* Solid relative to the glass: ignore --panel-opacity so controls stay readable. */
+  background: rgba(var(--bg-glass-rgb-active), 1);
+  box-shadow: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-secondary) transparent;
 }
 
 .settings-panel.hidden {
@@ -878,19 +895,21 @@ body {
 }
 
 .segmented button.active {
-  background: rgba(var(--bg-glass-rgb-active), 0.9);
-  color: var(--text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent) inset,
+    0 1px 2px rgba(0, 0, 0, 0.1);
   font-weight: 600;
 }
 
 .refresh-segmented {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .refresh-segmented button {
-  flex: 1 1 28%;
-  min-width: 2.6em;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 4px;
 }
 
 .opacity-row {
@@ -989,30 +1008,98 @@ body {
   outline-offset: 2px;
 }
 
-.settings-actions {
+/* Bottom chrome: meta + Copy Log / Quit (TokenUsage-aligned) */
+.settings-end {
+  margin-top: auto;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft, var(--border));
+}
+
+.settings-meta {
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-tertiary);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-action-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
-  flex-shrink: 0;
-  margin-top: 4px;
+  width: 100%;
+  min-width: 0;
 }
 
-.btn-diag {
-  margin-top: 0;
+.settings-debug,
+.settings-quit {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   height: 34px;
-  border: none;
+  margin: 0;
+  padding: 0 8px;
   border-radius: 10px;
-  background: rgba(10, 132, 255, 0.12);
-  color: var(--accent, #0a84ff);
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease,
+    filter 0.12s ease;
 }
 
-.btn-diag:hover {
-  background: rgba(10, 132, 255, 0.2);
+.settings-debug {
+  border: 1px solid color-mix(in srgb, var(--warn) 34%, transparent);
+  background: color-mix(in srgb, var(--warn) 11%, transparent);
+  color: color-mix(in srgb, var(--warn) 88%, var(--text));
+}
+
+.settings-debug:hover {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 48%, transparent);
+}
+
+.settings-debug.is-done {
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--ok);
+}
+
+.settings-debug:active,
+.settings-quit:active {
+  filter: brightness(0.97);
+}
+
+.settings-debug:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--warn) 50%, transparent);
+  outline-offset: 2px;
+}
+
+.settings-quit {
+  border: 1px solid color-mix(in srgb, var(--critical) 28%, transparent);
+  background: color-mix(in srgb, var(--critical) 9%, transparent);
+  color: var(--critical);
+}
+
+.settings-quit:hover {
+  background: color-mix(in srgb, var(--critical) 16%, transparent);
+  border-color: color-mix(in srgb, var(--critical) 42%, transparent);
+}
+
+.settings-quit:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--critical) 45%, transparent);
+  outline-offset: 2px;
 }
 
 /* Floating card menu (right-click): tint + remove */
@@ -1120,24 +1207,6 @@ body {
 }
 .tint-swatch.tint-lemon {
   background: #fdffb6;
-}
-
-.btn-quit {
-  margin-top: 0;
-  height: 34px;
-  border: none;
-  border-radius: 10px;
-  background: rgba(255, 59, 48, 0.12);
-  color: var(--down);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.btn-quit:hover {
-  background: rgba(255, 59, 48, 0.2);
 }
 
 .watchlist-view.hidden {

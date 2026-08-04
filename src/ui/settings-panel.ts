@@ -25,7 +25,13 @@ const THEMES: { value: ThemeMode; label: string }[] = [
 ];
 
 /** Price refresh presets in milliseconds (matches Rust clamp / storage). */
-const REFRESH_PRESETS = [250, 500, 1000, 2000, 3000, 5000, 10000, 30000, 60000] as const;
+const REFRESH_PRESETS = [250, 1000, 10_000, 60_000] as const;
+
+function nearestRefreshPreset(ms: number): number {
+  return REFRESH_PRESETS.reduce((best, p) =>
+    Math.abs(p - ms) < Math.abs(best - ms) ? p : best,
+  );
+}
 
 export function mountSettingsPanel(
   root: HTMLElement,
@@ -34,13 +40,16 @@ export function mountSettingsPanel(
     opacity: number;
     quoteRefreshSecs: number;
     autostart: boolean;
+    hotkey?: string;
   },
   options: SettingsPanelOptions = {},
 ): SettingsPanelController {
   let theme = initial.theme;
   let opacity = initial.opacity;
-  let quoteRefreshSecs = initial.quoteRefreshSecs;
+  // Snap legacy/custom intervals onto the compact preset row for chip UI.
+  let quoteRefreshSecs = nearestRefreshPreset(initial.quoteRefreshSecs);
   let autostart = initial.autostart;
+  const hotkey = initial.hotkey?.trim() || "Ctrl+Shift+Space";
   let visible = false;
 
   root.classList.add("settings-panel", "hidden");
@@ -65,8 +74,8 @@ export function mountSettingsPanel(
         </div>
       </div>
       <div class="settings-section">
-        <div class="settings-label">Price refresh</div>
-        <div class="segmented refresh-segmented" role="group" aria-label="Price refresh interval">
+        <div class="settings-label">Refresh</div>
+        <div class="segmented refresh-segmented" role="group" aria-label="Refresh interval">
           ${REFRESH_PRESETS.map(
             (s) => `
             <button type="button" data-refresh="${s}" class="${s === quoteRefreshSecs ? "active" : ""}">${formatRefresh(s)}</button>
@@ -84,9 +93,12 @@ export function mountSettingsPanel(
           <span class="settings-switch" aria-hidden="true"></span>
         </label>
       </div>
-      <div class="settings-actions">
-        <button type="button" class="btn-diag" id="btn-diag">Copy diagnostics</button>
-        <button type="button" class="btn-quit" id="btn-quit">Quit</button>
+      <div class="settings-end">
+        <span class="settings-meta">Hotkey ${hotkey} · header ↻ for updates</span>
+        <div class="settings-action-row">
+          <button type="button" class="settings-debug" id="btn-diag" title="Copy diagnostic log for troubleshooting">Copy Log</button>
+          <button type="button" class="settings-quit" id="btn-quit">Quit</button>
+        </div>
       </div>
     `;
 
@@ -138,11 +150,13 @@ export function mountSettingsPanel(
 
   /** `ms` is milliseconds; backend param name remains `secs` for API compatibility. */
   async function applyQuoteRefresh(ms: number): Promise<void> {
-    quoteRefreshSecs = ms;
+    quoteRefreshSecs = nearestRefreshPreset(ms);
     render();
     try {
-      const applied = await invoke<number>("set_quote_refresh_secs", { secs: ms });
-      quoteRefreshSecs = applied;
+      const applied = await invoke<number>("set_quote_refresh_secs", {
+        secs: quoteRefreshSecs,
+      });
+      quoteRefreshSecs = nearestRefreshPreset(applied);
       if (visible) render();
     } catch (err) {
       console.error("set_quote_refresh_secs failed", err);
@@ -162,17 +176,21 @@ export function mountSettingsPanel(
   }
 
   async function copyDiagnostics(btn: HTMLButtonElement): Promise<void> {
-    const original = "Copy diagnostics";
+    const original = "Copy Log";
     try {
       const text = await invoke<string>("get_diagnostics");
       await writeClipboard(text);
       btn.textContent = "Copied";
+      btn.classList.add("is-done");
       window.setTimeout(() => {
-        if (btn.isConnected) btn.textContent = original;
+        if (!btn.isConnected) return;
+        btn.textContent = original;
+        btn.classList.remove("is-done");
       }, 1600);
     } catch (err) {
       console.error("copy diagnostics failed", err);
       btn.textContent = "Failed";
+      btn.classList.remove("is-done");
       window.setTimeout(() => {
         if (btn.isConnected) btn.textContent = original;
       }, 2000);
@@ -221,7 +239,7 @@ export function mountSettingsPanel(
       }
     },
     setQuoteRefreshSecs: (s) => {
-      quoteRefreshSecs = s;
+      quoteRefreshSecs = nearestRefreshPreset(s);
       if (visible) render();
     },
     setAutostart: (enabled) => {
@@ -246,11 +264,12 @@ export function mountSettingsPanel(
 
 /** Format refresh interval stored as milliseconds. */
 function formatRefresh(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
   const secs = ms / 1000;
   if (secs >= 60 && secs % 60 === 0) return `${secs / 60}m`;
   if (Number.isInteger(secs)) return `${secs}s`;
-  return `${secs}s`;
+  // Sub-second presets (e.g. 250 → 0.25s)
+  const trimmed = Number(secs.toFixed(2)).toString();
+  return `${trimmed}s`;
 }
 
 /** Copy text to the system clipboard (clipboard API with textarea fallback). */

@@ -15,17 +15,22 @@
   --text-rgb: 29, 29, 31;
   --up-rgb: 52, 199, 89;
   --down-rgb: 255, 59, 48;
+  --warn-rgb: 255, 159, 10;
   --accent-rgb: 10, 132, 255;
 
   --bg-hover: rgba(0, 0, 0, calc(0.03 * var(--chrome-opacity)));
   --bg-row-hover: rgba(0, 0, 0, calc(0.04 * var(--chrome-opacity)));
   --bg-row-active: rgba(0, 0, 0, calc(0.08 * var(--chrome-opacity)));
   --border: rgba(0, 0, 0, calc(0.08 * var(--chrome-opacity)));
+  --border-soft: rgba(0, 0, 0, calc(0.05 * var(--chrome-opacity)));
   --text: rgba(var(--text-rgb), var(--fg-opacity));
   --text-secondary: rgba(0, 0, 0, calc(0.52 * var(--fg-opacity)));
   --text-tertiary: rgba(0, 0, 0, calc(0.36 * var(--fg-opacity)));
   --up: rgba(var(--up-rgb), var(--accent-opacity));
   --down: rgba(var(--down-rgb), var(--accent-opacity));
+  --ok: var(--up);
+  --warn: rgba(var(--warn-rgb), var(--accent-opacity));
+  --critical: var(--down);
   --accent: rgba(var(--accent-rgb), var(--accent-opacity));
   /* Panel chrome uses OS DWM rounding on Windows (apply_clean_glass_edge).
      CSS radius 0 avoids double-AA transparent corners (white fringe). */
@@ -79,6 +84,7 @@ html[data-theme="dark"] {
   --bg-row-hover: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
   --bg-row-active: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
   --border: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
+  --border-soft: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
   --text: rgba(var(--text-rgb), var(--fg-opacity));
   --text-secondary: rgba(255, 255, 255, calc(0.55 * var(--fg-opacity)));
   --text-tertiary: rgba(255, 255, 255, calc(0.38 * var(--fg-opacity)));
@@ -94,6 +100,7 @@ html[data-theme="dark"] {
     --bg-row-hover: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
     --bg-row-active: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
     --border: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
+    --border-soft: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
     --text: rgba(var(--text-rgb), var(--fg-opacity));
     --text-secondary: rgba(255, 255, 255, calc(0.55 * var(--fg-opacity)));
     --text-tertiary: rgba(255, 255, 255, calc(0.38 * var(--fg-opacity)));

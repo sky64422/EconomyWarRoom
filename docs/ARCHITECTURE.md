@@ -1,6 +1,6 @@
 # Architecture (as implemented)
 
-**Updated:** 2026-08-03 (v0.1.30)  
+**Updated:** 2026-08-04 (v0.1.31)  
 **Branch of truth:** `main`
 
 This document describes the **current codebase**, not only the original design sketch.
@@ -15,7 +15,7 @@ This document describes the **current codebase**, not only the original design s
 │  · pastel card tints, bottom +, hide        │
 │  · resizable columns (persisted ratios)     │
 │  · extended/pre-post primary + secondary %  │
-│  · settings: theme, opacity, refresh, login │
+│  · settings overlay (list fades under sheet)│
 └──────────────────┬──────────────────────────┘
                    │ invoke / listen (events)
 ┌──────────────────▼──────────────────────────┐
@@ -75,7 +75,7 @@ This document describes the **current codebase**, not only the original design s
 | `ui/header.ts` | Drag region, update check, settings, hide |
 | `ui/watchlist.ts` | Rows (symbol · spark · price), multi-select, DnD, tint/remove menu, column resize, add |
 | `ui/sparkline.ts` | SVG path helper; tone from regular-session move |
-| `ui/settings-panel.ts` | Theme, opacity, price refresh (ms presets), launch-at-login, diagnostics, quit |
+| `ui/settings-panel.ts` | Overlay settings: theme, opacity, refresh presets, autostart, Copy Log / Quit |
 | `ui/types.ts` | TS mirrors of Rust DTOs (snake_case) |
 | `styles/tokens.css`, `app.css`, `fonts.css` | Glass / theme / pastel tint tokens; Pretendard |
 
@@ -95,7 +95,7 @@ Defined in `domain/constants.rs` (names approximate):
 |--------|----------|
 | Tick | **500ms** |
 | Batch / workers | batch size 4; max concurrent provider ~3 |
-| Quote refresh | **250ms–120s** user setting (default **500ms**); field `quote_refresh_secs` stores **ms** (legacy 1..=120 = whole seconds) |
+| Quote refresh | UI presets **0.25s / 1s / 10s / 1m** (stored as ms in `quote_refresh_secs`; clamp **250ms–120s**, default **500ms**; legacy 1..=120 = whole seconds) |
 | Sparkline | range `1d`, interval `5m`, target points 32; min refresh ~300s |
 | Backoff | 5s initial → double up to 120s |
 | Opacity | 0.35–1.0, default ~0.92 |
