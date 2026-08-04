@@ -984,8 +984,8 @@ body {
   --opacity-fill: 0%;
   position: relative;
   box-sizing: border-box;
-  height: 32px;
-  border-radius: 8px;
+  height: 16px;
+  border-radius: 5px;
   border: 1px solid var(--border);
   background: var(--bg-row-hover);
   overflow: hidden;
