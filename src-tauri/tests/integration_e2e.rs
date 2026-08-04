@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use economy_war_room_lib::application::scheduler::QuoteScheduler;
 use economy_war_room_lib::application::service::AppCore;
-use economy_war_room_lib::domain::types::{AssetKind, Quote, Sparkline, ThemeMode};
+use economy_war_room_lib::domain::types::{AssetKind, Quote, Sparkline};
 use economy_war_room_lib::infrastructure::store::{default_state, load_state, save_state};
 use economy_war_room_lib::infrastructure::yahoo::YahooProvider;
 use economy_war_room_lib::ports::market_data::{MarketDataProvider, ProviderLimits};
@@ -79,7 +79,7 @@ async fn e2e_watchlist_persist_and_scheduler_refresh() {
     // Seed present
     assert_eq!(core.watchlist_snapshot().await.unwrap().len(), 2);
 
-    // User adds NVDA, reorders, removes BTC, changes theme
+    // User adds NVDA, reorders, removes BTC, changes opacity
     let nvda = core
         .add_symbol("nvda".into(), AssetKind::Equity)
         .await
@@ -105,7 +105,6 @@ async fn e2e_watchlist_persist_and_scheduler_refresh() {
         .unwrap()
         .id;
     core.remove_symbol(&btc_id).await.unwrap();
-    core.set_theme(ThemeMode::Light).unwrap();
     core.set_opacity(0.8).unwrap();
 
     // Reload from disk (simulate process restart)
@@ -113,7 +112,7 @@ async fn e2e_watchlist_persist_and_scheduler_refresh() {
     assert_eq!(reloaded.watchlist.len(), 2);
     assert!(reloaded.watchlist.iter().any(|i| i.symbol == "NVDA"));
     assert!(!reloaded.watchlist.iter().any(|i| i.symbol == "BTC-USD"));
-    assert_eq!(reloaded.settings.theme, ThemeMode::Light);
+    assert!((reloaded.settings.opacity - 0.8).abs() < 0.001);
 
     // Scheduler tick fills caches
     {

@@ -1,6 +1,6 @@
 # Architecture (as implemented)
 
-**Updated:** 2026-08-04 (v0.1.31)  
+**Updated:** 2026-08-04 (v0.1.32)  
 **Branch of truth:** `main`
 
 This document describes the **current codebase**, not only the original design sketch.
@@ -27,7 +27,7 @@ This document describes the **current codebase**, not only the original design s
 ┌──────────────────▼──────────────────────────┐
 │  AppCore  application/service.rs            │
 │  · watchlist CRUD + card_tint + persist     │
-│  · theme / opacity / geometry / autostart   │
+│  · opacity / geometry / autostart           │
 │  · quote_refresh_secs (ms) → scheduler      │
 │  · column_ratios                            │
 │  · visibility flag → scheduler              │
@@ -75,9 +75,9 @@ This document describes the **current codebase**, not only the original design s
 | `ui/header.ts` | Drag region, update check, settings, hide |
 | `ui/watchlist.ts` | Rows (symbol · spark · price), multi-select, DnD, tint/remove menu, column resize, add |
 | `ui/sparkline.ts` | SVG path helper; tone from regular-session move |
-| `ui/settings-panel.ts` | Overlay settings: theme, opacity, refresh presets, autostart, Copy Log / Quit |
+| `ui/settings-panel.ts` | Overlay settings: opacity, refresh presets, autostart, Copy Log / Quit |
 | `ui/types.ts` | TS mirrors of Rust DTOs (snake_case) |
-| `styles/tokens.css`, `app.css`, `fonts.css` | Glass / theme / pastel tint tokens; Pretendard |
+| `styles/tokens.css`, `app.css`, `fonts.css` | Dark-only glass / pastel tint tokens; Pretendard |
 
 ### Tests
 
@@ -126,7 +126,7 @@ UI: **primary** = latest (live/extended); **secondary** = regular or prior-day c
 | `add_symbol` / `remove_symbol` / `remove_symbols` | Watchlist mutations |
 | `set_card_tint` | Persist pastel row highlight |
 | `reorder_symbols` | DnD order |
-| `set_theme` / `set_opacity` / `set_autostart` | Settings |
+| `set_opacity` / `set_autostart` | Settings |
 | `set_quote_refresh_secs` | Persist + apply scheduler interval (**ms**) |
 | `set_column_ratios` | Persist proportional column widths |
 | `set_content_min_size` | OS min from UI content measure; optional grow if content grew |

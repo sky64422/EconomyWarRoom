@@ -224,7 +224,7 @@ pub fn run() {
             commands::remove_symbols,
             commands::set_card_tint,
             commands::reorder_symbols,
-            commands::set_theme,
+
             commands::set_opacity,
             commands::set_autostart,
             commands::set_quote_refresh_secs,

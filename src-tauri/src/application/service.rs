@@ -11,7 +11,7 @@ use crate::domain::constants::{
     clamp_geometry, clamp_opacity, clamp_quote_refresh_secs,
 };
 use crate::domain::types::{
-    AssetKind, CardTint, PersistedState, Quote, Sparkline, ThemeMode, WatchlistItem, WindowGeometry,
+    AssetKind, CardTint, PersistedState, Quote, Sparkline, WatchlistItem, WindowGeometry,
 };
 use crate::domain::watchlist;
 use crate::infrastructure::store::save_state;
@@ -193,15 +193,6 @@ impl AppCore {
         self.sync_scheduler_watchlist().await
     }
 
-    pub fn set_theme(&self, theme: ThemeMode) -> Result<(), String> {
-        let mut persisted = self
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        persisted.settings.theme = theme;
-        self.persist_locked(&persisted)
-    }
-
     /// Persist login autostart preference (OS registration is applied by the command layer).
     pub fn set_autostart(&self, enabled: bool) -> Result<(), String> {
         let mut persisted = self
@@ -357,8 +348,7 @@ impl AppCore {
         out.push_str(&format!("- visible: {visible}\n"));
         out.push_str(&format!("- app_data_dir: {app_data}\n"));
         out.push_str(&format!(
-            "- settings: theme={:?} opacity={} autostart={} hotkey={:?} window={{x:{}, y:{}, w:{}, h:{}}}\n",
-            settings.theme,
+            "- settings: opacity={} autostart={} hotkey={:?} window={{x:{}, y:{}, w:{}, h:{}}}\n",
             settings.opacity,
             settings.autostart,
             settings.hotkey,
@@ -508,7 +498,6 @@ mod tests {
         assert_eq!(core.watchlist_snapshot().await.unwrap().len(), 2);
         assert!(core.remove_symbol("nope").await.is_err());
 
-        core.set_theme(ThemeMode::Dark).unwrap();
         let op = core.set_opacity(0.1).unwrap();
         assert!((op - 0.35).abs() < 1e-9);
         let cols = core
@@ -532,7 +521,6 @@ mod tests {
         assert!(geo.height >= 120.0);
 
         let reloaded = core.get_state().unwrap();
-        assert_eq!(reloaded.settings.theme, ThemeMode::Dark);
         assert!((reloaded.settings.opacity - 0.35).abs() < 1e-9);
     }
 

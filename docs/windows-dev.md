@@ -59,7 +59,7 @@ npm run run:exe
 ```
 
 **Expected:** frameless tall window, glass panel, **no taskbar button**, system **tray** icon, seed symbols **AAPL** and **BTC-USD**, quotes filling after network calls.
-Settings includes theme, opacity, price refresh (ms presets), and **Launch at login**. Header has **↻** (updates), settings, hide.
+Settings includes opacity, refresh presets, and **Launch at login** (dark-only UI). Header has **↻** (updates), settings, hide.
 
 ### Frontend only (no native window)
 
@@ -147,7 +147,7 @@ Do these once after first successful launch (optional ops checklist; not tracked
 - [ ] Window always on top, frameless, tall  
 - [ ] **No taskbar button**; tray icon present (left-click toggle; menu Show/Hide/Quit)  
 - [ ] Drag move; resize; restart → geometry restored  
-- [ ] Theme: light / dark / system  
+
 - [ ] Opacity slider changes panel transparency  
 - [ ] Seed quotes + sparklines for AAPL / BTC-USD  
 - [ ] **+** add symbol (e.g. `MSFT`); try several symbols for density  

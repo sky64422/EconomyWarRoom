@@ -1,13 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { renderHeader, setSettingsButtonActive } from "./header";
-import {
-  applyPanelOpacity,
-  applyThemeToDocument,
-  mountSettingsPanel,
-} from "./settings-panel";
+import { applyPanelOpacity, mountSettingsPanel } from "./settings-panel";
 import { mountWatchlist } from "./watchlist";
-import type { PersistedState, Quote, Sparkline, ThemeMode } from "./types";
+import type { PersistedState, Quote, Sparkline } from "./types";
 import { DEFAULT_COLUMN_RATIOS } from "./types";
 
 export async function mountApp(root: HTMLElement): Promise<void> {
@@ -29,13 +25,11 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   let settingsOpen = false;
 
   const state = await invoke<PersistedState>("get_state");
-  const theme: ThemeMode = state.settings.theme ?? "system";
   const opacity = state.settings.opacity ?? 0.92;
   // Stored as ms (legacy 1..=120 = whole seconds, normalized on Rust load).
   const quoteRefreshSecs = state.settings.quote_refresh_secs ?? 500;
   const autostart = state.settings.autostart ?? true;
 
-  applyThemeToDocument(theme);
   applyPanelOpacity(panel, opacity);
 
   const columnRatios = {
@@ -49,14 +43,12 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   const settings = mountSettingsPanel(
     settingsRoot,
     {
-      theme,
       opacity,
       quoteRefreshSecs,
       autostart,
       hotkey: state.settings.hotkey,
     },
     {
-      onThemeChange: (t) => applyThemeToDocument(t),
       onOpacityChange: (o) => applyPanelOpacity(panel, o),
     },
   );

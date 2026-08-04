@@ -2,7 +2,6 @@
 
 export type AssetKind = "equity" | "crypto" | "commodity" | "other";
 
-export type ThemeMode = "light" | "dark" | "system";
 
 export type CardTint =
   | "none"
@@ -82,7 +81,6 @@ export const DEFAULT_COLUMN_RATIOS: ColumnRatios = {
 };
 
 export interface AppSettings {
-  theme: ThemeMode;
   opacity: number;
   window: WindowGeometry;
   hotkey: string;

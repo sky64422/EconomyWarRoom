@@ -2,7 +2,7 @@
 
 use crate::application::diagnostics::DiagLevel;
 use crate::domain::types::{
-    AssetKind, CardTint, PersistedState, Quote, Sparkline, SymbolSuggestion, ThemeMode,
+    AssetKind, CardTint, PersistedState, Quote, Sparkline, SymbolSuggestion,
     WatchlistItem, WindowGeometry,
 };
 use crate::infrastructure::window_ctl;
@@ -138,14 +138,6 @@ pub async fn reorder_symbols(
         s
     })?;
     Ok(())
-}
-
-#[tauri::command(rename_all = "snake_case")]
-pub fn set_theme(state: State<'_, AppHandleState>, theme: ThemeMode) -> Result<(), String> {
-    state.core.set_theme(theme).map_err(|e| {
-        note_err(&state, "set_theme", &e);
-        e
-    })
 }
 
 /// Persist and apply OS login autostart (Windows / macOS LaunchAgent / etc.).

@@ -104,14 +104,6 @@ pub struct Sparkline {
     pub as_of: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ThemeMode {
-    Light,
-    Dark,
-    System,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowGeometry {
     pub x: f64,
@@ -150,7 +142,6 @@ impl Default for ColumnRatios {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppSettings {
-    pub theme: ThemeMode,
     pub opacity: f64,
     pub window: WindowGeometry,
     pub hotkey: String,

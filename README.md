@@ -16,8 +16,8 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | **Quotes** | Live + **pre/post** primary; secondary regular/prior-day context |
 | **Watchlist** | Add via bottom **+** · remove (context menu / Delete) · drag reorder · multi-select · pastel tints |
 | **Toggle** | `Ctrl+Shift+Space`, tray click, **or** in-UI hide (hide only; app stays running) |
-| **Look** | Light / dark / system · translucent **glass** · adjustable opacity · Pretendard |
-| **Settings** | Overlay sheet · theme · opacity · **refresh** (0.25s / 1s / 10s / 1m) · launch at login · **Copy Log** / Quit |
+| **Look** | **Dark-only** translucent **glass** · adjustable opacity · Pretendard |
+| **Settings** | Overlay sheet · opacity · **refresh** (0.25s / 1s / 10s / 1m) · launch at login · **Copy Log** / Quit |
 | **Updates** | In-app updater (header ↻ + release auto-check + restart after install) |
 | **Startup** | Autostart on login (toggleable) · widget visible on launch |
 | **Stack** | [Tauri](https://tauri.app/) 2 — Rust core + vanilla TypeScript / Vite UI |
@@ -34,7 +34,7 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | Hotkey / hide / tray / settings / JSON persist | Done |
 | Card tint · multi-select · quote interval · autostart UI · updater | Done |
 | Content-hug min · extended quotes · resizable columns · denser UI | Done |
-| Settings overlay · compact refresh presets · Copy Log footer | Done (latest GitHub release **v0.1.31**) |
+| Settings overlay · compact refresh · dark-only · Copy Log footer | Done (latest GitHub release **v0.1.32**) |
 | Automated tests + coverage gate | Done (~98% business logic; ~78 unit tests) |
 | Manual OS smoke (Windows long run) | Optional — see [windows-dev.md](docs/windows-dev.md) §5 |
 | Open feature backlog | Thin — see [TODO](docs/TODO.md) |
@@ -69,7 +69,7 @@ Web UI (src/)          Tauri bridge              Rust (src-tauri/)
   glass list      ←→   commands / events   ←→   AppCore service
   DnD / select / +      invoke + emit            QuoteScheduler + queue
   columns / tint                                 MarketDataProvider (Yahoo)
-  theme / opacity                                JSON store (app data dir)
+  opacity / refresh                              JSON store (app data dir)
   refresh / login                                updater + system tray
   update icon
 ```
@@ -156,7 +156,7 @@ npm run run:exe
 | Hide widget | Header **hide** / tray Hide (process keeps running; polling pauses) |
 | Check for updates | Header **↻** (left of settings) |
 | Quit | **Settings → Quit** or **tray → Quit** (hide alone does not exit) |
-| Theme / opacity / refresh / login | Settings panel |
+| Opacity / refresh / login | Settings panel |
 | Select cards | Click · **Ctrl** toggle · **Shift** range |
 | Delete selected | **Delete** or **Backspace** · right-click **Remove** |
 | Card color | Right-click card → pastel swatch |
@@ -171,8 +171,8 @@ Default seed watchlist: **AAPL**, **BTC-USD**.
 JSON under the OS app data directory (Tauri `app_data_dir`), file name roughly `economy-war-room-state.json`:
 
 - Watchlist symbols, order, and **card_tint**  
-- Theme (`light` \| `dark` \| `system`)  
-- Opacity (clamped ~0.35–1.0)  
+- Opacity (clamped ~0.35–1.0); UI is **dark-only**  
+
 - Window geometry  
 - **Autostart** flag (launch at login)  
 - **quote_refresh_secs** — field name historical; stored as **milliseconds** (default 500; legacy 1–120 = seconds)  

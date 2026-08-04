@@ -3,8 +3,7 @@ use crate::domain::constants::{
     RefreshPolicy, WindowPolicy,
 };
 use crate::domain::types::{
-    AppSettings, AssetKind, CardTint, ColumnRatios, PersistedState, ThemeMode, WatchlistItem,
-    WindowGeometry,
+    AppSettings, AssetKind, CardTint, ColumnRatios, PersistedState, WatchlistItem, WindowGeometry,
 };
 use std::path::{Path, PathBuf};
 
@@ -29,7 +28,6 @@ pub fn default_state() -> PersistedState {
             },
         ],
         settings: AppSettings {
-            theme: ThemeMode::System,
             opacity: OpacityPolicy::DEFAULT,
             window: WindowGeometry {
                 x: 80.0,

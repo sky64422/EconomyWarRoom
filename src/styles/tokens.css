@@ -1,8 +1,7 @@
 :root {
-  color-scheme: light dark;
-  /* Align with TokenUsage: glass + opacity-linked text/chrome alpha */
-  --bg-glass-rgb: 248, 248, 250;
-  --bg-glass-dark-rgb: 28, 28, 30;
+  /* Dark-only UI (theme setting removed). */
+  color-scheme: dark;
+  --bg-glass-rgb: 28, 28, 30;
   --bg-glass-rgb-active: var(--bg-glass-rgb);
   --panel-opacity: 0.92;
   /* Driven by applyPanelOpacity (settings slider) */
@@ -12,20 +11,20 @@
   /* Pastel card tints scale with opacity slider (see applyPanelOpacity) */
   --tint-strength: 0.92;
 
-  --text-rgb: 29, 29, 31;
+  --text-rgb: 245, 245, 247;
   --up-rgb: 52, 199, 89;
   --down-rgb: 255, 59, 48;
   --warn-rgb: 255, 159, 10;
   --accent-rgb: 10, 132, 255;
 
-  --bg-hover: rgba(0, 0, 0, calc(0.03 * var(--chrome-opacity)));
-  --bg-row-hover: rgba(0, 0, 0, calc(0.04 * var(--chrome-opacity)));
-  --bg-row-active: rgba(0, 0, 0, calc(0.08 * var(--chrome-opacity)));
-  --border: rgba(0, 0, 0, calc(0.08 * var(--chrome-opacity)));
-  --border-soft: rgba(0, 0, 0, calc(0.05 * var(--chrome-opacity)));
+  --bg-hover: rgba(255, 255, 255, calc(0.05 * var(--chrome-opacity)));
+  --bg-row-hover: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
+  --bg-row-active: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
+  --border: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
+  --border-soft: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
   --text: rgba(var(--text-rgb), var(--fg-opacity));
-  --text-secondary: rgba(0, 0, 0, calc(0.52 * var(--fg-opacity)));
-  --text-tertiary: rgba(0, 0, 0, calc(0.36 * var(--fg-opacity)));
+  --text-secondary: rgba(255, 255, 255, calc(0.55 * var(--fg-opacity)));
+  --text-tertiary: rgba(255, 255, 255, calc(0.38 * var(--fg-opacity)));
   --up: rgba(var(--up-rgb), var(--accent-opacity));
   --down: rgba(var(--down-rgb), var(--accent-opacity));
   --ok: var(--up);
@@ -70,43 +69,11 @@
   --spark-h: 26px;
   --sparkline-up: rgba(var(--up-rgb), var(--accent-opacity));
   --sparkline-down: rgba(var(--down-rgb), var(--accent-opacity));
-  --sparkline-neutral: rgba(0, 0, 0, calc(0.35 * var(--fg-opacity)));
+  --sparkline-neutral: rgba(255, 255, 255, calc(0.35 * var(--fg-opacity)));
   /* Between muted gray and full ticker text — readable but not loud */
   --sparkline-baseline: var(--text-secondary);
   /* Pretendard bundled via fonts.css; system stack is fallback only */
   font-family: "Pretendard", "Segoe UI", system-ui, -apple-system, sans-serif;
-}
-
-html[data-theme="dark"] {
-  --bg-glass-rgb-active: var(--bg-glass-dark-rgb);
-  --text-rgb: 245, 245, 247;
-  --bg-hover: rgba(255, 255, 255, calc(0.05 * var(--chrome-opacity)));
-  --bg-row-hover: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
-  --bg-row-active: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
-  --border: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
-  --border-soft: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
-  --text: rgba(var(--text-rgb), var(--fg-opacity));
-  --text-secondary: rgba(255, 255, 255, calc(0.55 * var(--fg-opacity)));
-  --text-tertiary: rgba(255, 255, 255, calc(0.38 * var(--fg-opacity)));
-  --sparkline-neutral: rgba(255, 255, 255, calc(0.35 * var(--fg-opacity)));
-  --sparkline-baseline: var(--text-secondary);
-}
-
-@media (prefers-color-scheme: dark) {
-  html[data-theme="system"] {
-    --bg-glass-rgb-active: var(--bg-glass-dark-rgb);
-    --text-rgb: 245, 245, 247;
-    --bg-hover: rgba(255, 255, 255, calc(0.05 * var(--chrome-opacity)));
-    --bg-row-hover: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
-    --bg-row-active: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
-    --border: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
-    --border-soft: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
-    --text: rgba(var(--text-rgb), var(--fg-opacity));
-    --text-secondary: rgba(255, 255, 255, calc(0.55 * var(--fg-opacity)));
-    --text-tertiary: rgba(255, 255, 255, calc(0.38 * var(--fg-opacity)));
-    --sparkline-neutral: rgba(255, 255, 255, calc(0.35 * var(--fg-opacity)));
-    --sparkline-baseline: var(--text-secondary);
-  }
 }
 
 @media (prefers-reduced-transparency: reduce) {

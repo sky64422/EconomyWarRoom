@@ -1,9 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ThemeMode } from "./types";
 
 export interface SettingsPanelController {
-  setTheme: (theme: ThemeMode) => void;
   setOpacity: (opacity: number) => void;
   setQuoteRefreshSecs: (secs: number) => void;
   setAutostart: (enabled: boolean) => void;
@@ -14,15 +12,8 @@ export interface SettingsPanelController {
 }
 
 export interface SettingsPanelOptions {
-  onThemeChange?: (theme: ThemeMode) => void;
   onOpacityChange?: (opacity: number) => void;
 }
-
-const THEMES: { value: ThemeMode; label: string }[] = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
-];
 
 /** Price refresh presets in milliseconds (matches Rust clamp / storage). */
 const REFRESH_PRESETS = [250, 1000, 10_000, 60_000] as const;
@@ -36,7 +27,6 @@ function nearestRefreshPreset(ms: number): number {
 export function mountSettingsPanel(
   root: HTMLElement,
   initial: {
-    theme: ThemeMode;
     opacity: number;
     quoteRefreshSecs: number;
     autostart: boolean;
@@ -44,7 +34,6 @@ export function mountSettingsPanel(
   },
   options: SettingsPanelOptions = {},
 ): SettingsPanelController {
-  let theme = initial.theme;
   let opacity = initial.opacity;
   // Snap legacy/custom intervals onto the compact preset row for chip UI.
   let quoteRefreshSecs = nearestRefreshPreset(initial.quoteRefreshSecs);
@@ -56,16 +45,6 @@ export function mountSettingsPanel(
 
   function render(): void {
     root.innerHTML = `
-      <div class="settings-section">
-        <div class="settings-label">Theme</div>
-        <div class="segmented" role="group" aria-label="Theme">
-          ${THEMES.map(
-            (t) => `
-            <button type="button" data-theme="${t.value}" class="${t.value === theme ? "active" : ""}">${t.label}</button>
-          `,
-          ).join("")}
-        </div>
-      </div>
       <div class="settings-section">
         <div class="settings-label">Opacity</div>
         <div class="opacity-row">
@@ -101,13 +80,6 @@ export function mountSettingsPanel(
         </div>
       </div>
     `;
-
-    root.querySelectorAll<HTMLButtonElement>("[data-theme]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const next = btn.dataset.theme as ThemeMode;
-        void applyTheme(next);
-      });
-    });
 
     const range = root.querySelector("#opacity-range") as HTMLInputElement;
     const valueEl = root.querySelector("#opacity-value") as HTMLElement;
@@ -197,17 +169,6 @@ export function mountSettingsPanel(
     }
   }
 
-  async function applyTheme(next: ThemeMode): Promise<void> {
-    theme = next;
-    options.onThemeChange?.(next);
-    render();
-    try {
-      await invoke("set_theme", { theme: next });
-    } catch (err) {
-      console.error("set_theme failed", err);
-    }
-  }
-
   render();
 
   const unlisteners: Array<() => void> = [];
@@ -225,10 +186,6 @@ export function mountSettingsPanel(
   }).then((u) => unlisteners.push(u));
 
   return {
-    setTheme: (t) => {
-      theme = t;
-      if (visible) render();
-    },
     setOpacity: (o) => {
       opacity = o;
       if (visible) {
@@ -294,11 +251,6 @@ async function writeClipboard(text: string): Promise<void> {
   if (!ok) {
     throw new Error("clipboard copy failed");
   }
-}
-
-/** Apply theme to documentElement.dataset.theme */
-export function applyThemeToDocument(theme: ThemeMode): void {
-  document.documentElement.dataset.theme = theme;
 }
 
 /**
