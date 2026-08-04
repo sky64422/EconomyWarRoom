@@ -22,6 +22,8 @@ const REFRESH_PRESETS = [250, 1000, 10_000, 60_000] as const;
 const OPACITY_MIN_PCT = 35;
 const OPACITY_MAX_PCT = 100;
 const OPACITY_STEP_PCT = 5;
+/** Intervals between min and max (35→40 … 95→100). Ticks + fill share this count. */
+const OPACITY_INTERVALS = (OPACITY_MAX_PCT - OPACITY_MIN_PCT) / OPACITY_STEP_PCT; // 13
 
 function nearestRefreshPreset(ms: number): number {
   return REFRESH_PRESETS.reduce((best, p) =>
@@ -42,16 +44,23 @@ function pctToOpacity(pct: number): number {
   return snapOpacityPct(pct) / 100;
 }
 
-/** Fill width on the meter track (0–100% of the 35–100 range). */
-function meterFillPct(pct: number): number {
-  const snapped = snapOpacityPct(pct);
-  return ((snapped - OPACITY_MIN_PCT) / (OPACITY_MAX_PCT - OPACITY_MIN_PCT)) * 100;
+/** How many 5% steps above min (35% → 0, 40% → 1, …, 100% → 13). */
+function opacityStepIndex(pct: number): number {
+  return (snapOpacityPct(pct) - OPACITY_MIN_PCT) / OPACITY_STEP_PCT;
 }
 
+/** Fill width aligned to 5% cells (same geometry as tick columns). */
+function meterFillPct(pct: number): number {
+  return (opacityStepIndex(pct) / OPACITY_INTERVALS) * 100;
+}
+
+/** One flex cell per 5% interval so borders line up with fill edges. */
 function opacityTicksHtml(): string {
   const parts: string[] = [];
-  for (let p = OPACITY_MIN_PCT; p <= OPACITY_MAX_PCT; p += OPACITY_STEP_PCT) {
-    const major = p % 10 === 0 || p === OPACITY_MIN_PCT || p === OPACITY_MAX_PCT;
+  for (let i = 0; i < OPACITY_INTERVALS; i++) {
+    const leftPct = OPACITY_MIN_PCT + i * OPACITY_STEP_PCT;
+    const rightPct = leftPct + OPACITY_STEP_PCT;
+    const major = rightPct % 10 === 0;
     parts.push(`<span class="opacity-tick${major ? " major" : ""}"></span>`);
   }
   return parts.join("");

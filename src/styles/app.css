@@ -931,11 +931,11 @@ body {
 
 .segmented button {
   flex: 1;
-  height: 28px;
+  height: 24px;
   margin: 0;
-  padding: 0 8px;
+  padding: 0 6px;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
@@ -984,8 +984,8 @@ body {
   --opacity-fill: 0%;
   position: relative;
   box-sizing: border-box;
-  height: 16px;
-  border-radius: 5px;
+  height: 12px;
+  border-radius: 4px;
   border: 1px solid var(--border);
   background: var(--bg-row-hover);
   overflow: hidden;
@@ -997,6 +997,7 @@ body {
   left: 0;
   top: 0;
   bottom: 0;
+  /* Exact 5% cell steps (N/13), not continuous lerp */
   width: var(--opacity-fill);
   background: color-mix(in srgb, var(--accent) 32%, transparent);
   pointer-events: none;
@@ -1011,6 +1012,7 @@ body {
   z-index: 1;
 }
 
+/* 13 equal cells: borders land on 40, 45, … 100 step edges */
 .opacity-tick {
   flex: 1 1 0;
   min-width: 0;
