@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { renderHeader, setSettingsButtonActive } from "./header";
+import {
+  focusSettingsButton,
+  renderHeader,
+  setHeaderBackdropInert,
+  setSettingsButtonActive,
+} from "./header";
 import { applyPanelOpacity, mountSettingsPanel } from "./settings-panel";
 import { mountWatchlist } from "./watchlist";
 import type { PersistedState, Quote, Sparkline } from "./types";
@@ -40,6 +45,36 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   const watchlist = mountWatchlist(watchlistRoot, { columnRatios });
   watchlist.setItems(state.watchlist ?? []);
 
+  function setSettingsBackdropInert(on: boolean): void {
+    watchlistRoot.inert = on;
+    setHeaderBackdropInert(headerRoot, on);
+  }
+
+  function openSettings(): void {
+    if (settingsOpen) return;
+    settingsOpen = true;
+    setSettingsBackdropInert(true);
+    settings.show();
+    panel.classList.add("settings-open");
+    setSettingsButtonActive(headerRoot, true);
+  }
+
+  function closeSettings(): void {
+    if (!settingsOpen) return;
+    settingsOpen = false;
+    settings.hide();
+    panel.classList.remove("settings-open");
+    setSettingsButtonActive(headerRoot, false);
+    setSettingsBackdropInert(false);
+    focusSettingsButton(headerRoot);
+  }
+
+  function toggleSettings(): void {
+    // Overlay only: list fades under an opaque settings sheet. Window size stays put.
+    if (settingsOpen) closeSettings();
+    else openSettings();
+  }
+
   const settings = mountSettingsPanel(
     settingsRoot,
     {
@@ -50,27 +85,22 @@ export async function mountApp(root: HTMLElement): Promise<void> {
     },
     {
       onOpacityChange: (o) => applyPanelOpacity(panel, o),
+      onCloseRequest: closeSettings,
     },
   );
 
   // Geometry hug tracks watchlist only; settings is an overlay (no size snap).
   await setupGeometryPersistence(panel);
 
-  function toggleSettings(): void {
-    settingsOpen = !settingsOpen;
-    // Overlay only: list fades out under an opaque settings sheet. Window size
-    // stays put (no content-hug grow/shrink for the sheet).
-    if (settingsOpen) {
-      settings.show();
-      panel.classList.add("settings-open");
-    } else {
-      settings.hide();
-      panel.classList.remove("settings-open");
-    }
-    setSettingsButtonActive(headerRoot, settingsOpen);
-  }
-
   renderHeader(headerRoot, { onSettings: toggleSettings });
+
+  // Esc also closes when focus is on header chrome
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && settingsOpen) {
+      e.preventDefault();
+      closeSettings();
+    }
+  });
 
   // Initial market data (best-effort; empty until scheduler fills)
   try {

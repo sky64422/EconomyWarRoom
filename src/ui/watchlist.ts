@@ -217,25 +217,58 @@ function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): 
 function metricsMarkup(
   symbol: string,
   rows: PriceRows,
+  opts?: { pending?: boolean },
 ): string {
-  const primaryPrice = rows.primary.price != null ? formatPrice(rows.primary.price) : "--";
+  const pending = opts?.pending === true;
+  const primaryPrice =
+    rows.primary.price != null ? formatPrice(rows.primary.price) : "—";
   const primaryChange = formatChangeParen(rows.primary.change);
-  const primaryCls = changeClass(rows.primary.change);
+  const primaryCls = [changeClass(rows.primary.change), pending ? "is-pending" : ""]
+    .filter(Boolean)
+    .join(" ");
   const secondaryPrice =
-    rows.secondary.price != null ? formatPrice(rows.secondary.price) : "--";
+    rows.secondary.price != null ? formatPrice(rows.secondary.price) : "—";
   const secondaryChange = formatChangeParen(rows.secondary.change, true);
-  const secondaryCls = changeClass(rows.secondary.change);
+  const secondaryCls = [
+    changeClass(rows.secondary.change),
+    pending ? "is-pending" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const pricePending = pending || rows.primary.price == null;
 
   return `
     <div class="row-metrics">
       <div class="row-quote row-quote--primary">
-        <span class="row-price" data-price-primary="${escapeAttr(symbol)}">${escapeHtml(primaryPrice)}</span><span class="row-change ${primaryCls}" data-change-primary="${escapeAttr(symbol)}"${primaryChange ? "" : " hidden"}>${escapeHtml(primaryChange)}</span>
+        <span class="row-price${pricePending ? " is-pending" : ""}" data-price-primary="${escapeAttr(symbol)}">${escapeHtml(primaryPrice)}</span><span class="row-change ${primaryCls}" data-change-primary="${escapeAttr(symbol)}"${primaryChange ? "" : " hidden"}>${escapeHtml(primaryChange)}</span>
       </div>
       <div class="row-quote row-quote--secondary">
-        <span class="row-price" data-price-secondary="${escapeAttr(symbol)}">${escapeHtml(secondaryPrice)}</span><span class="row-change ${secondaryCls}" data-change-secondary="${escapeAttr(symbol)}"${secondaryChange ? "" : " hidden"}>${escapeHtml(secondaryChange)}</span>
+        <span class="row-price${rows.secondary.price == null ? " is-pending" : ""}" data-price-secondary="${escapeAttr(symbol)}">${escapeHtml(secondaryPrice)}</span><span class="row-change ${secondaryCls}" data-change-secondary="${escapeAttr(symbol)}"${secondaryChange ? "" : " hidden"}>${escapeHtml(secondaryChange)}</span>
       </div>
     </div>
   `;
+}
+
+/** I2: short accessible summary for the row (spark remains decorative). */
+function rowAriaLabel(
+  symbol: string,
+  rows: PriceRows,
+  pending: boolean,
+): string {
+  if (pending || rows.primary.price == null) {
+    return `${symbol}, waiting for quote`;
+  }
+  const price = formatPrice(rows.primary.price);
+  const ch = formatChange(rows.primary.change);
+  const dir =
+    rows.primary.change == null || !Number.isFinite(rows.primary.change)
+      ? ""
+      : rows.primary.change > 0
+        ? " up"
+        : rows.primary.change < 0
+          ? " down"
+          : " flat";
+  return ch ? `${symbol}, ${price}, ${ch}${dir}` : `${symbol}, ${price}`;
 }
 
 /** Stable key for displayed metrics (skip DOM write when unchanged). */
@@ -269,7 +302,7 @@ function patchMetricsRow(
 
   const prevPrimaryPrice = row.dataset.primaryPrice ?? "";
   const nextPrimaryPrice =
-    rows.primary.price != null ? formatPrice(rows.primary.price) : "--";
+    rows.primary.price != null ? formatPrice(rows.primary.price) : "—";
   const primaryPriceChanged =
     prevFp !== "" && prevPrimaryPrice !== "" && prevPrimaryPrice !== nextPrimaryPrice;
 
@@ -277,29 +310,39 @@ function patchMetricsRow(
   const primaryChangeEl = row.querySelector<HTMLElement>("[data-change-primary]");
   const secondaryPriceEl = row.querySelector<HTMLElement>("[data-price-secondary]");
   const secondaryChangeEl = row.querySelector<HTMLElement>("[data-change-secondary]");
+  const pending = rows.primary.price == null;
+  const symbol = row.dataset.symbol ?? "";
 
   if (primaryPriceEl) {
     primaryPriceEl.textContent = nextPrimaryPrice;
+    primaryPriceEl.classList.toggle("is-pending", pending);
   }
   if (primaryChangeEl) {
     const txt = formatChangeParen(rows.primary.change);
     primaryChangeEl.textContent = txt;
     primaryChangeEl.hidden = !txt;
-    primaryChangeEl.classList.remove("up", "down");
+    primaryChangeEl.classList.remove("up", "down", "is-pending");
     const cls = changeClass(rows.primary.change);
     if (cls) primaryChangeEl.classList.add(cls);
+    if (pending) primaryChangeEl.classList.add("is-pending");
   }
   if (secondaryPriceEl) {
-    secondaryPriceEl.textContent =
-      rows.secondary.price != null ? formatPrice(rows.secondary.price) : "--";
+    const sec =
+      rows.secondary.price != null ? formatPrice(rows.secondary.price) : "—";
+    secondaryPriceEl.textContent = sec;
+    secondaryPriceEl.classList.toggle("is-pending", rows.secondary.price == null);
   }
   if (secondaryChangeEl) {
     const txt = formatChangeParen(rows.secondary.change, true);
     secondaryChangeEl.textContent = txt;
     secondaryChangeEl.hidden = !txt;
-    secondaryChangeEl.classList.remove("up", "down");
+    secondaryChangeEl.classList.remove("up", "down", "is-pending");
     const cls = changeClass(rows.secondary.change);
     if (cls) secondaryChangeEl.classList.add(cls);
+  }
+
+  if (symbol) {
+    row.setAttribute("aria-label", rowAriaLabel(symbol, rows, pending));
   }
 
   row.dataset.metricsFp = fp;
@@ -685,7 +728,7 @@ export function mountWatchlist(
   function renderRows(): void {
     pruneSelection();
     if (items.length === 0) {
-      listEl.innerHTML = `<div class="watchlist-empty">No symbols yet. Add one below.</div>`;
+      listEl.innerHTML = `<div class="watchlist-empty" role="status">No symbols yet. Use + Add below.</div>`;
     } else {
       const sorted = [...items].sort((a, b) => a.sort_index - b.sort_index);
       listEl.innerHTML = sorted
@@ -693,6 +736,8 @@ export function mountWatchlist(
           const q = quotes.get(item.symbol);
           const sp = sparks.get(item.symbol);
           const points = sp?.points ?? [];
+          const quotePending = !q || q.price == null;
+          const sparkPending = points.length === 0;
           const pct = sparklineChangePercent(q, sp?.previous_close ?? null);
           const tone = toneForChange(pct, sparklineTone(points));
           const stroke = strokeForTone(tone);
@@ -713,20 +758,23 @@ export function mountWatchlist(
             sp?.previous_close ?? null,
           );
           const priceRows = resolvePriceRows(q, sp?.previous_close ?? null);
+          const aria = rowAriaLabel(item.symbol, priceRows, quotePending);
           return `
             <div class="watchlist-row watchlist-card${tintClass}${selectedClass}" role="listitem" tabindex="0"
               data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}"
-              data-tint="${tint}" title="Click to select · drag to reorder · right-click menu">
+              data-tint="${tint}"
+              aria-label="${escapeAttr(aria)}"
+              title="Click to select · drag to reorder · right-click menu">
               <span class="row-symbol" title="${escapeAttr(item.symbol)}">${escapeHtml(item.symbol)}</span>
               <div class="row-col-resize" data-edge="0" role="separator" aria-orientation="vertical" aria-label="Resize symbol and sparkline" title="Drag to resize columns"></div>
               <div class="row-market">
-                <div class="row-sparkline-wrap">
+                <div class="row-sparkline-wrap${sparkPending ? " is-pending" : ""}">
                   <svg class="row-sparkline" viewBox="0 0 ${SPARK_W} ${SPARK_H}" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true" data-spark="${escapeAttr(item.symbol)}">
                     ${sparkMarkup}
                   </svg>
                 </div>
                 <div class="row-col-resize" data-edge="1" role="separator" aria-orientation="vertical" aria-label="Resize sparkline and price" title="Drag to resize columns"></div>
-                ${metricsMarkup(item.symbol, priceRows)}
+                ${metricsMarkup(item.symbol, priceRows, { pending: quotePending })}
               </div>
             </div>
           `;
@@ -773,6 +821,10 @@ export function mountWatchlist(
         progress,
       },
       sp.previous_close ?? null,
+    );
+    svg.closest(".row-sparkline-wrap")?.classList.toggle(
+      "is-pending",
+      points.length === 0,
     );
   }
 

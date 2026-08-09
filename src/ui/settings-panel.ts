@@ -13,6 +13,16 @@ export interface SettingsPanelController {
 
 export interface SettingsPanelOptions {
   onOpacityChange?: (opacity: number) => void;
+  /** Esc / close request from inside the dialog (S3). */
+  onCloseRequest?: () => void;
+}
+
+function focusableIn(container: HTMLElement): HTMLElement[] {
+  const sel =
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  return Array.from(container.querySelectorAll<HTMLElement>(sel)).filter(
+    (el) => !el.hasAttribute("disabled") && el.offsetParent !== null,
+  );
 }
 
 /** Price refresh presets in milliseconds (matches Rust clamp / storage). */
@@ -84,13 +94,16 @@ export function mountSettingsPanel(
   let visible = false;
 
   root.classList.add("settings-panel", "hidden");
+  root.setAttribute("role", "dialog");
+  root.setAttribute("aria-modal", "true");
+  root.setAttribute("aria-label", "Settings");
 
   function render(): void {
     const pct = opacityToPct(opacity);
     root.innerHTML = `
       <div class="settings-section">
         <div class="settings-label-row opacity-label-row">
-          <div class="settings-label">Opacity</div>
+          <div class="settings-label" id="opacity-label">Opacity</div>
           <span class="opacity-value" id="opacity-value">${pct}%</span>
         </div>
         <div class="opacity-meter" style="--opacity-fill: ${meterFillPct(pct)}%">
@@ -98,7 +111,7 @@ export function mountSettingsPanel(
           <div class="opacity-meter-ticks" aria-hidden="true">${opacityTicksHtml()}</div>
           <input type="range" id="opacity-range" class="opacity-meter-input"
             min="${OPACITY_MIN_PCT}" max="${OPACITY_MAX_PCT}" step="${OPACITY_STEP_PCT}"
-            value="${pct}" aria-label="Opacity" />
+            value="${pct}" aria-labelledby="opacity-label" aria-valuetext="${pct} percent" />
         </div>
       </div>
       <div class="settings-section">
@@ -106,7 +119,7 @@ export function mountSettingsPanel(
         <div class="segmented refresh-segmented" role="group" aria-label="Refresh interval">
           ${REFRESH_PRESETS.map(
             (s) => `
-            <button type="button" data-refresh="${s}" class="${s === quoteRefreshSecs ? "active" : ""}">${formatRefresh(s)}</button>
+            <button type="button" data-refresh="${s}" class="${s === quoteRefreshSecs ? "active" : ""}" aria-pressed="${s === quoteRefreshSecs ? "true" : "false"}">${formatRefresh(s)}</button>
           `,
           ).join("")}
         </div>
@@ -122,23 +135,26 @@ export function mountSettingsPanel(
         </label>
       </div>
       <div class="settings-end">
-        <span class="settings-meta">Hotkey ${hotkey} · header ↻ for updates</span>
+        <span class="settings-meta">${escapeHtml(hotkey)} · updates in header</span>
         <div class="settings-action-row">
           <button type="button" class="settings-debug" id="btn-diag" title="Copy diagnostic log for troubleshooting">Copy Log</button>
           <button type="button" class="settings-quit" id="btn-quit">Quit</button>
         </div>
+        <div class="settings-live" id="settings-live" role="status" aria-live="polite" aria-atomic="true"></div>
       </div>
     `;
 
     const range = root.querySelector("#opacity-range") as HTMLInputElement;
     const valueEl = root.querySelector("#opacity-value") as HTMLElement;
     const meter = root.querySelector(".opacity-meter") as HTMLElement;
+    const liveRegion = root.querySelector("#settings-live") as HTMLElement | null;
 
-    const paintOpacity = (pct: number) => {
-      const snapped = snapOpacityPct(pct);
+    const paintOpacity = (nextPct: number) => {
+      const snapped = snapOpacityPct(nextPct);
       opacity = pctToOpacity(snapped);
       range.value = String(snapped);
       valueEl.textContent = `${snapped}%`;
+      range.setAttribute("aria-valuetext", `${snapped} percent`);
       meter.style.setProperty("--opacity-fill", `${meterFillPct(snapped)}%`);
       options.onOpacityChange?.(opacity);
     };
@@ -169,7 +185,10 @@ export function mountSettingsPanel(
     });
 
     root.querySelector("#btn-diag")!.addEventListener("click", () => {
-      void copyDiagnostics(root.querySelector("#btn-diag") as HTMLButtonElement);
+      void copyDiagnostics(
+        root.querySelector("#btn-diag") as HTMLButtonElement,
+        liveRegion,
+      );
     });
 
     root.querySelector("#btn-quit")!.addEventListener("click", () => {
@@ -204,27 +223,60 @@ export function mountSettingsPanel(
     }
   }
 
-  async function copyDiagnostics(btn: HTMLButtonElement): Promise<void> {
+  async function copyDiagnostics(
+    btn: HTMLButtonElement,
+    liveRegion: HTMLElement | null,
+  ): Promise<void> {
     const original = "Copy Log";
     try {
       const text = await invoke<string>("get_diagnostics");
       await writeClipboard(text);
       btn.textContent = "Copied";
       btn.classList.add("is-done");
+      if (liveRegion) liveRegion.textContent = "Diagnostic log copied";
       window.setTimeout(() => {
         if (!btn.isConnected) return;
         btn.textContent = original;
         btn.classList.remove("is-done");
+        if (liveRegion) liveRegion.textContent = "";
       }, 1600);
     } catch (err) {
       console.error("copy diagnostics failed", err);
       btn.textContent = "Failed";
       btn.classList.remove("is-done");
+      if (liveRegion) liveRegion.textContent = "Copy failed";
       window.setTimeout(() => {
         if (btn.isConnected) btn.textContent = original;
+        if (liveRegion) liveRegion.textContent = "";
       }, 2000);
     }
   }
+
+  // S3: Esc closes; Tab cycles within dialog
+  root.addEventListener("keydown", (e) => {
+    if (!visible) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      options.onCloseRequest?.();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const list = focusableIn(root);
+    if (list.length === 0) return;
+    const first = list[0];
+    const last = list[list.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (e.shiftKey) {
+      if (active === first || !root.contains(active)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
 
   render();
 
@@ -239,7 +291,10 @@ export function mountSettingsPanel(
       const range = root.querySelector("#opacity-range") as HTMLInputElement | null;
       const valueEl = root.querySelector("#opacity-value") as HTMLElement | null;
       const meter = root.querySelector(".opacity-meter") as HTMLElement | null;
-      if (range) range.value = String(pct);
+      if (range) {
+        range.value = String(pct);
+        range.setAttribute("aria-valuetext", `${pct} percent`);
+      }
       if (valueEl) valueEl.textContent = `${pct}%`;
       meter?.style.setProperty("--opacity-fill", `${meterFillPct(pct)}%`);
     }
@@ -253,7 +308,10 @@ export function mountSettingsPanel(
         const range = root.querySelector("#opacity-range") as HTMLInputElement | null;
         const valueEl = root.querySelector("#opacity-value") as HTMLElement | null;
         const meter = root.querySelector(".opacity-meter") as HTMLElement | null;
-        if (range) range.value = String(pct);
+        if (range) {
+          range.value = String(pct);
+          range.setAttribute("aria-valuetext", `${pct} percent`);
+        }
         if (valueEl) valueEl.textContent = `${pct}%`;
         meter?.style.setProperty("--opacity-fill", `${meterFillPct(pct)}%`);
       }
@@ -269,17 +327,34 @@ export function mountSettingsPanel(
     show: () => {
       visible = true;
       root.classList.remove("hidden");
+      root.hidden = false;
       render();
+      requestAnimationFrame(() => {
+        const range = root.querySelector<HTMLInputElement>("#opacity-range");
+        const target = range ?? focusableIn(root)[0];
+        target?.focus();
+      });
     },
     hide: () => {
       visible = false;
       root.classList.add("hidden");
+      root.hidden = true;
+      const live = root.querySelector("#settings-live");
+      if (live) live.textContent = "";
     },
     isVisible: () => visible,
     destroy: () => {
       for (const u of unlisteners) u();
     },
   };
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /** Format refresh interval stored as milliseconds. */
@@ -324,11 +399,11 @@ async function writeClipboard(text: string): Promise<void> {
  */
 export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
   const o = Math.min(1, Math.max(0.35, opacity));
-  // Keep type slightly stronger than glass so low opacity stays readable
-  const fg = Math.min(1, Math.max(0.62, o * 1.02));
-  const accent = Math.min(1, Math.max(0.55, o * 1.05));
-  const chrome = Math.min(1, Math.max(0.4, o));
-  // Card pastel mix strength — same floor as chrome so tints stay soft, not chalky
+  // Floors aligned with TokenUsage — readable type/fills on thin glass (I1).
+  const fg = Math.min(1, Math.max(0.74, o * 1.04 + 0.06));
+  const accent = Math.min(1, Math.max(0.7, o * 1.06 + 0.04));
+  const chrome = Math.min(1, Math.max(0.55, o * 0.95 + 0.12));
+  // Card pastel mix strength — tracks chrome so tints stay soft, not chalky
   const tint = chrome;
 
   const root = document.documentElement;

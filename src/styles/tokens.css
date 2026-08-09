@@ -20,17 +20,37 @@
   --bg-hover: rgba(255, 255, 255, calc(0.05 * var(--chrome-opacity)));
   --bg-row-hover: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
   --bg-row-active: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
-  --border: rgba(255, 255, 255, calc(0.1 * var(--chrome-opacity)));
-  --border-soft: rgba(255, 255, 255, calc(0.06 * var(--chrome-opacity)));
+  --border: rgba(255, 255, 255, max(0.12, calc(0.1 * var(--chrome-opacity))));
+  --border-soft: rgba(
+    255,
+    255,
+    255,
+    max(0.09, calc(0.06 * var(--chrome-opacity)))
+  );
+  /* Floors keep secondary copy / borders scannable when glass is thin (I1). */
   --text: rgba(var(--text-rgb), var(--fg-opacity));
-  --text-secondary: rgba(255, 255, 255, calc(0.55 * var(--fg-opacity)));
-  --text-tertiary: rgba(255, 255, 255, calc(0.38 * var(--fg-opacity)));
+  --text-secondary: rgba(
+    255,
+    255,
+    255,
+    max(0.52, calc(0.55 * var(--fg-opacity)))
+  );
+  --text-tertiary: rgba(
+    255,
+    255,
+    255,
+    max(0.42, calc(0.38 * var(--fg-opacity)))
+  );
   --up: rgba(var(--up-rgb), var(--accent-opacity));
   --down: rgba(var(--down-rgb), var(--accent-opacity));
   --ok: var(--up);
   --warn: rgba(var(--warn-rgb), var(--accent-opacity));
   --critical: var(--down);
   --accent: rgba(var(--accent-rgb), var(--accent-opacity));
+  /* shadcn-style semantic aliases (vanilla CSS only) */
+  --foreground: var(--text);
+  --muted-foreground: var(--text-secondary);
+  --ring: rgba(var(--accent-rgb), max(0.45, calc(0.55 * var(--accent-opacity))));
   /* Panel chrome uses OS DWM rounding on Windows (apply_clean_glass_edge).
      CSS radius 0 avoids double-AA transparent corners (white fringe). */
   --radius: 0px;

@@ -36,7 +36,7 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | Content-hug min · extended quotes · resizable columns · denser UI | Done |
 | Settings overlay · compact refresh · dark-only · Copy Log footer | Done |
 | Update badge + background download → restart | Done |
-| Opacity 5% stepped meter | Done (latest GitHub release **v0.1.36**) |
+| Opacity 5% stepped meter | Done (latest GitHub release **v0.1.37**) |
 | Automated tests + coverage gate | Done (~98% business logic; ~78 unit tests) |
 | Manual OS smoke (Windows long run) | Optional — see [windows-dev.md](docs/windows-dev.md) §5 |
 | Open feature backlog | Thin — see [TODO](docs/TODO.md) |
@@ -59,6 +59,7 @@ npm run run:exe
 | Document | Purpose |
 |----------|---------|
 | [Architecture](docs/ARCHITECTURE.md) | Current module layout and data flow |
+| [UI references](docs/ui-references.md) | External design refs: [ui.shadcn.com](https://ui.shadcn.com), [impeccable.style](https://impeccable.style) |
 | [Design spec](docs/superpowers/specs/2026-07-22-economy-war-room-design.md) | Goals, decisions, non-goals |
 | [MVP plan](docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md) | Implementation task breakdown (complete) |
 | [TODO](docs/TODO.md) | Open implementation candidates only |
