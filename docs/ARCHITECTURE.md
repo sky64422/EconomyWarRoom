@@ -1,6 +1,6 @@
 # Architecture (as implemented)
 
-**Updated:** 2026-08-09 (v0.1.37)  
+**Updated:** 2026-08-09 (v0.1.38)  
 **Branch of truth:** `main`
 
 This document describes the **current codebase**, not only the original design sketch.

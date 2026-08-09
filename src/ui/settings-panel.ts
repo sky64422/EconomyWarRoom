@@ -399,10 +399,11 @@ async function writeClipboard(text: string): Promise<void> {
  */
 export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
   const o = Math.min(1, Math.max(0.35, opacity));
-  // Floors aligned with TokenUsage — readable type/fills on thin glass (I1).
-  const fg = Math.min(1, Math.max(0.74, o * 1.04 + 0.06));
-  const accent = Math.min(1, Math.max(0.7, o * 1.06 + 0.04));
-  const chrome = Math.min(1, Math.max(0.55, o * 0.95 + 0.12));
+  // Track panel glass closely so type / up-down colors fade with opacity
+  // (not stuck near ~0.7 solid on thin glass).
+  const fg = Math.min(1, Math.max(0.40, o * 0.94 + 0.04));
+  const accent = Math.min(1, Math.max(0.36, o * 0.96 + 0.02));
+  const chrome = Math.min(1, Math.max(0.28, o * 0.90 + 0.04));
   // Card pastel mix strength — tracks chrome so tints stay soft, not chalky
   const tint = chrome;
 
