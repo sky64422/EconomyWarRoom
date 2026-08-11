@@ -146,6 +146,12 @@ function isExtendedSession(state: string | null | undefined): boolean {
   return s === "pre" || s === "prepre" || s === "post" || s === "postpost" || s === "closed";
 }
 
+function isPostOrClosedSession(state: string | null | undefined): boolean {
+  if (!state) return false;
+  const s = state.toLowerCase();
+  return s === "post" || s === "postpost" || s === "closed";
+}
+
 function extendedChangePercent(q: Quote): number | null {
   if (q.extended_change_percent != null && Number.isFinite(q.extended_change_percent)) {
     return q.extended_change_percent;
@@ -172,7 +178,7 @@ function pctChange(from: number | null | undefined, to: number | null | undefine
   return ((to - from) / from) * 100;
 }
 
-/** Primary = latest (live/extended); secondary = reference (regular close or prior). */
+/** Primary = latest (live/extended); secondary = last completed regular session. */
 function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): PriceRows {
   const empty: PriceRow = { price: null, change: null };
   if (!q) {
@@ -188,6 +194,18 @@ function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): 
     (!isExtendedQuote(q) ? (q.change_percent ?? null) : null);
   const priorChange =
     q.previous_day_change_percent ?? pctChange(q.prior_close ?? null, previousClose);
+  const secondary: PriceRow =
+    isPostOrClosedSession(q.market_state) &&
+    regularPrice != null &&
+    (previousClose == null || Math.abs(regularPrice - previousClose) > 0.0001)
+      ? {
+          price: regularPrice,
+          change: regularChange,
+        }
+      : {
+          price: previousClose,
+          change: priorChange,
+        };
 
   if (isExtendedQuote(q) && q.extended_price != null) {
     return {
@@ -195,10 +213,7 @@ function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): 
         price: q.extended_price,
         change: extendedChangePercent(q),
       },
-      secondary: {
-        price: regularPrice ?? null,
-        change: regularChange,
-      },
+      secondary,
     };
   }
 
@@ -207,10 +222,7 @@ function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): 
       price: q.price,
       change: q.change_percent ?? regularChange,
     },
-    secondary: {
-      price: previousClose,
-      change: priorChange,
-    },
+    secondary,
   };
 }
 
