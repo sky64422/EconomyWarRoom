@@ -83,6 +83,7 @@ export function mountSettingsPanel(
     quoteRefreshSecs: number;
     autostart: boolean;
     hotkey?: string;
+    appVersion: string;
   },
   options: SettingsPanelOptions = {},
 ): SettingsPanelController {
@@ -91,6 +92,7 @@ export function mountSettingsPanel(
   let quoteRefreshSecs = nearestRefreshPreset(initial.quoteRefreshSecs);
   let autostart = initial.autostart;
   const hotkey = initial.hotkey?.trim() || "Ctrl+Shift+Space";
+  const appVersion = initial.appVersion.trim() || "unknown";
   let visible = false;
 
   root.classList.add("settings-panel", "hidden");
@@ -135,7 +137,7 @@ export function mountSettingsPanel(
         </label>
       </div>
       <div class="settings-end">
-        <span class="settings-meta">${escapeHtml(hotkey)} · updates in header</span>
+        <span class="settings-meta">v${escapeHtml(appVersion)} / ${escapeHtml(hotkey)} · updates in header</span>
         <div class="settings-action-row">
           <button type="button" class="settings-debug" id="btn-diag" title="Copy diagnostic log for troubleshooting">Copy Log</button>
           <button type="button" class="settings-quit" id="btn-quit">Quit</button>

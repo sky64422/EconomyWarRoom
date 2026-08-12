@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   focusSettingsButton,
@@ -30,6 +31,12 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   let settingsOpen = false;
 
   const state = await invoke<PersistedState>("get_state");
+  let appVersion = "unknown";
+  try {
+    appVersion = await getVersion();
+  } catch (err) {
+    console.warn("getVersion failed", err);
+  }
   const opacity = state.settings.opacity ?? 0.92;
   // Stored as ms (legacy 1..=120 = whole seconds, normalized on Rust load).
   const quoteRefreshSecs = state.settings.quote_refresh_secs ?? 500;
@@ -82,6 +89,7 @@ export async function mountApp(root: HTMLElement): Promise<void> {
       quoteRefreshSecs,
       autostart,
       hotkey: state.settings.hotkey,
+      appVersion,
     },
     {
       onOpacityChange: (o) => applyPanelOpacity(panel, o),
