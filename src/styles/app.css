@@ -1399,3 +1399,11 @@ body {
 .watchlist-view.hidden {
   display: none;
 }
+
+/* Keep secondary quote changes visually subordinate to the primary quote. */
+.row-quote--secondary .row-change.up {
+  color: color-mix(in srgb, var(--up) 65%, var(--text-secondary));
+}
+.row-quote--secondary .row-change.down {
+  color: color-mix(in srgb, var(--down) 65%, var(--text-secondary));
+}
