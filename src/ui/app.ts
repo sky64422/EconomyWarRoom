@@ -88,7 +88,6 @@ export async function mountApp(root: HTMLElement): Promise<void> {
       opacity,
       quoteRefreshSecs,
       autostart,
-      hotkey: state.settings.hotkey,
       appVersion,
     },
     {
