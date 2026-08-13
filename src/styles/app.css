@@ -83,6 +83,80 @@ body {
   app-region: drag;
 }
 
+.header-leading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.market-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 16px;
+  padding: 0 5px 0 4px;
+  border: 1px solid color-mix(in srgb, var(--text-tertiary) 20%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-hover) 72%, transparent);
+  color: var(--text-tertiary);
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.market-status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.market-status.is-live {
+  color: var(--up);
+  border-color: color-mix(in srgb, var(--up) 42%, transparent);
+  background: color-mix(in srgb, var(--up) 11%, transparent);
+}
+
+.market-status.is-live .market-status-dot {
+  animation: market-live-pulse 1.7s ease-in-out infinite;
+}
+
+.market-status.is-pre,
+.market-status.is-post {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.market-status.is-closed,
+.market-status.is-unknown {
+  color: var(--text-tertiary);
+}
+
+@keyframes market-live-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--up) 48%, transparent);
+  }
+  55% {
+    opacity: 0.78;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-status.is-live .market-status-dot {
+    animation: none;
+  }
+}
+
 .header .title {
   font-size: 13px;
   font-weight: 600;

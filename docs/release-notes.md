@@ -17,3 +17,14 @@
 ### Changed
 
 - Reduced header update, settings, and hide icon glyphs from 16px to 14px while retaining 32px button hit areas.
+
+## v0.1.44 - 2026-08-13
+
+### Added
+
+- Added a compact US regular-market status pill to the header. It shows LIVE, PRE, POST, CLOSED, or -- using equity quote market states.
+- LIVE uses a subtle pulse that respects reduced-motion preferences.
+
+### Changed
+
+- Reduced the market status pill height, spacing, padding, and status-dot size to keep the header compact.

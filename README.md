@@ -91,7 +91,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Windows 11 Widgets board  
 - API-key-required feeds as MVP hard dependency  
 
-## Release notes`n`nThe current UI refinement is **v0.1.43**. It reduces the visual size of the header update, settings, and hide icons while retaining their 32px button hit areas. See [release notes](docs/release-notes.md) for details.`n`n## Develop
+## Release notes`n`nThe current header refinement is **v0.1.44**. It adds a compact regular-market status pill with a subtle LIVE pulse while preserving header density and reduced-motion behavior. See [release notes](docs/release-notes.md) for details.`n`n## Develop
 
 **Requirements:**
 

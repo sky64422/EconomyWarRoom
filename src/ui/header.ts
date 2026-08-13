@@ -18,6 +18,45 @@ export interface DownloadProgress {
 }
 
 type UpdatePhase = "idle" | "downloading" | "ready";
+type UsMarketStatus = "live" | "pre" | "post" | "closed" | "unknown";
+
+function resolveUsMarketStatus(marketStates: Array<string | null | undefined>): UsMarketStatus {
+  const states = marketStates
+    .map((state) => state?.toLowerCase().trim())
+    .filter((state): state is string => Boolean(state));
+  if (states.some((state) => state === "regular")) return "live";
+  if (states.some((state) => state === "pre" || state === "prepre")) return "pre";
+  if (states.some((state) => state === "post" || state === "postpost")) return "post";
+  return states.length > 0 ? "closed" : "unknown";
+}
+
+export function setUsMarketStatus(
+  root: HTMLElement,
+  marketStates: Array<string | null | undefined>,
+): void {
+  const statusEl = root.querySelector<HTMLElement>("#us-market-status");
+  const labelEl = root.querySelector<HTMLElement>("#us-market-status-label");
+  if (!statusEl || !labelEl) return;
+
+  const status = resolveUsMarketStatus(marketStates);
+  const labels: Record<UsMarketStatus, string> = {
+    live: "LIVE",
+    pre: "PRE",
+    post: "POST",
+    closed: "CLOSED",
+    unknown: "--",
+  };
+  const descriptions: Record<UsMarketStatus, string> = {
+    live: "US market is live",
+    pre: "US pre-market is open",
+    post: "US after-hours market is open",
+    closed: "US market is closed",
+    unknown: "US market status is unavailable",
+  };
+  statusEl.className = "market-status is-" + status;
+  statusEl.setAttribute("aria-label", descriptions[status]);
+  labelEl.textContent = labels[status];
+}
 
 /** Stroke SVG icons — avoid platform glyph variance (P2). */
 const ICON_REFRESH = `<svg class="icon-svg" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false"><path d="M13.5 8A5.5 5.5 0 1 1 11.2 3.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M13.5 3v3.2H10.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -32,7 +71,13 @@ function setBtnChrome(btn: HTMLButtonElement, title: string): void {
 export function renderHeader(root: HTMLElement, handlers: HeaderHandlers): void {
   root.innerHTML = `
     <div class="header" data-tauri-drag-region>
-      <div class="title">WarRoom</div>
+      <div class="header-leading">
+        <div class="title">WarRoom</div>
+        <div class="market-status is-unknown" id="us-market-status" role="status" aria-live="polite" aria-label="US market status is unavailable">
+          <span class="market-status-dot" aria-hidden="true"></span>
+          <span id="us-market-status-label">--</span>
+        </div>
+      </div>
       <div class="header-actions">
         <button type="button" class="icon-btn" id="btn-update" aria-label="Check for updates" title="Check for updates">${ICON_REFRESH}</button>
         <button type="button" class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings">${ICON_SETTINGS}</button>

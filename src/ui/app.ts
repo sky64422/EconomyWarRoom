@@ -6,6 +6,7 @@ import {
   renderHeader,
   setHeaderBackdropInert,
   setSettingsButtonActive,
+  setUsMarketStatus,
 } from "./header";
 import { applyPanelOpacity, mountSettingsPanel } from "./settings-panel";
 import { mountWatchlist } from "./watchlist";
@@ -49,7 +50,11 @@ export async function mountApp(root: HTMLElement): Promise<void> {
     ...(state.settings.column_ratios ?? {}),
   };
 
-  const watchlist = mountWatchlist(watchlistRoot, { columnRatios });
+  const watchlist = mountWatchlist(watchlistRoot, {
+    columnRatios,
+    onQuotesChanged: (quotes) =>
+      setUsMarketStatus(headerRoot, quotes.map((quote) => quote.market_state)),
+  });
   watchlist.setItems(state.watchlist ?? []);
 
   function setSettingsBackdropInert(on: boolean): void {

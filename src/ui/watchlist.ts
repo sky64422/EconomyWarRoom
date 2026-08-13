@@ -433,6 +433,7 @@ const PRICE_FLASH_MS = 560;
 
 export interface WatchlistMountOptions {
   columnRatios?: ColumnRatios;
+  onQuotesChanged?: (quotes: Quote[]) => void;
 }
 
 export function mountWatchlist(
@@ -1318,6 +1319,13 @@ export function mountWatchlist(
   }
 
   function setQuotes(next: Quote[]): void {
+    opts?.onQuotesChanged?.(
+      next.filter((quote) =>
+        items.some(
+          (item) => item.symbol === quote.symbol && item.asset_kind === "equity",
+        ),
+      ),
+    );
     for (const q of next) quotes.set(q.symbol, q);
     if (dragId) {
       patchMarketCells();
