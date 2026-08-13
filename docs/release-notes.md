@@ -28,3 +28,9 @@
 ### Changed
 
 - Reduced the market status pill height, spacing, padding, and status-dot size to keep the header compact.
+
+## v0.1.45 - 2026-08-13
+
+### Changed
+
+- Increased the gap between the WarRoom title and the market status pill to 6px for clearer separation while preserving the compact header.

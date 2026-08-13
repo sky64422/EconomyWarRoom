@@ -91,7 +91,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Windows 11 Widgets board  
 - API-key-required feeds as MVP hard dependency  
 
-## Release notes`n`nThe current header refinement is **v0.1.44**. It adds a compact regular-market status pill with a subtle LIVE pulse while preserving header density and reduced-motion behavior. See [release notes](docs/release-notes.md) for details.`n`n## Develop
+## Release notes`n`nThe current header spacing refinement is **v0.1.45**. It increases the separation between the WarRoom title and the compact regular-market status pill while retaining the subtle LIVE pulse and reduced-motion behavior. See [release notes](docs/release-notes.md) for details.`n`n## Develop
 
 **Requirements:**
 
