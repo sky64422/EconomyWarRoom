@@ -91,7 +91,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Windows 11 Widgets board  
 - API-key-required feeds as MVP hard dependency  
 
-## Develop
+## Release notes`n`nThe current hotfix is **v0.1.42**. It corrects the secondary price row during pre-market trading so the latest completed regular-session close and its regular-session percentage change are displayed. See [release notes](docs/release-notes.md) for details.`n`n## Develop
 
 **Requirements:**
 

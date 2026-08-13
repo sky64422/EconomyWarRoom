@@ -146,11 +146,6 @@ function isExtendedSession(state: string | null | undefined): boolean {
   return s === "pre" || s === "prepre" || s === "post" || s === "postpost" || s === "closed";
 }
 
-function isPostOrClosedSession(state: string | null | undefined): boolean {
-  if (!state) return false;
-  const s = state.toLowerCase();
-  return s === "post" || s === "postpost" || s === "closed";
-}
 
 function extendedChangePercent(q: Quote): number | null {
   if (q.extended_change_percent != null && Number.isFinite(q.extended_change_percent)) {
@@ -195,7 +190,7 @@ function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): 
   const priorChange =
     q.previous_day_change_percent ?? pctChange(q.prior_close ?? null, previousClose);
   const secondary: PriceRow =
-    isPostOrClosedSession(q.market_state) &&
+    isExtendedSession(q.market_state) &&
     regularPrice != null &&
     (previousClose == null || Math.abs(regularPrice - previousClose) > 0.0001)
       ? {
