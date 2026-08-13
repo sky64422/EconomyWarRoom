@@ -11,3 +11,9 @@
 
 - npm run build completed successfully.
 - npm test completed successfully.
+
+## v0.1.43 - 2026-08-13
+
+### Changed
+
+- Reduced header update, settings, and hide icon glyphs from 16px to 14px while retaining 32px button hit areas.
