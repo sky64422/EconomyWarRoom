@@ -1,0 +1,52 @@
+/* ?��?Main content ?��?*/
+.content {
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#watchlist-root {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: opacity 0.15s ease;
+}
+
+/* Settings: absolute overlay over the watchlist — no layout growth / window hug. */
+#settings-root {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  /* Out of document flow so content height stays watchlist-sized. */
+  pointer-events: auto;
+}
+
+#settings-root:not(:has(.settings-panel:not(.hidden))) {
+  display: none;
+}
+
+/* Fallback when :has() unsupported — JS also toggles .settings-open on .panel */
+.panel:not(.settings-open) #settings-root {
+  display: none;
+}
+
+.panel.settings-open #settings-root {
+  display: flex;
+}
+
+/* Existing list fully transparent under the opaque settings sheet. */
+.panel.settings-open #watchlist-root {
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+}
+

@@ -1,0 +1,652 @@
+/* ?��?Watchlist ?��?*/
+.watchlist-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.watchlist {
+  /* Fill remaining panel under header; scroll only if window > content min
+     and list still overflows. Do NOT use 100vh — fudge:
+     that was ~8px short of real content and forced a useless scrollbar. */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2); /* same as .watchlist-rows ??space before + Add */
+  padding: var(--space-2);
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-secondary) transparent;
+  /* Reserve no gutter when idle ??scrollbar only when truly overflowing */
+  scrollbar-gutter: auto;
+}
+
+.watchlist-rows {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.watchlist-rows.is-reordering {
+  /* While reordering, avoid scroll jank from transforms. */
+  overflow: visible;
+}
+
+.watchlist-empty {
+  padding: 20px 12px 12px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* I4: muted placeholders while quote/spark not yet filled */
+.row-price.is-pending,
+.row-change.is-pending {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.row-sparkline-wrap.is-pending {
+  opacity: 0.45;
+}
+
+.row-sparkline-wrap.is-pending .row-sparkline {
+  opacity: 0.55;
+}
+
+/*
+ * Proportional triptych — fr shares of content width (user-resizable).
+ * Tracks: symbol | resize | spark | resize | metrics.
+ * .row-market uses display:contents so spark + metrics are real grid columns.
+ */
+.watchlist-card {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--row-min-h);
+  padding: var(--row-pad-y) var(--row-pad-x);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-row);
+  background: var(--bg-row-hover);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease;
+}
+
+.watchlist-row {
+  position: relative;
+  display: grid;
+  grid-template-columns:
+    minmax(0, var(--row-fr-symbol))
+    var(--row-resize-hit)
+    minmax(0, var(--row-fr-spark))
+    var(--row-resize-hit)
+    minmax(0, var(--row-fr-metrics));
+  align-items: center;
+  justify-items: stretch;
+  column-gap: 0;
+  cursor: pointer;
+  touch-action: none; /* pointer reorder; avoid scroll competing on touch */
+  user-select: none;
+}
+
+.watchlist-row:focus-visible {
+  outline: 2px solid var(--ring, var(--accent));
+  outline-offset: 2px;
+}
+
+/* Column resize grip (pointer-events re-enabled; row children default to none). */
+.row-col-resize {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: var(--spark-h);
+  align-self: stretch;
+  cursor: col-resize;
+  pointer-events: auto !important;
+  touch-action: none;
+  z-index: 2;
+}
+
+.row-col-resize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  bottom: 18%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.12s ease, opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.watchlist-row:hover .row-col-resize::after {
+  background: color-mix(in srgb, var(--text-secondary) 35%, transparent);
+}
+
+.row-col-resize:hover::after,
+.row-col-resize.is-active::after,
+.watchlist-rows.is-col-resizing .row-col-resize.is-active::after {
+  background: color-mix(in srgb, var(--accent) 70%, var(--text-secondary));
+}
+
+.watchlist-rows.is-col-resizing {
+  cursor: col-resize;
+}
+
+.watchlist-rows.is-col-resizing .watchlist-row {
+  cursor: col-resize;
+}
+
+/* Lift spark + metrics into the row grid (true 3-column proportions). */
+.row-market {
+  display: contents;
+}
+
+/* Soft pastel tints ??mix % tracks --tint-strength (opacity slider) */
+.watchlist-row.tint-rose {
+  background: color-mix(
+    in srgb,
+    #ffb3c1 calc(42% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+}
+.watchlist-row.tint-peach {
+  background: color-mix(
+    in srgb,
+    #ffd6a5 calc(48% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+}
+.watchlist-row.tint-mint {
+  background: color-mix(
+    in srgb,
+    #b8f2e6 calc(48% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+}
+.watchlist-row.tint-sky {
+  background: color-mix(
+    in srgb,
+    #a0c4ff calc(48% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+}
+.watchlist-row.tint-lavender {
+  background: color-mix(
+    in srgb,
+    #cdb4db calc(48% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+}
+.watchlist-row.tint-lemon {
+  background: color-mix(
+    in srgb,
+    #fdffb6 calc(52% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+}
+
+.watchlist-row.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.watchlist-row > * {
+  pointer-events: none;
+  user-select: none;
+}
+
+.row-sparkline-wrap {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  height: var(--spark-h);
+  display: block;
+  overflow: hidden;
+  align-self: center;
+}
+
+.row-metrics {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--price-row-gap);
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.row-quote {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--price-change-gap);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+  line-height: 1.25;
+}
+
+.row-quote--primary {
+  font-size: var(--price-primary-size);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.row-quote--primary .row-price {
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.row-quote--primary .row-change {
+  font-size: var(--price-primary-change-size);
+  font-weight: 600;
+}
+
+/* P4: single muted channel — no extra opacity stack on secondary quote */
+.row-quote--secondary {
+  font-size: var(--price-secondary-size);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.row-quote--secondary .row-price {
+  font-size: inherit;
+  font-weight: 500;
+}
+
+.row-quote--secondary .row-change {
+  font-size: var(--price-secondary-change-size);
+  font-weight: 500;
+}
+
+.row-quote .row-change[hidden] {
+  display: none;
+}
+
+.watchlist-row:hover:not(.is-selected) {
+  border-color: color-mix(in srgb, var(--text) 20%, transparent);
+}
+
+.watchlist-row:not([class*="tint-"]):hover:not(.is-selected) {
+  background: var(--bg-row-active);
+}
+
+/* In-list hole while the floating ghost follows the pointer */
+.watchlist-row.is-dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+  border-style: dashed;
+  box-shadow: none;
+  transform: scale(0.98);
+}
+
+/* Floating card under the cursor (appended to body) */
+.drag-ghost {
+  position: fixed;
+  z-index: 10000;
+  margin: 0;
+  pointer-events: none;
+  cursor: grabbing;
+  opacity: 0.96;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius-row);
+  background: rgba(var(--bg-glass-rgb-active), 0.92);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  will-change: transform;
+}
+
+.row-symbol {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  align-self: center;
+  justify-self: stretch;
+  text-align: left;
+  color: color-mix(in srgb, var(--text) 92%, var(--text-secondary));
+}
+
+.row-sparkline {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  /* Fill the proportional spark column edge-to-edge as the widget resizes */
+  opacity: var(--accent-opacity, 0.95);
+  transition: opacity 0.12s ease;
+  overflow: visible;
+}
+
+.row-price {
+  font-variant-numeric: tabular-nums;
+  font-weight: inherit;
+  text-align: right;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.row-change {
+  font-variant-numeric: tabular-nums;
+  font-weight: inherit;
+  text-align: right;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  line-height: 1.1;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+
+.row-change.up {
+  color: var(--up);
+}
+
+.row-change.down {
+  color: var(--down);
+}
+
+/* + Add (simple centered control, same card size as rows) */
+.watchlist-footer {
+  flex: 0 0 auto;
+  padding: 0;
+  border-top: none;
+}
+
+.add-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+}
+
+.add-card:hover {
+  border-color: color-mix(in srgb, var(--text) 20%, transparent);
+  color: var(--text);
+}
+
+/* Untinted +Add hover: don't fight pastel tint backgrounds */
+.add-card:not([class*="tint-"]):hover {
+  background: var(--bg-row-active);
+}
+
+/* Same pastel tints as watchlist rows (right-click on +Add); opacity-linked */
+.add-card.tint-rose {
+  background: color-mix(
+    in srgb,
+    #ffb3c1 calc(42% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+  border-color: color-mix(
+    in srgb,
+    #ffb3c1 calc(55% * var(--tint-strength)),
+    var(--border)
+  );
+  color: color-mix(in srgb, #ffb3c1 calc(35% * var(--tint-strength)), var(--text));
+}
+.add-card.tint-peach {
+  background: color-mix(
+    in srgb,
+    #ffd6a5 calc(48% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+  border-color: color-mix(
+    in srgb,
+    #ffd6a5 calc(55% * var(--tint-strength)),
+    var(--border)
+  );
+  color: color-mix(in srgb, #ffd6a5 calc(30% * var(--tint-strength)), var(--text));
+}
+.add-card.tint-mint {
+  background: color-mix(
+    in srgb,
+    #b8f2e6 calc(48% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+  border-color: color-mix(
+    in srgb,
+    #b8f2e6 calc(55% * var(--tint-strength)),
+    var(--border)
+  );
+  color: color-mix(in srgb, #b8f2e6 calc(30% * var(--tint-strength)), var(--text));
+}
+.add-card.tint-sky {
+  background: color-mix(
+    in srgb,
+    #a0c4ff calc(48% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+  border-color: color-mix(
+    in srgb,
+    #a0c4ff calc(55% * var(--tint-strength)),
+    var(--border)
+  );
+  color: color-mix(in srgb, #a0c4ff calc(35% * var(--tint-strength)), var(--text));
+}
+.add-card.tint-lavender {
+  background: color-mix(
+    in srgb,
+    #cdb4db calc(48% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+  border-color: color-mix(
+    in srgb,
+    #cdb4db calc(55% * var(--tint-strength)),
+    var(--border)
+  );
+  color: color-mix(in srgb, #cdb4db calc(35% * var(--tint-strength)), var(--text));
+}
+.add-card.tint-lemon {
+  background: color-mix(
+    in srgb,
+    #fdffb6 calc(52% * var(--tint-strength)),
+    var(--bg-row-hover)
+  );
+  border-color: color-mix(
+    in srgb,
+    #fdffb6 calc(55% * var(--tint-strength)),
+    var(--border)
+  );
+  color: color-mix(in srgb, #fdffb6 calc(25% * var(--tint-strength)), var(--text));
+}
+.add-card[class*="tint-"]:hover {
+  border-style: solid;
+  filter: brightness(1.06);
+}
+
+.add-card--active {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: stretch;
+  gap: 6px;
+  cursor: default;
+  border-style: solid;
+  border-color: var(--border);
+  background: var(--bg-row-hover);
+}
+
+.add-card-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  user-select: text;
+}
+
+.add-card-input:focus {
+  border-color: var(--accent);
+}
+
+.add-card-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.add-card-btn {
+  height: 32px;
+  margin: 0;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-row-active);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.add-card-btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.add-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.add-suggest {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  border-radius: var(--radius-row);
+  border: 1px solid var(--border);
+  background: rgba(var(--bg-glass-rgb-active), 0.55);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
+.add-suggest-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.add-suggest-item:hover,
+.add-suggest-item.active {
+  background: var(--bg-row-active);
+}
+
+.suggest-symbol {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: -0.02em;
+}
+
+.suggest-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  min-width: 0;
+}
+
+.add-suggest-empty {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.add-form input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-row-hover);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  user-select: text;
+}
+
+.add-form input:focus {
+  border-color: var(--accent);
+}
+
+.add-form input::placeholder {
+  color: var(--text-secondary);
+}
+
+.add-form button {
+  height: 32px;
+  margin: 0;
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.add-form button.secondary {
+  background: var(--bg-row-active);
+  color: var(--text);
+}
+
+.add-form .error {
+  display: none;
+}
+
+.add-error {
+  margin: 6px 2px 0;
+  font-size: 11px;
+  color: var(--down);
+}
+

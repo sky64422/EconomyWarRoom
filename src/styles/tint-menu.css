@@ -1,0 +1,118 @@
+/* Floating card menu (right-click): tint + remove */
+.tint-menu {
+  position: fixed;
+  z-index: 20000;
+  min-width: 168px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(var(--bg-glass-rgb-active), 0.96);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(12px);
+}
+
+.tint-menu-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.tint-menu-divider {
+  height: 1px;
+  margin: 10px 0 8px;
+  background: var(--border);
+}
+
+.tint-menu-action {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.tint-menu-action:hover {
+  background: var(--bg-row-active);
+}
+
+.tint-menu-action--danger {
+  color: var(--down);
+}
+
+.tint-menu-action--danger:hover {
+  background: color-mix(in srgb, var(--down) 14%, transparent);
+  color: var(--down);
+}
+
+.tint-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tint-swatch {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text) 12%, transparent);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.tint-swatch:hover {
+  transform: scale(1.08);
+}
+
+.tint-swatch.active {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.tint-swatch.tint-none {
+  background:
+    linear-gradient(135deg, transparent 46%, color-mix(in srgb, var(--text) 35%, transparent) 50%, transparent 54%),
+    var(--bg-row-hover);
+}
+.tint-swatch.tint-rose {
+  background: #ffb3c1;
+}
+.tint-swatch.tint-peach {
+  background: #ffd6a5;
+}
+.tint-swatch.tint-mint {
+  background: #b8f2e6;
+}
+.tint-swatch.tint-sky {
+  background: #a0c4ff;
+}
+.tint-swatch.tint-lavender {
+  background: #cdb4db;
+}
+.tint-swatch.tint-lemon {
+  background: #fdffb6;
+}
+
+.watchlist-view.hidden {
+  display: none;
+}
+
+/* Keep secondary quote changes visually subordinate to the primary quote. */
+.row-quote--secondary .row-change.up {
+  color: color-mix(in srgb, var(--up) 65%, var(--text-secondary));
+}
+.row-quote--secondary .row-change.down {
+  color: color-mix(in srgb, var(--down) 65%, var(--text-secondary));
+}

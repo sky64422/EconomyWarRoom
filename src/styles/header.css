@@ -1,0 +1,232 @@
+/* ?��?Header (TokenUsage-aligned: flat, no heavy bar chrome) ?��?*/
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--header-height);
+  min-height: var(--header-height);
+  padding: 0 8px 0 var(--pad-x);
+  flex-shrink: 0;
+  background: transparent;
+  border-bottom: none;
+  box-shadow: none;
+  z-index: 2;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.header-leading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.market-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 16px;
+  padding: 0 5px 0 4px;
+  border: 1px solid color-mix(in srgb, var(--text-tertiary) 20%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-hover) 72%, transparent);
+  color: var(--text-tertiary);
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.market-status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.market-status.is-live {
+  color: var(--up);
+  border-color: color-mix(in srgb, var(--up) 42%, transparent);
+  background: color-mix(in srgb, var(--up) 11%, transparent);
+}
+
+.market-status.is-live .market-status-dot {
+  animation: market-live-pulse 1.7s ease-in-out infinite;
+}
+
+.market-status.is-pre,
+.market-status.is-post {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.market-status.is-closed,
+.market-status.is-unknown {
+  color: var(--text-tertiary);
+}
+
+@keyframes market-live-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--up) 48%, transparent);
+  }
+  55% {
+    opacity: 0.78;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-status.is-live .market-status-dot {
+    animation: none;
+  }
+}
+
+.header .title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1;
+}
+
+/*
+ * Price update hint — soft ease, not a blink.
+ * Metrics wash only; numbers stay fully legible (no opacity flicker).
+ */
+@keyframes row-price-settle {
+  0% {
+    background-color: color-mix(in srgb, var(--text) 7%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.watchlist-row .row-metrics {
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.watchlist-row.row-price-tick .row-metrics {
+  animation: row-price-settle 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .watchlist-row.row-price-tick .row-metrics {
+    animation: none;
+  }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn .icon-svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.icon-btn:active {
+  background: var(--bg-row-active);
+}
+
+.icon-btn.active {
+  color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.icon-btn.busy {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Soft update badge on header ↻ — downloading pulse, ready solid. */
+.icon-btn.update-available {
+  position: relative;
+  color: var(--accent);
+}
+
+.icon-btn.update-available::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 35%, transparent);
+  pointer-events: none;
+}
+
+.icon-btn.update-downloading::after {
+  animation: update-dot-pulse 1.8s ease-in-out infinite;
+}
+
+.icon-btn.update-ready {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.icon-btn.update-ready::after {
+  animation: none;
+  opacity: 1;
+}
+
+@keyframes update-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn.update-downloading::after {
+    animation: none;
+  }
+}
+
