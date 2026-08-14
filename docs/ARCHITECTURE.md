@@ -1,6 +1,6 @@
 # Architecture (as implemented)
 
-**Updated:** 2026-08-14 (v0.1.46)  
+**Updated:** 2026-08-15 (v0.1.46)  
 **Branch of truth:** `main`
 
 This document describes the **current codebase**, not only the original design sketch.
@@ -28,7 +28,7 @@ This document describes the **current codebase**, not only the original design s
 │  AppCore  application/service.rs            │
 │  · watchlist CRUD + card_tint + persist     │
 │  · opacity / geometry / autostart           │
-│  · quote_refresh_secs (ms) → scheduler      │
+│  · quote_refresh_ms (JSON: quote_refresh_secs) │
 │  · column_ratios                            │
 │  · visibility flag → scheduler              │
 │  · quote / sparkline cache reads            │
@@ -52,7 +52,7 @@ This document describes the **current codebase**, not only the original design s
 
 | Path | Role |
 |------|------|
-| `domain/` | Types (`WatchlistItem`, `CardTint`, `Quote` extended fields, `ColumnRatios`, `AppSettings`), policy constants, watchlist pure logic, sparkline downsample |
+| `domain/` | Types (`WatchlistItem`, `CardTint`, `Quote` + `PriceRows` display, `ColumnRatios`, `AppSettings`), policy constants, watchlist + **display rows**, sparkline downsample |
 | `ports/market_data.rs` | `MarketDataProvider` + `ProviderLimits` |
 | `application/cache.rs` | In-memory quote / sparkline caches |
 | `application/queue.rs` | `RateLimitedQueue` (max concurrent, key coalesce, priority) |
@@ -73,11 +73,11 @@ This document describes the **current codebase**, not only the original design s
 |------|------|
 | `ui/app.ts` | Boot, state, geometry persist, **content-hug min** measure → `set_content_min_size` |
 | `ui/header.ts` | Drag region, update check, settings, hide |
-| `ui/watchlist.ts` | Rows (symbol · spark · price), multi-select, DnD, tint/remove menu, column resize, add |
+| `ui/watchlist/` | Rows, multi-select, DnD, tint/remove, column resize, add (`index` + `metrics` / `columns` / `search` / `dnd`) |
 | `ui/sparkline.ts` | SVG path helper; tone from regular-session move |
 | `ui/settings-panel.ts` | Overlay settings: opacity, refresh presets, autostart, Copy Log / Quit |
 | `ui/types.ts` | TS mirrors of Rust DTOs (snake_case) |
-| `styles/tokens.css`, `app.css`, `fonts.css` | Dark-only glass / pastel tint tokens; Pretendard |
+| `styles/` | `tokens.css`, `fonts.css`, `app.css` (barrel) + `base` / `header` / `layout` / `watchlist` / `settings` / `tint-menu` |
 
 ### Tests
 
@@ -95,7 +95,7 @@ Defined in `domain/constants.rs` (names approximate):
 |--------|----------|
 | Tick | **500ms** |
 | Batch / workers | batch size 4; max concurrent provider ~3 |
-| Quote refresh | UI presets **0.25s / 1s / 10s / 1m** (stored as ms in `quote_refresh_secs`; clamp **250ms–120s**, default **500ms**; legacy 1..=120 = whole seconds) |
+| Quote refresh | UI presets **0.25s / 1s / 10s / 1m** (Rust field `quote_refresh_ms`; JSON key still `quote_refresh_secs`; clamp **250ms–120s**, default **500ms**; legacy 1..=120 = whole seconds) |
 | Sparkline | range `1d`, interval `5m`, target points 32; min refresh ~300s |
 | Backoff | 5s initial → double up to 120s |
 | Opacity | 0.35–1.0, default ~0.92 |
@@ -136,7 +136,7 @@ LIVE cannot put “today’s close” on the secondary row — the regular sessi
 | `set_card_tint` | Persist pastel row highlight |
 | `reorder_symbols` | DnD order |
 | `set_opacity` / `set_autostart` | Settings |
-| `set_quote_refresh_secs` | Persist + apply scheduler interval (**ms**) |
+| `set_quote_refresh_ms` / `set_quote_refresh_secs` | Persist + apply scheduler interval (**ms**; `_secs` is the historical IPC name) |
 | `set_column_ratios` | Persist proportional column widths |
 | `set_content_min_size` | OS min from UI content measure; optional grow if content grew |
 | `search_symbols` | Yahoo autocomplete (+ local fallback in UI) |

@@ -178,7 +178,7 @@ JSON under the OS app data directory (Tauri `app_data_dir`), file name roughly `
 
 - Window geometry  
 - **Autostart** flag (launch at login)  
-- **quote_refresh_secs** — field name historical; stored as **milliseconds** (default 500; legacy 1–120 = seconds)  
+- **quote_refresh_secs** — JSON key historical; Rust field `quote_refresh_ms`; stored as **milliseconds** (default 500; legacy 1–120 = seconds)  
 - **column_ratios** (symbol / spark / metrics `fr` shares)  
 - Hotkey string (default `Ctrl+Shift+Space`)  
 
