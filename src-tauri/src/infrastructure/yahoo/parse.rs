@@ -333,6 +333,8 @@ pub fn parse_quote_from_chart_at(json: &Value, now_secs: i64) -> Result<Quote, S
         prior_close,
         previous_day_change_percent,
         market_state,
+        display: None,
+        sparkline_change_percent: None,
     })
 }
 
@@ -351,7 +353,9 @@ pub fn parse_sparkline_from_chart(json: &Value) -> Result<Sparkline, String> {
     let prev = meta
         .get("previousClose")
         .or_else(|| meta.get("chartPreviousClose"))
+        .or_else(|| meta.get("regularMarketPreviousClose"))
         .and_then(|v| v.as_f64());
+    let regular = trading_period_bounds(meta, "regular");
     let timestamps = result
         .get("timestamp")
         .and_then(|v| v.as_array())
@@ -365,9 +369,26 @@ pub fn parse_sparkline_from_chart(json: &Value) -> Result<Sparkline, String> {
         let Some(ts) = t.as_i64() else {
             continue;
         };
+        if let Some((start, end)) = regular {
+            if ts < start || ts >= end {
+                continue;
+            }
+        }
         let close = closes.get(i).and_then(|c| c.as_f64());
         if let Some(c) = close {
             points.push(SparklinePoint { t: ts, close: c });
+        }
+    }
+    // No regular bars (crypto / missing period): keep the full series.
+    if points.is_empty() {
+        for (i, t) in timestamps.iter().enumerate() {
+            let Some(ts) = t.as_i64() else {
+                continue;
+            };
+            let close = closes.get(i).and_then(|c| c.as_f64());
+            if let Some(c) = close {
+                points.push(SparklinePoint { t: ts, close: c });
+            }
         }
     }
     let points = downsample(&points, SparklinePolicy::TARGET_POINTS);
@@ -598,6 +619,37 @@ mod tests {
         });
         let q = parse_quote_from_chart(&v).unwrap();
         assert!(q.change_percent.is_none());
+    }
+
+    #[test]
+    fn sparkline_keeps_regular_session_only_vs_previous_close() {
+        // Premarket sits above yesterday's close; RTH sold off (SPCX-shaped).
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "SPCX",
+                  "previousClose": 141.29,
+                  "currentTradingPeriod": {
+                    "pre": { "start": 1000, "end": 2000 },
+                    "regular": { "start": 2000, "end": 3000 },
+                    "post": { "start": 3000, "end": 4000 }
+                  }
+                },
+                "timestamp": [1100, 1900, 2000, 2500, 2900],
+                "indicators": {
+                  "quote": [{ "close": [142.2, 143.0, 141.63, 139.0, 137.02] }]
+                }
+              }]
+            }
+        });
+        let s = parse_sparkline_from_chart(&v).unwrap();
+        assert_eq!(s.previous_close, Some(141.29));
+        assert_eq!(s.points.len(), 3);
+        assert_eq!(s.points[0].t, 2000);
+        assert!((s.points[2].close - 137.02).abs() < 1e-9);
+        assert!(s.points.iter().all(|p| p.t >= 2000 && p.t < 3000));
+        assert!(s.points.last().unwrap().close < s.previous_close.unwrap());
     }
 
     #[test]
