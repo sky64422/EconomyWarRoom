@@ -254,6 +254,14 @@ impl MarketDataProvider for YahooProvider {
         let json = self.chart_json(symbol, range, interval).await?;
         parse_sparkline_from_chart(&json)
     }
+
+    async fn search_symbols(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SymbolSuggestion>, String> {
+        YahooProvider::search_symbols(self, query, limit).await
+    }
 }
 
 #[cfg(test)]

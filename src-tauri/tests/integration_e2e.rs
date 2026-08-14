@@ -116,7 +116,7 @@ async fn e2e_watchlist_persist_and_scheduler_refresh() {
 
     // Scheduler tick fills caches
     {
-        let mut sched = core.scheduler.lock().await;
+        let mut sched = core.scheduler().lock().await;
         sched.set_watchlist(reloaded.watchlist.clone());
         sched.tick_once().await;
     }
@@ -128,7 +128,7 @@ async fn e2e_watchlist_persist_and_scheduler_refresh() {
     core.set_visible_state(false).await;
     let before = provider.calls.load(Ordering::SeqCst);
     {
-        let mut sched = core.scheduler.lock().await;
+        let mut sched = core.scheduler().lock().await;
         sched.tick_once().await;
     }
     assert_eq!(provider.calls.load(Ordering::SeqCst), before);

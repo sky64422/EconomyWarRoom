@@ -1,6 +1,6 @@
 use crate::application::cache::{QuoteCache, SparklineCache};
 use crate::domain::constants::{RefreshPolicy, SparklinePolicy};
-use crate::domain::types::WatchlistItem;
+use crate::domain::types::{SymbolSuggestion, WatchlistItem};
 use crate::ports::market_data::MarketDataProvider;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -154,6 +154,14 @@ impl QuoteScheduler {
 
     pub fn set_min_quote_interval(&mut self, interval: Duration) {
         self.min_quote_interval = interval.max(RefreshPolicy::MIN_QUOTE_INTERVAL);
+    }
+
+    pub async fn search_symbols(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SymbolSuggestion>, String> {
+        self.provider.search_symbols(query, limit).await
     }
 
     pub fn min_quote_interval(&self) -> Duration {

@@ -67,6 +67,26 @@ pub struct Quote {
     /// Yahoo market state hint: `regular`, `pre`, `post`, `closed`, etc.
     #[serde(default)]
     pub market_state: Option<String>,
+    /// Widget primary/secondary rows; filled at IPC time, not Yahoo parse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<PriceRows>,
+    /// Regular-session move used to color the sparkline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparkline_change_percent: Option<f64>,
+}
+
+/// One price + % cell (primary or secondary).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub struct PriceRow {
+    pub price: Option<f64>,
+    pub change: Option<f64>,
+}
+
+/// Display pair: latest session print vs last completed regular session.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub struct PriceRows {
+    pub primary: PriceRow,
+    pub secondary: PriceRow,
 }
 
 impl Default for Quote {
@@ -86,6 +106,8 @@ impl Default for Quote {
             prior_close: None,
             previous_day_change_percent: None,
             market_state: None,
+            display: None,
+            sparkline_change_percent: None,
         }
     }
 }
@@ -148,16 +170,22 @@ pub struct AppSettings {
     pub autostart: bool,
     /// Quote refresh interval per symbol.
     ///
-    /// Field name is historical (`_secs`). Stored unit is **milliseconds** after
-    /// clamp; legacy files with 1..=120 are interpreted as whole seconds on load.
-    #[serde(default = "default_quote_refresh_secs")]
-    pub quote_refresh_secs: u64,
+    /// Quote refresh interval in **milliseconds**.
+    ///
+    /// JSON key stays `quote_refresh_secs` (legacy). Values 1..=120 on load are
+    /// whole seconds; everything else is milliseconds.
+    #[serde(
+        default = "default_quote_refresh_ms",
+        rename = "quote_refresh_secs",
+        alias = "quote_refresh_ms"
+    )]
+    pub quote_refresh_ms: u64,
     /// Proportional column widths; omitted in older state files → defaults.
     #[serde(default)]
     pub column_ratios: ColumnRatios,
 }
 
-fn default_quote_refresh_secs() -> u64 {
+fn default_quote_refresh_ms() -> u64 {
     crate::domain::constants::RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT
 }
 

@@ -1,5 +1,5 @@
 use crate::domain::constants::{
-    clamp_column_ratios, clamp_opacity, clamp_quote_refresh_secs, HotkeyPolicy, OpacityPolicy,
+    clamp_column_ratios, clamp_opacity, clamp_quote_refresh_ms, HotkeyPolicy, OpacityPolicy,
     RefreshPolicy, WindowPolicy,
 };
 use crate::domain::types::{
@@ -37,7 +37,7 @@ pub fn default_state() -> PersistedState {
             },
             hotkey: HotkeyPolicy::DEFAULT.into(),
             autostart: true,
-            quote_refresh_secs: RefreshPolicy::QUOTE_REFRESH_SECS_DEFAULT,
+            quote_refresh_ms: RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT,
             column_ratios: ColumnRatios::default(),
         },
     }
@@ -60,8 +60,7 @@ pub fn save_state(app_data_dir: &Path, state: &PersistedState) -> Result<(), Str
     let path = state_path(app_data_dir);
     let mut cloned = state.clone();
     cloned.settings.opacity = clamp_opacity(cloned.settings.opacity);
-    cloned.settings.quote_refresh_secs =
-        clamp_quote_refresh_secs(cloned.settings.quote_refresh_secs);
+    cloned.settings.quote_refresh_ms = clamp_quote_refresh_ms(cloned.settings.quote_refresh_ms);
     cloned.settings.column_ratios = clamp_column_ratios(cloned.settings.column_ratios);
     let json = serde_json::to_string_pretty(&cloned).map_err(|e| e.to_string())?;
     std::fs::write(path, json).map_err(|e| e.to_string())
@@ -124,6 +123,19 @@ mod tests {
         save_state(dir.path(), &state).unwrap();
         let loaded = load_state(dir.path());
         assert!((loaded.settings.opacity - OpacityPolicy::MIN).abs() < 1e-9);
+    }
+
+    #[test]
+    fn quote_refresh_json_key_remains_secs() {
+        let state = default_state();
+        let json = serde_json::to_value(&state).unwrap();
+        let settings = json.get("settings").unwrap();
+        assert!(settings.get("quote_refresh_secs").is_some());
+        assert!(settings.get("quote_refresh_ms").is_none());
+        assert_eq!(
+            settings.get("quote_refresh_secs").unwrap().as_u64(),
+            Some(RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT)
+        );
     }
 
     #[test]

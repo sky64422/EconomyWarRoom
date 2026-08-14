@@ -1,4 +1,4 @@
-use crate::domain::types::{AssetKind, Quote, Sparkline};
+use crate::domain::types::{AssetKind, Quote, Sparkline, SymbolSuggestion};
 use async_trait::async_trait;
 use std::time::Duration;
 
@@ -21,4 +21,13 @@ pub trait MarketDataProvider: Send + Sync {
         range: &str,
         interval: &str,
     ) -> Result<Sparkline, String>;
+
+    /// Symbol autocomplete. Default is empty (providers without search).
+    async fn search_symbols(
+        &self,
+        _query: &str,
+        _limit: usize,
+    ) -> Result<Vec<SymbolSuggestion>, String> {
+        Ok(vec![])
+    }
 }

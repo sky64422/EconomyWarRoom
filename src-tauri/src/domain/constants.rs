@@ -9,7 +9,7 @@ impl RefreshPolicy {
     pub const BATCH_SIZE: usize = 4;
     /// Default min interval between quote fetches for the same symbol.
     pub const MIN_QUOTE_INTERVAL: Duration = Duration::from_millis(500);
-    /// User-configurable quote interval bounds (**milliseconds** in persisted field
+    /// User-configurable quote interval bounds (**milliseconds**; JSON key
     /// `quote_refresh_secs`; legacy values 1..=120 are treated as whole seconds).
     pub const QUOTE_REFRESH_MS_MIN: u64 = 250;
     pub const QUOTE_REFRESH_MS_MAX: u64 = 120_000;
@@ -26,10 +26,12 @@ impl RefreshPolicy {
 
 /// Normalize + clamp quote refresh.
 ///
-/// Persisted field is historically named `quote_refresh_secs`. Values in **1..=120**
+/// Normalize + clamp quote refresh (milliseconds after clamp).
+///
+/// JSON field is historically named `quote_refresh_secs`. Values in **1..=120**
 /// are treated as **legacy whole seconds** (multiplied by 1000). Larger values are
 /// milliseconds (e.g. 500 → 500ms, 1000 → 1s).
-pub fn clamp_quote_refresh_secs(stored: u64) -> u64 {
+pub fn clamp_quote_refresh_ms(stored: u64) -> u64 {
     let ms = if (1..=120).contains(&stored) {
         stored.saturating_mul(1000)
     } else if stored == 0 {
@@ -41,6 +43,11 @@ pub fn clamp_quote_refresh_secs(stored: u64) -> u64 {
         RefreshPolicy::QUOTE_REFRESH_MS_MIN,
         RefreshPolicy::QUOTE_REFRESH_MS_MAX,
     )
+}
+
+/// Historical name — same as [`clamp_quote_refresh_ms`].
+pub fn clamp_quote_refresh_secs(stored: u64) -> u64 {
+    clamp_quote_refresh_ms(stored)
 }
 
 /// Sparkline fetch policy.
@@ -193,22 +200,23 @@ mod tests {
     }
 
     #[test]
-    fn clamp_quote_refresh_secs_bounds() {
+    fn clamp_quote_refresh_ms_bounds() {
         // 0 → default ms
         assert_eq!(
-            clamp_quote_refresh_secs(0),
+            clamp_quote_refresh_ms(0),
             RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT
         );
         // Legacy whole seconds 1..=120 → ms
-        assert_eq!(clamp_quote_refresh_secs(1), 1000);
-        assert_eq!(clamp_quote_refresh_secs(3), 3000);
+        assert_eq!(clamp_quote_refresh_ms(1), 1000);
+        assert_eq!(clamp_quote_refresh_ms(3), 3000);
         // Explicit milliseconds
-        assert_eq!(clamp_quote_refresh_secs(500), 500);
-        assert_eq!(clamp_quote_refresh_secs(250), 250);
+        assert_eq!(clamp_quote_refresh_ms(500), 500);
+        assert_eq!(clamp_quote_refresh_ms(250), 250);
         assert_eq!(
-            clamp_quote_refresh_secs(999_999),
+            clamp_quote_refresh_ms(999_999),
             RefreshPolicy::QUOTE_REFRESH_MS_MAX
         );
+        assert_eq!(clamp_quote_refresh_secs(250), clamp_quote_refresh_ms(250));
     }
 
     #[test]

@@ -176,14 +176,7 @@ pub fn run() {
                     if !state.core.is_visible() {
                         continue;
                     }
-                    let outcome = {
-                        let mut sched = state.core.scheduler.lock().await;
-                        let outcome = sched.tick_once().await;
-                        for msg in sched.drain_diag_notes() {
-                            state.core.note_throttled_default(DiagLevel::Warn, msg);
-                        }
-                        outcome
-                    };
+                    let outcome = state.core.tick_once().await;
                     // Phase 2: emit only when caches actually changed (less UI thrash).
                     if outcome.quotes_updated {
                         let quotes = state.core.get_quotes().await;
@@ -229,6 +222,7 @@ pub fn run() {
             commands::set_opacity,
             commands::set_autostart,
             commands::set_quote_refresh_secs,
+            commands::set_quote_refresh_ms,
             commands::set_column_ratios,
             commands::hide_widget,
             commands::toggle_widget_visibility,

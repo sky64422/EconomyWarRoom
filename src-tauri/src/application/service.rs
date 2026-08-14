@@ -8,10 +8,12 @@ use crate::application::diagnostics::{
 };
 use crate::application::scheduler::QuoteScheduler;
 use crate::domain::constants::{
-    clamp_geometry, clamp_opacity, clamp_quote_refresh_secs,
+    clamp_geometry, clamp_opacity, clamp_quote_refresh_ms,
 };
+use crate::domain::display::attach_display;
 use crate::domain::types::{
-    AssetKind, CardTint, PersistedState, Quote, Sparkline, WatchlistItem, WindowGeometry,
+    AssetKind, CardTint, PersistedState, Quote, Sparkline, SymbolSuggestion, WatchlistItem,
+    WindowGeometry,
 };
 use crate::domain::watchlist;
 use crate::infrastructure::store::save_state;
@@ -21,11 +23,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex as AsyncMutex;
 
+const LOCK_POISONED: &str = "state lock poisoned";
+
 /// Shared core state used by commands and tests.
 pub struct AppCore {
-    pub persisted: Mutex<PersistedState>,
+    persisted: Mutex<PersistedState>,
     pub app_data_dir: PathBuf,
-    pub scheduler: Arc<AsyncMutex<QuoteScheduler>>,
+    scheduler: Arc<AsyncMutex<QuoteScheduler>>,
     pub visible: AtomicBool,
     events: Mutex<EventRing>,
     /// Last throttled note: (message, when) — suppresses identical spam.
@@ -81,24 +85,49 @@ impl AppCore {
     }
 
     pub fn get_state(&self) -> Result<PersistedState, String> {
-        self.persisted
-            .lock()
-            .map(|g| g.clone())
-            .map_err(|_| "state lock poisoned".into())
+        self.with_persisted(|g| g.clone())
+    }
+
+    pub fn scheduler(&self) -> &Arc<AsyncMutex<QuoteScheduler>> {
+        &self.scheduler
     }
 
     fn persist_locked(&self, state: &PersistedState) -> Result<(), String> {
         save_state(&self.app_data_dir, state)
     }
 
+    fn with_persisted<T>(&self, f: impl FnOnce(&PersistedState) -> T) -> Result<T, String> {
+        let persisted = self
+            .persisted
+            .lock()
+            .map_err(|_| LOCK_POISONED.to_string())?;
+        Ok(f(&persisted))
+    }
+
+    fn with_persisted_mut<T>(
+        &self,
+        f: impl FnOnce(&mut PersistedState) -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.mutate_persisted(|p| Ok((f(p)?, true)))
+    }
+
+    fn mutate_persisted<T>(
+        &self,
+        f: impl FnOnce(&mut PersistedState) -> Result<(T, bool), String>,
+    ) -> Result<T, String> {
+        let mut persisted = self
+            .persisted
+            .lock()
+            .map_err(|_| LOCK_POISONED.to_string())?;
+        let (out, persist) = f(&mut persisted)?;
+        if persist {
+            self.persist_locked(&persisted)?;
+        }
+        Ok(out)
+    }
+
     pub async fn sync_scheduler_watchlist(&self) -> Result<(), String> {
-        let items = {
-            let persisted = self
-                .persisted
-                .lock()
-                .map_err(|_| "state lock poisoned".to_string())?;
-            watchlist::sorted_clone(&persisted.watchlist)
-        };
+        let items = self.with_persisted(|p| watchlist::sorted_clone(&p.watchlist))?;
         let mut sched = self.scheduler.lock().await;
         sched.set_watchlist(items);
         Ok(())
@@ -109,58 +138,32 @@ impl AppCore {
         symbol: String,
         asset_kind: AssetKind,
     ) -> Result<WatchlistItem, String> {
-        let item = {
-            let mut persisted = self
-                .persisted
-                .lock()
-                .map_err(|_| "state lock poisoned".to_string())?;
-            let item = watchlist::add_item(&mut persisted.watchlist, &symbol, asset_kind, None)?;
-            self.persist_locked(&persisted)?;
-            item
-        };
-
+        let item = self.with_persisted_mut(|persisted| {
+            watchlist::add_item(&mut persisted.watchlist, &symbol, asset_kind, None)
+        })?;
+        self.sync_scheduler_watchlist().await?;
         {
             let mut sched = self.scheduler.lock().await;
-            let items = {
-                let persisted = self
-                    .persisted
-                    .lock()
-                    .map_err(|_| "state lock poisoned".to_string())?;
-                watchlist::sorted_clone(&persisted.watchlist)
-            };
-            sched.set_watchlist(items);
             sched.bump_priority(item.symbol.clone());
         }
-
         Ok(item)
     }
 
     pub async fn remove_symbol(&self, id: &str) -> Result<(), String> {
-        {
-            let mut persisted = self
-                .persisted
-                .lock()
-                .map_err(|_| "state lock poisoned".to_string())?;
+        self.with_persisted_mut(|persisted| {
             if !watchlist::remove_item(&mut persisted.watchlist, id) {
                 return Err(format!("unknown id {id}"));
             }
-            self.persist_locked(&persisted)?;
-        }
+            Ok(())
+        })?;
         self.sync_scheduler_watchlist().await
     }
 
     pub async fn remove_symbols(&self, ids: &[String]) -> Result<usize, String> {
-        let removed = {
-            let mut persisted = self
-                .persisted
-                .lock()
-                .map_err(|_| "state lock poisoned".to_string())?;
+        let removed = self.mutate_persisted(|persisted| {
             let removed = watchlist::remove_items(&mut persisted.watchlist, ids);
-            if removed > 0 {
-                self.persist_locked(&persisted)?;
-            }
-            removed
-        };
+            Ok((removed, removed > 0))
+        })?;
         if removed > 0 {
             self.sync_scheduler_watchlist().await?;
         }
@@ -168,51 +171,34 @@ impl AppCore {
     }
 
     pub async fn set_card_tint(&self, id: &str, tint: CardTint) -> Result<(), String> {
-        {
-            let mut persisted = self
-                .persisted
-                .lock()
-                .map_err(|_| "state lock poisoned".to_string())?;
+        self.with_persisted_mut(|persisted| {
             if !watchlist::set_card_tint(&mut persisted.watchlist, id, tint) {
                 return Err(format!("unknown id {id}"));
             }
-            self.persist_locked(&persisted)?;
-        }
-        Ok(())
+            Ok(())
+        })
     }
 
     pub async fn reorder_symbols(&self, ordered_ids: &[String]) -> Result<(), String> {
-        {
-            let mut persisted = self
-                .persisted
-                .lock()
-                .map_err(|_| "state lock poisoned".to_string())?;
-            watchlist::reorder(&mut persisted.watchlist, ordered_ids)?;
-            self.persist_locked(&persisted)?;
-        }
+        self.with_persisted_mut(|persisted| watchlist::reorder(&mut persisted.watchlist, ordered_ids))?;
         self.sync_scheduler_watchlist().await
     }
 
     /// Persist login autostart preference (OS registration is applied by the command layer).
     pub fn set_autostart(&self, enabled: bool) -> Result<(), String> {
-        let mut persisted = self
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        persisted.settings.autostart = enabled;
-        self.persist_locked(&persisted)
+        self.with_persisted_mut(|persisted| {
+            persisted.settings.autostart = enabled;
+            Ok(())
+        })
     }
 
     /// Returns clamped opacity after persist.
     pub fn set_opacity(&self, opacity: f64) -> Result<f64, String> {
         let opacity = clamp_opacity(opacity);
-        let mut persisted = self
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        persisted.settings.opacity = opacity;
-        self.persist_locked(&persisted)?;
-        Ok(opacity)
+        self.with_persisted_mut(|persisted| {
+            persisted.settings.opacity = opacity;
+            Ok(opacity)
+        })
     }
 
     /// Persist watchlist column `fr` ratios (symbol · spark · metrics).
@@ -222,29 +208,19 @@ impl AppCore {
     ) -> Result<crate::domain::types::ColumnRatios, String> {
         use crate::domain::constants::clamp_column_ratios;
         let ratios = clamp_column_ratios(ratios);
-        let mut persisted = self
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        persisted.settings.column_ratios = ratios;
-        self.persist_locked(&persisted)?;
-        Ok(ratios)
+        self.with_persisted_mut(|persisted| {
+            persisted.settings.column_ratios = ratios;
+            Ok(ratios)
+        })
     }
 
-    /// Persist quote refresh interval and update the scheduler.
-    ///
-    /// `secs` is the historical parameter name; value is **milliseconds** after clamp
-    /// (legacy 1..=120 are treated as whole seconds — see [`clamp_quote_refresh_secs`]).
-    pub async fn set_quote_refresh_secs(&self, secs: u64) -> Result<u64, String> {
-        let ms = clamp_quote_refresh_secs(secs);
-        {
-            let mut persisted = self
-                .persisted
-                .lock()
-                .map_err(|_| "state lock poisoned".to_string())?;
-            persisted.settings.quote_refresh_secs = ms;
-            self.persist_locked(&persisted)?;
-        }
+    /// Persist quote refresh interval (milliseconds after clamp) and update the scheduler.
+    pub async fn set_quote_refresh_ms(&self, ms: u64) -> Result<u64, String> {
+        let ms = clamp_quote_refresh_ms(ms);
+        self.with_persisted_mut(|persisted| {
+            persisted.settings.quote_refresh_ms = ms;
+            Ok(ms)
+        })?;
         {
             let mut sched = self.scheduler.lock().await;
             sched.set_min_quote_interval(Duration::from_millis(ms));
@@ -252,19 +228,22 @@ impl AppCore {
         Ok(ms)
     }
 
+    /// Historical name for [`set_quote_refresh_ms`].
+    pub async fn set_quote_refresh_secs(&self, secs: u64) -> Result<u64, String> {
+        self.set_quote_refresh_ms(secs).await
+    }
+
+    pub fn quote_refresh_ms(&self) -> Result<u64, String> {
+        self.with_persisted(|p| clamp_quote_refresh_ms(p.settings.quote_refresh_ms))
+    }
+
     pub fn quote_refresh_secs(&self) -> Result<u64, String> {
-        let persisted = self
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        Ok(clamp_quote_refresh_secs(
-            persisted.settings.quote_refresh_secs,
-        ))
+        self.quote_refresh_ms()
     }
 
     /// Apply persisted quote interval onto the scheduler (call once at bootstrap).
     pub async fn apply_quote_refresh_to_scheduler(&self) -> Result<(), String> {
-        let ms = self.quote_refresh_secs()?;
+        let ms = self.quote_refresh_ms()?;
         let mut sched = self.scheduler.lock().await;
         sched.set_min_quote_interval(Duration::from_millis(ms));
         Ok(())
@@ -272,13 +251,10 @@ impl AppCore {
 
     pub fn save_window_geometry(&self, geometry: WindowGeometry) -> Result<WindowGeometry, String> {
         let geometry = clamp_geometry(&geometry);
-        let mut persisted = self
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        persisted.settings.window = geometry.clone();
-        self.persist_locked(&persisted)?;
-        Ok(geometry)
+        self.with_persisted_mut(|persisted| {
+            persisted.settings.window = geometry.clone();
+            Ok(geometry)
+        })
     }
 
     pub async fn set_visible_state(&self, visible: bool) {
@@ -299,7 +275,35 @@ impl AppCore {
 
     pub async fn get_quotes(&self) -> Vec<Quote> {
         let sched = self.scheduler.lock().await;
-        sched.quote_cache().all()
+        let sparks = sched.sparkline_cache().all();
+        let mut quotes = sched.quote_cache().all();
+        for q in &mut quotes {
+            let spark_prev = sparks
+                .iter()
+                .find(|s| s.symbol == q.symbol)
+                .and_then(|s| s.previous_close);
+            attach_display(q, spark_prev);
+        }
+        quotes
+    }
+
+    pub async fn search_symbols(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SymbolSuggestion>, String> {
+        let sched = self.scheduler.lock().await;
+        sched.search_symbols(query, limit).await
+    }
+
+    /// One scheduler tick + drain diagnostics into the ring.
+    pub async fn tick_once(&self) -> crate::application::scheduler::TickOutcome {
+        let mut sched = self.scheduler.lock().await;
+        let outcome = sched.tick_once().await;
+        for msg in sched.drain_diag_notes() {
+            self.note_throttled_default(DiagLevel::Warn, msg);
+        }
+        outcome
     }
 
     pub async fn get_sparklines(&self) -> Vec<Sparkline> {
@@ -308,11 +312,7 @@ impl AppCore {
     }
 
     pub async fn watchlist_snapshot(&self) -> Result<Vec<WatchlistItem>, String> {
-        let persisted = self
-            .persisted
-            .lock()
-            .map_err(|_| "state lock poisoned".to_string())?;
-        Ok(watchlist::sorted_clone(&persisted.watchlist))
+        self.with_persisted(|p| watchlist::sorted_clone(&p.watchlist))
     }
 
     /// Build a pasteable diagnostics report for agents (Mode B).
@@ -337,7 +337,7 @@ impl AppCore {
         let recent = self
             .events
             .lock()
-            .map_err(|_| "events lock poisoned".to_string())?
+            .map_err(|_| LOCK_POISONED.to_string())?
             .last_lines(DIAGNOSTICS_DUMP_LINES);
 
         let mut out = String::new();

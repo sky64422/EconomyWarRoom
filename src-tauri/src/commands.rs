@@ -1,4 +1,4 @@
-//! Tauri command handlers ??thin adapters over [`crate::application::service::AppCore`].
+//! Tauri command handlers — thin adapters over [`crate::application::service::AppCore`].
 
 use crate::application::diagnostics::DiagLevel;
 use crate::domain::types::{
@@ -6,7 +6,6 @@ use crate::domain::types::{
     WatchlistItem, WindowGeometry,
 };
 use crate::infrastructure::window_ctl;
-use crate::infrastructure::yahoo::YahooProvider;
 use crate::state::AppHandleState;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -16,12 +15,25 @@ fn note_err(state: &AppHandleState, ctx: &str, e: &str) {
         .note(DiagLevel::Warn, format!("{ctx} failed: {e}"));
 }
 
-#[tauri::command(rename_all = "snake_case")]
-pub fn get_state(state: State<'_, AppHandleState>) -> Result<PersistedState, String> {
-    state.core.get_state().map_err(|e| {
-        note_err(&state, "get_state", &e);
+fn map_note<T>(state: &AppHandleState, ctx: &str, result: Result<T, String>) -> Result<T, String> {
+    result.map_err(|e| {
+        note_err(state, ctx, &e);
         e
     })
+}
+
+async fn emit_watchlist(app: &AppHandle, state: &AppHandleState) -> Result<(), String> {
+    let payload = map_note(state, "watchlist_snapshot", state.core.watchlist_snapshot().await)?;
+    app.emit("watchlist-updated", payload).map_err(|e| {
+        let s = e.to_string();
+        note_err(state, "emit watchlist-updated", &s);
+        s
+    })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_state(state: State<'_, AppHandleState>) -> Result<PersistedState, String> {
+    map_note(&state, "get_state", state.core.get_state())
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -31,24 +43,13 @@ pub async fn add_symbol(
     symbol: String,
     asset_kind: AssetKind,
 ) -> Result<WatchlistItem, String> {
-    match state.core.add_symbol(symbol, asset_kind).await {
-        Ok(item) => {
-            let payload = state.core.watchlist_snapshot().await.map_err(|e| {
-                note_err(&state, "watchlist_snapshot", &e);
-                e
-            })?;
-            app.emit("watchlist-updated", payload).map_err(|e| {
-                let s = e.to_string();
-                note_err(&state, "emit watchlist-updated", &s);
-                s
-            })?;
-            Ok(item)
-        }
-        Err(e) => {
-            note_err(&state, "add_symbol", &e);
-            Err(e)
-        }
-    }
+    let item = map_note(
+        &state,
+        "add_symbol",
+        state.core.add_symbol(symbol, asset_kind).await,
+    )?;
+    emit_watchlist(&app, &state).await?;
+    Ok(item)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -57,20 +58,8 @@ pub async fn remove_symbol(
     state: State<'_, AppHandleState>,
     id: String,
 ) -> Result<(), String> {
-    if let Err(e) = state.core.remove_symbol(&id).await {
-        note_err(&state, "remove_symbol", &e);
-        return Err(e);
-    }
-    let payload = state.core.watchlist_snapshot().await.map_err(|e| {
-        note_err(&state, "watchlist_snapshot", &e);
-        e
-    })?;
-    app.emit("watchlist-updated", payload).map_err(|e| {
-        let s = e.to_string();
-        note_err(&state, "emit watchlist-updated", &s);
-        s
-    })?;
-    Ok(())
+    map_note(&state, "remove_symbol", state.core.remove_symbol(&id).await)?;
+    emit_watchlist(&app, &state).await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -79,20 +68,12 @@ pub async fn remove_symbols(
     state: State<'_, AppHandleState>,
     ids: Vec<String>,
 ) -> Result<(), String> {
-    if let Err(e) = state.core.remove_symbols(&ids).await {
-        note_err(&state, "remove_symbols", &e);
-        return Err(e);
-    }
-    let payload = state.core.watchlist_snapshot().await.map_err(|e| {
-        note_err(&state, "watchlist_snapshot", &e);
-        e
-    })?;
-    app.emit("watchlist-updated", payload).map_err(|e| {
-        let s = e.to_string();
-        note_err(&state, "emit watchlist-updated", &s);
-        s
-    })?;
-    Ok(())
+    map_note(
+        &state,
+        "remove_symbols",
+        state.core.remove_symbols(&ids).await,
+    )?;
+    emit_watchlist(&app, &state).await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -102,20 +83,12 @@ pub async fn set_card_tint(
     id: String,
     tint: CardTint,
 ) -> Result<(), String> {
-    if let Err(e) = state.core.set_card_tint(&id, tint).await {
-        note_err(&state, "set_card_tint", &e);
-        return Err(e);
-    }
-    let payload = state.core.watchlist_snapshot().await.map_err(|e| {
-        note_err(&state, "watchlist_snapshot", &e);
-        e
-    })?;
-    app.emit("watchlist-updated", payload).map_err(|e| {
-        let s = e.to_string();
-        note_err(&state, "emit watchlist-updated", &s);
-        s
-    })?;
-    Ok(())
+    map_note(
+        &state,
+        "set_card_tint",
+        state.core.set_card_tint(&id, tint).await,
+    )?;
+    emit_watchlist(&app, &state).await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -124,20 +97,12 @@ pub async fn reorder_symbols(
     state: State<'_, AppHandleState>,
     ordered_ids: Vec<String>,
 ) -> Result<(), String> {
-    if let Err(e) = state.core.reorder_symbols(&ordered_ids).await {
-        note_err(&state, "reorder_symbols", &e);
-        return Err(e);
-    }
-    let payload = state.core.watchlist_snapshot().await.map_err(|e| {
-        note_err(&state, "watchlist_snapshot", &e);
-        e
-    })?;
-    app.emit("watchlist-updated", payload).map_err(|e| {
-        let s = e.to_string();
-        note_err(&state, "emit watchlist-updated", &s);
-        s
-    })?;
-    Ok(())
+    map_note(
+        &state,
+        "reorder_symbols",
+        state.core.reorder_symbols(&ordered_ids).await,
+    )?;
+    emit_watchlist(&app, &state).await
 }
 
 /// Persist and apply OS login autostart (Windows / macOS LaunchAgent / etc.).
@@ -147,10 +112,7 @@ pub fn set_autostart(
     state: State<'_, AppHandleState>,
     enabled: bool,
 ) -> Result<(), String> {
-    state.core.set_autostart(enabled).map_err(|e| {
-        note_err(&state, "set_autostart", &e);
-        e
-    })?;
+    map_note(&state, "set_autostart", state.core.set_autostart(enabled))?;
     use tauri_plugin_autostart::ManagerExt;
     let autolaunch = app.autolaunch();
     let result = if enabled {
@@ -172,26 +134,39 @@ pub fn set_opacity(
     state: State<'_, AppHandleState>,
     opacity: f64,
 ) -> Result<(), String> {
-    let opacity = state.core.set_opacity(opacity).map_err(|e| {
-        note_err(&state, "set_opacity", &e);
-        e
-    })?;
-    window_ctl::apply_opacity(&app, opacity).map_err(|e| {
-        note_err(&state, "apply_opacity", &e);
-        e
-    })?;
+    let opacity = map_note(&state, "set_opacity", state.core.set_opacity(opacity))?;
+    map_note(
+        &state,
+        "apply_opacity",
+        window_ctl::apply_opacity(&app, opacity),
+    )?;
     Ok(())
 }
 
+/// Persist quote interval. Parameter is **milliseconds** (historical name `secs`).
 #[tauri::command(rename_all = "snake_case")]
 pub async fn set_quote_refresh_secs(
     state: State<'_, AppHandleState>,
     secs: u64,
 ) -> Result<u64, String> {
-    state.core.set_quote_refresh_secs(secs).await.map_err(|e| {
-        note_err(&state, "set_quote_refresh_secs", &e);
-        e
-    })
+    map_note(
+        &state,
+        "set_quote_refresh_secs",
+        state.core.set_quote_refresh_ms(secs).await,
+    )
+}
+
+/// Same as [`set_quote_refresh_secs`]; name matches stored unit (ms).
+#[tauri::command(rename_all = "snake_case")]
+pub async fn set_quote_refresh_ms(
+    state: State<'_, AppHandleState>,
+    ms: u64,
+) -> Result<u64, String> {
+    map_note(
+        &state,
+        "set_quote_refresh_ms",
+        state.core.set_quote_refresh_ms(ms).await,
+    )
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -199,18 +174,12 @@ pub fn set_column_ratios(
     state: State<'_, AppHandleState>,
     ratios: crate::domain::types::ColumnRatios,
 ) -> Result<crate::domain::types::ColumnRatios, String> {
-    state.core.set_column_ratios(ratios).map_err(|e| {
-        note_err(&state, "set_column_ratios", &e);
-        e
-    })
+    map_note(&state, "set_column_ratios", state.core.set_column_ratios(ratios))
 }
 
 #[tauri::command(rename_all = "snake_case")]
 pub async fn hide_widget(app: AppHandle, state: State<'_, AppHandleState>) -> Result<(), String> {
-    set_visibility(&app, &state, false).await.map_err(|e| {
-        note_err(&state, "hide_widget", &e);
-        e
-    })
+    map_note(&state, "hide_widget", set_visibility(&app, &state, false).await)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -219,10 +188,11 @@ pub async fn toggle_widget_visibility(
     state: State<'_, AppHandleState>,
 ) -> Result<bool, String> {
     let next = !state.core.is_visible();
-    set_visibility(&app, &state, next).await.map_err(|e| {
-        note_err(&state, "toggle_widget_visibility", &e);
-        e
-    })?;
+    map_note(
+        &state,
+        "toggle_widget_visibility",
+        set_visibility(&app, &state, next).await,
+    )?;
     Ok(next)
 }
 
@@ -265,10 +235,11 @@ pub fn save_window_geometry(
     state: State<'_, AppHandleState>,
     geometry: WindowGeometry,
 ) -> Result<(), String> {
-    state.core.save_window_geometry(geometry).map_err(|e| {
-        note_err(&state, "save_window_geometry", &e);
-        e
-    })?;
+    map_note(
+        &state,
+        "save_window_geometry",
+        state.core.save_window_geometry(geometry),
+    )?;
     Ok(())
 }
 
@@ -284,20 +255,19 @@ pub fn set_content_min_size(
 ) -> Result<(), String> {
     state.set_content_min_logical(width, height);
     let (w, h) = state.content_min_logical();
-    let window = window_ctl::main_window(&app).map_err(|e| {
-        note_err(&state, "set_content_min_size", &e);
-        e
-    })?;
-    window_ctl::apply_content_min_size(&window, w, h).map_err(|e| {
-        note_err(&state, "apply_content_min_size", &e);
-        e
-    })?;
+    let window = map_note(&state, "set_content_min_size", window_ctl::main_window(&app))?;
+    map_note(
+        &state,
+        "apply_content_min_size",
+        window_ctl::apply_content_min_size(&window, w, h),
+    )?;
     if grow_if_needed {
         // Full content-hug: settings open/close must shrink as well as grow.
-        window_ctl::snap_height_to_content(&window, w, h).map_err(|e| {
-            note_err(&state, "snap_height_to_content", &e);
-            e
-        })?;
+        map_note(
+            &state,
+            "snap_height_to_content",
+            window_ctl::snap_height_to_content(&window, w, h),
+        )?;
         let _ = window_ctl::apply_clean_glass_edge(&window);
     }
     Ok(())
@@ -324,10 +294,11 @@ pub async fn get_diagnostics(state: State<'_, AppHandleState>) -> Result<String,
     state
         .core
         .note(DiagLevel::Info, "diagnostics snapshot requested");
-    state.core.format_diagnostics().await.map_err(|e| {
-        note_err(&state, "format_diagnostics", &e);
-        e
-    })
+    map_note(
+        &state,
+        "format_diagnostics",
+        state.core.format_diagnostics().await,
+    )
 }
 
 /// Symbol autocomplete for the add flow (Yahoo search + substring filter).
@@ -342,11 +313,7 @@ pub async fn search_symbols(
     if q.is_empty() {
         return Ok(vec![]);
     }
-    let provider = YahooProvider::new().map_err(|e| {
-        note_err(&state, "search_symbols provider", &e);
-        e
-    })?;
-    match provider.search_symbols(q, limit).await {
+    match state.core.search_symbols(q, limit).await {
         Ok(hits) => Ok(hits),
         Err(e) => {
             state
