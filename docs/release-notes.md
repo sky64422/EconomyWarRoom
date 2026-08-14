@@ -1,5 +1,26 @@
 ﻿# Release notes
 
+## v0.1.47 - 2026-08-15
+
+### Fixed
+
+- Sparklines use regular-session bars against yesterday’s close. Premarket prints no longer pull the line above the baseline while the quote % is red (SPCX-shaped days).
+
+### Changed
+
+- Display rows (primary/secondary) are computed in Rust domain code.
+- Watchlist UI and CSS split into smaller modules; quote refresh stored as milliseconds (`quote_refresh_ms`, JSON key still `quote_refresh_secs`).
+
+### Tests
+
+- Coverage gate still ≥85% business logic. Last tarpaulin: **91.22%**. Unit tests: 109. `updater.rs` excluded from the gate (Tauri plugin glue).
+
+### Verification
+
+- `cargo test --lib` (109)
+- `cargo test --test integration_e2e --test risk_scenarios`
+- `cargo tarpaulin --fail-under 85` (updater excluded)
+
 ## v0.1.46 - 2026-08-14
 
 ### Fixed
