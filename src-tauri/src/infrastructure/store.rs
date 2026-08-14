@@ -116,6 +116,24 @@ mod tests {
     }
 
     #[test]
+    fn missing_quote_refresh_uses_default_ms() {
+        let dir = tempdir().unwrap();
+        let path = state_path(dir.path());
+        let state = default_state();
+        let json = serde_json::to_value(&state).unwrap();
+        let mut obj = json.as_object().unwrap().clone();
+        let mut settings = obj.get("settings").unwrap().as_object().unwrap().clone();
+        settings.remove("quote_refresh_secs");
+        obj.insert("settings".into(), serde_json::Value::Object(settings));
+        std::fs::write(&path, serde_json::to_string(&obj).unwrap()).unwrap();
+        let loaded = load_state(dir.path());
+        assert_eq!(
+            loaded.settings.quote_refresh_ms,
+            RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT
+        );
+    }
+
+    #[test]
     fn save_clamps_out_of_range_opacity() {
         let dir = tempdir().unwrap();
         let mut state = default_state();

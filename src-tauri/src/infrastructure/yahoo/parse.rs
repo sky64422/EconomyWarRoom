@@ -669,6 +669,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_search_missing_quotes_is_empty() {
+        let v = serde_json::json!({ "news": [] });
+        assert!(parse_search_results(&v, "aapl", 8).is_empty());
+    }
+
+    #[test]
     fn parse_search_filters_substring_and_maps_crypto() {
         let v: Value = serde_json::json!({
           "quotes": [
@@ -685,6 +691,56 @@ mod tests {
         let apple = parse_search_results(&v, "app", 10);
         assert_eq!(apple.len(), 1);
         assert_eq!(apple[0].symbol, "AAPL");
+    }
+
+    #[test]
+    fn quote_type_maps_commodity_and_other() {
+        let v: Value = serde_json::json!({
+          "quotes": [
+            { "symbol": "GC=F", "shortname": "Gold", "quoteType": "FUTURE", "exchDisp": "CME" },
+            { "symbol": "ZZZ", "shortname": "Zed", "quoteType": "INDEX", "exchDisp": "X" }
+          ]
+        });
+        let hits = parse_search_results(&v, "", 10);
+        assert_eq!(hits[0].asset_kind, AssetKind::Commodity);
+        assert_eq!(hits[1].asset_kind, AssetKind::Other);
+    }
+
+    #[test]
+    fn sparkline_keeps_all_bars_when_regular_period_missing() {
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": { "symbol": "BTC-USD", "previousClose": 1.0 },
+                "timestamp": [1, 2, 3],
+                "indicators": { "quote": [{ "close": [1.0, 1.1, 1.2] }] }
+              }]
+            }
+        });
+        let s = parse_sparkline_from_chart(&v).unwrap();
+        assert_eq!(s.points.len(), 3);
+    }
+
+    #[test]
+    fn sparkline_falls_back_when_regular_window_has_no_bars() {
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "X",
+                  "chartPreviousClose": 9.0,
+                  "currentTradingPeriod": {
+                    "regular": { "start": 5000, "end": 6000 }
+                  }
+                },
+                "timestamp": [1, 2],
+                "indicators": { "quote": [{ "close": [8.0, 9.0] }] }
+              }]
+            }
+        });
+        let s = parse_sparkline_from_chart(&v).unwrap();
+        assert_eq!(s.previous_close, Some(9.0));
+        assert_eq!(s.points.len(), 2);
     }
 
     #[test]

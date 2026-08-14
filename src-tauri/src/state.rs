@@ -101,5 +101,13 @@ mod tests {
         assert!(state.core.is_visible());
         let s = state.core.get_state().unwrap();
         assert_eq!(s.watchlist.len(), 2);
+        state.set_content_min_logical(10.0, 10.0);
+        let (w, h) = state.content_min_logical();
+        assert!(w >= WindowPolicy::MIN_WIDTH);
+        assert!(h >= WindowPolicy::MIN_HEIGHT);
+        state.set_content_min_logical(400.0, 500.0);
+        let (w2, h2) = state.content_min_logical();
+        assert_eq!(w2, 400.0);
+        assert_eq!(h2, 500.0);
     }
 }

@@ -1,16 +1,16 @@
 # Testing & Coverage
 
-**Updated:** 2026-08-03
+**Updated:** 2026-08-15
 
 ## Snapshot
 
 | Metric | Value |
 |--------|--------|
-| Unit tests (`cargo test --lib`) | ~78 |
+| Unit tests (`cargo test --lib`) | **109** |
 | Integration (`integration_e2e`) | 4 |
 | Risk scenarios (`risk_scenarios`) | 7 |
 | Coverage gate | **≥ 85%** business logic |
-| Last measured | **~98%** business logic via tarpaulin |
+| Last measured | **91.22%** (727/797) via tarpaulin, 2026-08-15 |
 
 ## Layers
 
@@ -60,6 +60,7 @@ HTML report: `src-tauri/target/coverage/tarpaulin-report.html`
 | `src/lib.rs` | Tauri `run()`, plugins, hotkey/tray registration, tick loop wiring |
 | `src/infrastructure/window_ctl.rs` | Needs live `WebviewWindow` |
 | `src/commands.rs` | Thin adapters over `AppCore` (logic covered in `application/service.rs`) |
+| `src/infrastructure/updater.rs` | Tauri updater plugin + restart; needs live app handle |
 
 Rationale: Tauri WebView APIs do not run headlessly in this CI shape. Product risk for watchlist, rates, and persistence is covered by service + integration + risk tests.
 

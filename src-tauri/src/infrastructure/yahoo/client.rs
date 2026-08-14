@@ -412,4 +412,31 @@ mod tests {
         assert!(hits.len() >= 1);
         assert!(hits.iter().any(|h| h.symbol == "AAPL"));
     }
+
+    #[tokio::test]
+    async fn search_empty_query_skips_network() {
+        let provider = YahooProvider::with_base_url("http://127.0.0.1:9").unwrap();
+        let hits = provider.search_symbols("   ", 8).await.unwrap();
+        assert!(hits.is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_maps_http_errors() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/finance/search"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+        let provider = YahooProvider::with_base_url(server.uri()).unwrap();
+        let err = MarketDataProvider::search_symbols(&provider, "AAPL", 4)
+            .await
+            .unwrap_err();
+        assert!(err.contains("rate_limited"));
+    }
+
+    #[test]
+    fn new_builds_default_client() {
+        assert!(YahooProvider::new().is_ok());
+    }
 }

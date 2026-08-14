@@ -114,6 +114,7 @@ mod tests {
         assert!(ring.is_empty());
         assert!(ring.lines().is_empty());
         assert!(ring.last_lines(50).is_empty());
+        assert!(ring.last_lines(0).is_empty());
     }
 
     #[test]

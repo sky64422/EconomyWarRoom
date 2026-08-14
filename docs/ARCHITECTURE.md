@@ -1,6 +1,6 @@
 # Architecture (as implemented)
 
-**Updated:** 2026-08-15 (v0.1.46)  
+**Updated:** 2026-08-15 (v0.1.47)  
 **Branch of truth:** `main`
 
 This document describes the **current codebase**, not only the original design sketch.
@@ -83,7 +83,7 @@ This document describes the **current codebase**, not only the original design s
 
 | Path | Role |
 |------|------|
-| `src/**` `#[cfg(test)]` | Unit tests (~78) |
+| `src/**` `#[cfg(test)]` | Unit tests (109) |
 | `tests/integration_e2e.rs` | Store + AppCore + scheduler + Yahoo mock HTTP |
 | `tests/risk_scenarios.rs` | Rate limit, hide, corrupt JSON, invalid input |
 

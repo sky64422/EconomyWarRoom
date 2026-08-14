@@ -11,6 +11,7 @@ EXCLUDE=(
   --exclude-files 'src/main.rs'
   --exclude-files 'src/lib.rs'
   --exclude-files 'src/infrastructure/window_ctl.rs'
+  --exclude-files 'src/infrastructure/updater.rs'
   --exclude-files 'src/commands.rs'
 )
 

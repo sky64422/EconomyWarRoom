@@ -225,4 +225,43 @@ mod tests {
         assert_eq!(d.primary.price, Some(200.0));
         assert!(q.sparkline_change_percent.is_some());
     }
+
+    #[test]
+    fn regular_change_falls_back_to_quote_change_when_not_extended() {
+        let mut q = quote();
+        q.regular_change_percent = None;
+        q.previous_close = None;
+        q.change_percent = Some(-1.5);
+        let rows = resolve_price_rows(Some(&q), None);
+        assert_eq!(rows.primary.change, Some(-1.5));
+    }
+
+    #[test]
+    fn sparkline_percent_none_without_quote() {
+        assert!(sparkline_change_percent(None, Some(1.0)).is_none());
+    }
+
+    #[test]
+    fn extended_change_computes_when_percent_is_nan() {
+        let mut q = quote();
+        q.market_state = Some("post".into());
+        q.extended_price = Some(202.0);
+        q.extended_change_percent = Some(f64::NAN);
+        q.regular_price = Some(200.0);
+        let rows = resolve_price_rows(Some(&q), None);
+        assert!((rows.primary.change.unwrap() - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn pct_change_rejects_zero_base() {
+        let mut q = quote();
+        q.regular_change_percent = None;
+        q.change_percent = None;
+        q.previous_close = Some(0.0);
+        q.regular_price = Some(10.0);
+        q.market_state = Some("regular".into());
+        q.extended_price = None;
+        let pct = sparkline_change_percent(Some(&q), None);
+        assert!(pct.is_none());
+    }
 }

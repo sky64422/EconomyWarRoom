@@ -399,7 +399,7 @@ impl AppCore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::types::{AssetKind, Quote, Sparkline};
+    use crate::domain::types::{AssetKind, CardTint, Quote, Sparkline, SymbolSuggestion};
     use crate::ports::market_data::{MarketDataProvider, ProviderLimits};
     use async_trait::async_trait;
     use std::time::Duration;
@@ -434,6 +434,95 @@ mod tests {
                     ..Default::default()
                 })
                 .collect())
+        }
+        async fn fetch_sparkline(
+            &self,
+            symbol: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<Sparkline, String> {
+            Ok(Sparkline {
+                symbol: symbol.into(),
+                points: vec![],
+                previous_close: Some(10.0),
+                as_of: "t".into(),
+            })
+        }
+
+        async fn search_symbols(
+            &self,
+            query: &str,
+            limit: usize,
+        ) -> Result<Vec<SymbolSuggestion>, String> {
+            if query.eq_ignore_ascii_case("fail") {
+                return Err("search down".into());
+            }
+            Ok(vec![SymbolSuggestion {
+                symbol: query.trim().to_ascii_uppercase(),
+                name: Some("Mock".into()),
+                asset_kind: AssetKind::Equity,
+                exchange: Some("TEST".into()),
+            }]
+            .into_iter()
+            .take(limit.max(1))
+            .collect())
+        }
+    }
+
+    struct EmptyQuoteProvider;
+
+    #[async_trait]
+    impl MarketDataProvider for EmptyQuoteProvider {
+        fn id(&self) -> &'static str {
+            "empty"
+        }
+        fn supports(&self, _: AssetKind) -> bool {
+            true
+        }
+        fn limits(&self) -> ProviderLimits {
+            ProviderLimits {
+                max_concurrent: 1,
+                min_interval: Duration::from_millis(1),
+                prefers_batch: true,
+            }
+        }
+        async fn fetch_quotes(&self, _: &[String]) -> Result<Vec<Quote>, String> {
+            Ok(vec![])
+        }
+        async fn fetch_sparkline(
+            &self,
+            symbol: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<Sparkline, String> {
+            Ok(Sparkline {
+                symbol: symbol.into(),
+                points: vec![],
+                previous_close: None,
+                as_of: "t".into(),
+            })
+        }
+    }
+
+    struct FailQuotesProvider;
+
+    #[async_trait]
+    impl MarketDataProvider for FailQuotesProvider {
+        fn id(&self) -> &'static str {
+            "fail"
+        }
+        fn supports(&self, _: AssetKind) -> bool {
+            true
+        }
+        fn limits(&self) -> ProviderLimits {
+            ProviderLimits {
+                max_concurrent: 1,
+                min_interval: Duration::from_millis(1),
+                prefers_batch: true,
+            }
+        }
+        async fn fetch_quotes(&self, _: &[String]) -> Result<Vec<Quote>, String> {
+            Err("boom".into())
         }
         async fn fetch_sparkline(
             &self,
@@ -568,5 +657,105 @@ mod tests {
             1
         );
         assert_eq!(lines.iter().filter(|l| l.contains("other")).count(), 1);
+    }
+
+    #[tokio::test]
+    async fn settings_refresh_autostart_and_tint_round_trip() {
+        let (_dir, core) = core_empty();
+        assert!(core.app_data_dir().exists() || !core.app_data_dir().as_os_str().is_empty());
+        core.set_autostart(false).unwrap();
+        assert!(!core.get_state().unwrap().settings.autostart);
+
+        let applied = core.set_quote_refresh_ms(1000).await.unwrap();
+        assert_eq!(applied, 1000);
+        assert_eq!(core.quote_refresh_ms().unwrap(), 1000);
+        assert_eq!(core.quote_refresh_secs().unwrap(), 1000);
+        let via_alias = core.set_quote_refresh_secs(250).await.unwrap();
+        assert_eq!(via_alias, 250);
+        core.apply_quote_refresh_to_scheduler().await.unwrap();
+        // Scheduler floor is MIN_QUOTE_INTERVAL (500ms), even if UI stores 250.
+        assert_eq!(
+            core.scheduler().lock().await.min_quote_interval(),
+            Duration::from_millis(500)
+        );
+
+        let id = core.watchlist_snapshot().await.unwrap()[0].id.clone();
+        core.set_card_tint(&id, CardTint::Mint).await.unwrap();
+        assert_eq!(
+            core.watchlist_snapshot().await.unwrap()[0].card_tint,
+            CardTint::Mint
+        );
+        assert!(core.set_card_tint("missing", CardTint::Rose).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn remove_symbols_zero_and_many() {
+        let (_dir, core) = core_empty();
+        assert_eq!(core.remove_symbols(&[]).await.unwrap(), 0);
+        let ids: Vec<String> = core
+            .watchlist_snapshot()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|i| i.id)
+            .collect();
+        assert_eq!(core.remove_symbols(&ids).await.unwrap(), 2);
+        assert!(core.watchlist_snapshot().await.unwrap().is_empty());
+        let text = core.format_diagnostics().await.unwrap();
+        assert!(text.contains("(none)"));
+    }
+
+    #[tokio::test]
+    async fn tick_attaches_display_and_search_hits_provider() {
+        let (_dir, core) = core_empty();
+        core.sync_scheduler_watchlist().await.unwrap();
+        let out = core.tick_once().await;
+        assert!(out.quotes_updated || out.sparklines_updated || !out.any());
+        let quotes = core.get_quotes().await;
+        assert!(!quotes.is_empty());
+        assert!(quotes.iter().all(|q| q.display.is_some()));
+
+        let hits = core.search_symbols("nvda", 3).await.unwrap();
+        assert_eq!(hits[0].symbol, "NVDA");
+        assert!(core.search_symbols("fail", 1).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn tick_once_drains_provider_errors_into_ring() {
+        let dir = tempdir().unwrap();
+        let core = AppCore::new(
+            crate::infrastructure::store::default_state(),
+            dir.path().to_path_buf(),
+            QuoteScheduler::new(Arc::new(FailQuotesProvider)),
+            true,
+        );
+        core.sync_scheduler_watchlist().await.unwrap();
+        let _ = core.tick_once().await;
+        let text = core.format_diagnostics().await.unwrap();
+        assert!(text.contains("boom") || text.contains("quotes"));
+    }
+
+    #[tokio::test]
+    async fn tick_empty_quote_payload_does_not_panic() {
+        let dir = tempdir().unwrap();
+        let core = AppCore::new(
+            crate::infrastructure::store::default_state(),
+            dir.path().to_path_buf(),
+            QuoteScheduler::new(Arc::new(EmptyQuoteProvider)),
+            true,
+        );
+        core.sync_scheduler_watchlist().await.unwrap();
+        let _ = core.tick_once().await;
+        assert!(core.get_quotes().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn format_diagnostics_lists_cached_quotes() {
+        let (_dir, core) = core_empty();
+        core.sync_scheduler_watchlist().await.unwrap();
+        core.tick_once().await;
+        let text = core.format_diagnostics().await.unwrap();
+        assert!(text.contains("price="));
+        core.note_throttled_default(DiagLevel::Info, "once");
     }
 }

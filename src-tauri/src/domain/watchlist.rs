@@ -205,5 +205,7 @@ mod tests {
         assert_eq!(items[0].card_tint, CardTint::Mint);
         assert_eq!(remove_items(&mut items, &[a.id.clone(), b.id.clone()]), 2);
         assert!(items.is_empty());
+        assert_eq!(remove_items(&mut items, &[]), 0);
+        assert!(!set_card_tint(&mut items, "gone", CardTint::Rose));
     }
 }
