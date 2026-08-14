@@ -46,6 +46,19 @@ export interface Quote {
   prior_close?: number | null;
   previous_day_change_percent?: number | null;
   market_state?: string | null;
+  /** Filled by Rust at IPC time (primary / secondary rows). */
+  display?: PriceRows | null;
+  sparkline_change_percent?: number | null;
+}
+
+export interface PriceRow {
+  price: number | null;
+  change: number | null;
+}
+
+export interface PriceRows {
+  primary: PriceRow;
+  secondary: PriceRow;
 }
 
 export interface SparklinePoint {
@@ -85,7 +98,9 @@ export interface AppSettings {
   window: WindowGeometry;
   hotkey: string;
   autostart: boolean;
+  /** Wire name is historical; value is milliseconds. Alias: quote_refresh_ms. */
   quote_refresh_secs?: number;
+  quote_refresh_ms?: number;
   column_ratios?: ColumnRatios;
 }
 

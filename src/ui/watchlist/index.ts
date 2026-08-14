@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { sparklineProgress, sparklineSvgMarkup, sparklineTone } from "./sparkline";
+import { sparklineSvgMarkup, sparklineTone } from "../sparkline";
 import type {
   AssetKind,
   CardTint,
@@ -9,39 +9,29 @@ import type {
   Sparkline,
   SymbolSuggestion,
   WatchlistItem,
-} from "./types";
-import { CARD_TINTS, DEFAULT_COLUMN_RATIOS } from "./types";
+} from "../types";
+import { CARD_TINTS, DEFAULT_COLUMN_RATIOS } from "../types";
+import { applyColumnRatiosCss, RESIZE_HIT_PX, resizeColumnRatios } from "./columns";
+import { moveDragHole } from "./dnd";
+import { escapeAttr, escapeHtml } from "./format";
+import {
+  metricsMarkup,
+  patchMetricsRow,
+  priceRowsForQuote,
+  rowAriaLabel,
+  sparkFingerprint,
+  sparklineBaseline,
+  sparklineChangePercent,
+} from "./metrics";
+import { guessAssetKind, localSuggestions, mergeSuggestions } from "./search";
+import { loadAddCardTint, normalizeTint, saveAddCardTint } from "./tint";
 
-/**
- * SVG coordinate system only — CSS width is the proportional spark column.
- * none: fill the share edge-to-edge as the card resizes (ratio model).
- */
 const SPARK_W = 100;
 const SPARK_H = 28;
 const SPARK_TICK_MS = 1000;
 const DRAG_THRESHOLD_PX = 6;
-/** Matches --row-resize-hit; two strips between three content columns. */
-const RESIZE_HIT_PX = 7;
-const MIN_SYMBOL_PX = 44;
-const MIN_SPARK_PX = 36;
-const MIN_METRICS_PX = 64;
-
-/** Local fallback catalog (substring filter) when network is slow/offline. */
-const LOCAL_SYMBOLS: SymbolSuggestion[] = [
-  { symbol: "AAPL", name: "Apple Inc.", asset_kind: "equity", exchange: "NASDAQ" },
-  { symbol: "MSFT", name: "Microsoft Corporation", asset_kind: "equity", exchange: "NASDAQ" },
-  { symbol: "GOOGL", name: "Alphabet Inc.", asset_kind: "equity", exchange: "NASDAQ" },
-  { symbol: "AMZN", name: "Amazon.com Inc.", asset_kind: "equity", exchange: "NASDAQ" },
-  { symbol: "NVDA", name: "NVIDIA Corporation", asset_kind: "equity", exchange: "NASDAQ" },
-  { symbol: "META", name: "Meta Platforms Inc.", asset_kind: "equity", exchange: "NASDAQ" },
-  { symbol: "TSLA", name: "Tesla Inc.", asset_kind: "equity", exchange: "NASDAQ" },
-  { symbol: "SPY", name: "SPDR S&P 500 ETF", asset_kind: "equity", exchange: "NYSE" },
-  { symbol: "QQQ", name: "Invesco QQQ Trust", asset_kind: "equity", exchange: "NASDAQ" },
-  { symbol: "IWM", name: "iShares Russell 2000 ETF", asset_kind: "equity", exchange: "NYSE" },
-  { symbol: "BTC-USD", name: "Bitcoin USD", asset_kind: "crypto", exchange: "CCC" },
-  { symbol: "ETH-USD", name: "Ethereum USD", asset_kind: "crypto", exchange: "CCC" },
-  { symbol: "SOL-USD", name: "Solana USD", asset_kind: "crypto", exchange: "CCC" },
-];
+const PRICE_FLASH_COOLDOWN_MS = 1400;
+const PRICE_FLASH_MS = 560;
 
 export interface WatchlistController {
   setItems: (items: WatchlistItem[]) => void;
@@ -51,337 +41,12 @@ export interface WatchlistController {
   destroy: () => void;
 }
 
-function applyColumnRatiosCss(el: HTMLElement, r: ColumnRatios): void {
-  el.style.setProperty("--row-fr-symbol", `${r.symbol}fr`);
-  el.style.setProperty("--row-fr-spark", `${r.spark}fr`);
-  el.style.setProperty("--row-fr-metrics", `${r.metrics}fr`);
+export interface WatchlistMountOptions {
+  columnRatios?: ColumnRatios;
+  onQuotesChanged?: (quotes: Quote[]) => void;
 }
 
-/** Drag edge 0 = symbol|spark, 1 = spark|metrics. Keeps third column fixed in px space. */
-export function resizeColumnRatios(
-  edge: 0 | 1,
-  dx: number,
-  start: ColumnRatios,
-  freePx: number,
-): ColumnRatios {
-  const sum = start.symbol + start.spark + start.metrics;
-  if (!(sum > 0) || !(freePx > 0) || !Number.isFinite(dx)) return start;
-  const toPx = (fr: number) => (fr / sum) * freePx;
-  const toFr = (px: number) => (px / freePx) * sum;
-  let s = toPx(start.symbol);
-  let p = toPx(start.spark);
-  let m = toPx(start.metrics);
-  if (edge === 0) {
-    const maxS = s + p - MIN_SPARK_PX;
-    s = Math.min(Math.max(s + dx, MIN_SYMBOL_PX), Math.max(MIN_SYMBOL_PX, maxS));
-    p = freePx - m - s;
-  } else {
-    const maxP = p + m - MIN_METRICS_PX;
-    p = Math.min(Math.max(p + dx, MIN_SPARK_PX), Math.max(MIN_SPARK_PX, maxP));
-    m = freePx - s - p;
-  }
-  return {
-    symbol: Math.max(0.45, toFr(Math.max(0, s))),
-    spark: Math.max(0.45, toFr(Math.max(0, p))),
-    metrics: Math.max(0.45, toFr(Math.max(0, m))),
-  };
-}
-
-function guessAssetKind(symbol: string): AssetKind {
-  const s = symbol.trim().toUpperCase();
-  if (s.includes("-") || s.endsWith("USD")) return "crypto";
-  return "equity";
-}
-
-/** Compact prices for narrow widget columns. */
-function formatPrice(price: number): string {
-  if (!Number.isFinite(price)) return "--";
-  const a = Math.abs(price);
-  if (a >= 10_000) {
-    return Math.round(price).toLocaleString("en-US");
-  }
-  if (a >= 1000) {
-    return price.toLocaleString("en-US", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    });
-  }
-  if (a >= 1) return price.toFixed(2);
-  if (a >= 0.01) return price.toFixed(3);
-  return price.toPrecision(2);
-}
-
-function formatChange(pct: number | null | undefined, compact = false): string {
-  if (pct == null || !Number.isFinite(pct)) return "";
-  const sign = pct > 0 ? "+" : "";
-  const digits = compact ? 1 : 2;
-  return `${sign}${pct.toFixed(digits)}%`;
-}
-
-/** Inline suffix: `(+0.42%)` — empty when no change. Gap vs price is CSS. */
-function formatChangeParen(pct: number | null | undefined, compact = false): string {
-  const inner = formatChange(pct, compact);
-  return inner ? `(${inner})` : "";
-}
-
-function changeClass(pct: number | null | undefined): string {
-  if (pct == null || !Number.isFinite(pct) || pct === 0) return "";
-  return pct > 0 ? "up" : "down";
-}
-
-interface PriceRow {
-  price: number | null;
-  change: number | null;
-}
-
-interface PriceRows {
-  primary: PriceRow;
-  secondary: PriceRow;
-}
-
-function isExtendedSession(state: string | null | undefined): boolean {
-  if (!state) return false;
-  const s = state.toLowerCase();
-  return s === "pre" || s === "prepre" || s === "post" || s === "postpost" || s === "closed";
-}
-
-
-function extendedChangePercent(q: Quote): number | null {
-  if (q.extended_change_percent != null && Number.isFinite(q.extended_change_percent)) {
-    return q.extended_change_percent;
-  }
-  const ext = q.extended_price;
-  const reg = q.regular_price ?? q.price;
-  if (ext == null || !Number.isFinite(ext) || !Number.isFinite(reg) || reg === 0) {
-    return null;
-  }
-  return ((ext - reg) / reg) * 100;
-}
-
-function isExtendedQuote(q: Quote): boolean {
-  if (q.extended_price == null) return false;
-  if (isExtendedSession(q.market_state)) return true;
-  const reg = q.regular_price ?? q.price;
-  return Math.abs(q.extended_price - reg) > 0.0001;
-}
-
-function pctChange(from: number | null | undefined, to: number | null | undefined): number | null {
-  if (from == null || to == null || !Number.isFinite(from) || !Number.isFinite(to) || from === 0) {
-    return null;
-  }
-  return ((to - from) / from) * 100;
-}
-
-/** Primary = latest (live/extended); secondary = last completed regular session. */
-function resolvePriceRows(q: Quote | undefined, sparkPrevClose: number | null): PriceRows {
-  const empty: PriceRow = { price: null, change: null };
-  if (!q) {
-    return { primary: empty, secondary: empty };
-  }
-
-  const previousClose = q.previous_close ?? sparkPrevClose ?? null;
-  const regularPrice = q.regular_price ?? q.price;
-  // Regular-session move vs prior close (always about the official session).
-  const regularChange =
-    q.regular_change_percent ??
-    pctChange(previousClose, regularPrice) ??
-    (!isExtendedQuote(q) ? (q.change_percent ?? null) : null);
-  const priorChange =
-    q.previous_day_change_percent ?? pctChange(q.prior_close ?? null, previousClose);
-  const secondary: PriceRow =
-    isExtendedSession(q.market_state) &&
-    regularPrice != null &&
-    (previousClose == null || Math.abs(regularPrice - previousClose) > 0.0001)
-      ? {
-          price: regularPrice,
-          change: regularChange,
-        }
-      : {
-          price: previousClose,
-          change: priorChange,
-        };
-
-  if (isExtendedQuote(q) && q.extended_price != null) {
-    return {
-      primary: {
-        price: q.extended_price,
-        change: extendedChangePercent(q),
-      },
-      secondary,
-    };
-  }
-
-  return {
-    primary: {
-      price: q.price,
-      change: q.change_percent ?? regularChange,
-    },
-    secondary,
-  };
-}
-
-function metricsMarkup(
-  symbol: string,
-  rows: PriceRows,
-  opts?: { pending?: boolean },
-): string {
-  const pending = opts?.pending === true;
-  const primaryPrice =
-    rows.primary.price != null ? formatPrice(rows.primary.price) : "—";
-  const primaryChange = formatChangeParen(rows.primary.change);
-  const primaryCls = [changeClass(rows.primary.change), pending ? "is-pending" : ""]
-    .filter(Boolean)
-    .join(" ");
-  const secondaryPrice =
-    rows.secondary.price != null ? formatPrice(rows.secondary.price) : "—";
-  const secondaryChange = formatChangeParen(rows.secondary.change);
-  const secondaryCls = [
-    changeClass(rows.secondary.change),
-    pending ? "is-pending" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const pricePending = pending || rows.primary.price == null;
-
-  return `
-    <div class="row-metrics">
-      <div class="row-quote row-quote--primary">
-        <span class="row-price${pricePending ? " is-pending" : ""}" data-price-primary="${escapeAttr(symbol)}">${escapeHtml(primaryPrice)}</span><span class="row-change ${primaryCls}" data-change-primary="${escapeAttr(symbol)}"${primaryChange ? "" : " hidden"}>${escapeHtml(primaryChange)}</span>
-      </div>
-      <div class="row-quote row-quote--secondary">
-        <span class="row-price${rows.secondary.price == null ? " is-pending" : ""}" data-price-secondary="${escapeAttr(symbol)}">${escapeHtml(secondaryPrice)}</span><span class="row-change ${secondaryCls}" data-change-secondary="${escapeAttr(symbol)}"${secondaryChange ? "" : " hidden"}>${escapeHtml(secondaryChange)}</span>
-      </div>
-    </div>
-  `;
-}
-
-/** I2: short accessible summary for the row (spark remains decorative). */
-function rowAriaLabel(
-  symbol: string,
-  rows: PriceRows,
-  pending: boolean,
-): string {
-  if (pending || rows.primary.price == null) {
-    return `${symbol}, waiting for quote`;
-  }
-  const price = formatPrice(rows.primary.price);
-  const ch = formatChange(rows.primary.change);
-  const dir =
-    rows.primary.change == null || !Number.isFinite(rows.primary.change)
-      ? ""
-      : rows.primary.change > 0
-        ? " up"
-        : rows.primary.change < 0
-          ? " down"
-          : " flat";
-  return ch ? `${symbol}, ${price}, ${ch}${dir}` : `${symbol}, ${price}`;
-}
-
-/** Stable key for displayed metrics (skip DOM write when unchanged). */
-function metricsFingerprint(rows: PriceRows): string {
-  const p = (r: PriceRow) =>
-    `${r.price ?? ""}:${r.change ?? ""}`;
-  return `${p(rows.primary)}|${p(rows.secondary)}`;
-}
-
-/** Cheap spark identity — enough to skip redraw when Yahoo sends the same series. */
-function sparkFingerprint(sp: Sparkline | undefined): string {
-  if (!sp) return "";
-  const last = sp.points.length ? sp.points[sp.points.length - 1] : null;
-  return `${sp.as_of}|${sp.points.length}|${last?.t ?? ""}|${last?.close ?? ""}|${sp.previous_close ?? ""}`;
-}
-
-interface PatchMetricsResult {
-  changed: boolean;
-  primaryPriceChanged: boolean;
-}
-
-function patchMetricsRow(
-  row: HTMLElement,
-  rows: PriceRows,
-): PatchMetricsResult {
-  const fp = metricsFingerprint(rows);
-  const prevFp = row.dataset.metricsFp ?? "";
-  if (fp === prevFp) {
-    return { changed: false, primaryPriceChanged: false };
-  }
-
-  const prevPrimaryPrice = row.dataset.primaryPrice ?? "";
-  const nextPrimaryPrice =
-    rows.primary.price != null ? formatPrice(rows.primary.price) : "—";
-  const primaryPriceChanged =
-    prevFp !== "" && prevPrimaryPrice !== "" && prevPrimaryPrice !== nextPrimaryPrice;
-
-  const primaryPriceEl = row.querySelector<HTMLElement>("[data-price-primary]");
-  const primaryChangeEl = row.querySelector<HTMLElement>("[data-change-primary]");
-  const secondaryPriceEl = row.querySelector<HTMLElement>("[data-price-secondary]");
-  const secondaryChangeEl = row.querySelector<HTMLElement>("[data-change-secondary]");
-  const pending = rows.primary.price == null;
-  const symbol = row.dataset.symbol ?? "";
-
-  if (primaryPriceEl) {
-    primaryPriceEl.textContent = nextPrimaryPrice;
-    primaryPriceEl.classList.toggle("is-pending", pending);
-  }
-  if (primaryChangeEl) {
-    const txt = formatChangeParen(rows.primary.change);
-    primaryChangeEl.textContent = txt;
-    primaryChangeEl.hidden = !txt;
-    primaryChangeEl.classList.remove("up", "down", "is-pending");
-    const cls = changeClass(rows.primary.change);
-    if (cls) primaryChangeEl.classList.add(cls);
-    if (pending) primaryChangeEl.classList.add("is-pending");
-  }
-  if (secondaryPriceEl) {
-    const sec =
-      rows.secondary.price != null ? formatPrice(rows.secondary.price) : "—";
-    secondaryPriceEl.textContent = sec;
-    secondaryPriceEl.classList.toggle("is-pending", rows.secondary.price == null);
-  }
-  if (secondaryChangeEl) {
-    const txt = formatChangeParen(rows.secondary.change);
-    secondaryChangeEl.textContent = txt;
-    secondaryChangeEl.hidden = !txt;
-    secondaryChangeEl.classList.remove("up", "down", "is-pending");
-    const cls = changeClass(rows.secondary.change);
-    if (cls) secondaryChangeEl.classList.add(cls);
-  }
-
-  if (symbol) {
-    row.setAttribute("aria-label", rowAriaLabel(symbol, rows, pending));
-  }
-
-  row.dataset.metricsFp = fp;
-  row.dataset.primaryPrice = nextPrimaryPrice;
-  return { changed: true, primaryPriceChanged };
-}
-
-/**
- * % used to color the sparkline.
- * Sparklines are regular-session day series (fixed after the close), so in
- * pre/post we must use regular-session move vs prior close — not AH %.
- */
-function sparklineChangePercent(
-  q: Quote | undefined,
-  sparkPrevClose: number | null,
-): number | null {
-  if (!q) return null;
-  const previousClose = q.previous_close ?? sparkPrevClose ?? null;
-  const regularPrice = q.regular_price ?? q.price;
-  if (isExtendedQuote(q)) {
-    return (
-      q.regular_change_percent ??
-      pctChange(previousClose, regularPrice) ??
-      null
-    );
-  }
-  return (
-    q.change_percent ??
-    q.regular_change_percent ??
-    pctChange(previousClose, regularPrice) ??
-    null
-  );
-}
+type TintTarget = { kind: "item"; id: string } | { kind: "add" };
 
 function toneForChange(
   pct: number | null | undefined,
@@ -397,42 +62,6 @@ function strokeForTone(tone: "up" | "down" | "flat"): string {
   if (tone === "up") return "var(--sparkline-up)";
   if (tone === "down") return "var(--sparkline-down)";
   return "var(--sparkline-neutral)";
-}
-
-function normalizeTint(raw: CardTint | undefined | null): CardTint {
-  if (!raw || raw === "none") return "none";
-  const ok = CARD_TINTS.some((t) => t.value === raw);
-  return ok ? raw : "none";
-}
-
-const ADD_TINT_STORAGE_KEY = "ewr.add_card_tint";
-
-function loadAddCardTint(): CardTint {
-  try {
-    return normalizeTint(localStorage.getItem(ADD_TINT_STORAGE_KEY) as CardTint | null);
-  } catch {
-    return "none";
-  }
-}
-
-function saveAddCardTint(tint: CardTint): void {
-  try {
-    if (tint === "none") localStorage.removeItem(ADD_TINT_STORAGE_KEY);
-    else localStorage.setItem(ADD_TINT_STORAGE_KEY, tint);
-  } catch {
-    /* ignore quota / private mode */
-  }
-}
-
-type TintTarget = { kind: "item"; id: string } | { kind: "add" };
-
-/** Soft settle hint — longer ease, less frequent (avoid gimmicky strobe). */
-const PRICE_FLASH_COOLDOWN_MS = 1400;
-const PRICE_FLASH_MS = 560;
-
-export interface WatchlistMountOptions {
-  columnRatios?: ColumnRatios;
-  onQuotesChanged?: (quotes: Quote[]) => void;
 }
 
 export function mountWatchlist(
@@ -461,7 +90,6 @@ export function mountWatchlist(
   let sparkTickTimer: ReturnType<typeof setInterval> | null = null;
   let tintMenuEl: HTMLElement | null = null;
   let addCardTint: CardTint = loadAddCardTint();
-  /** symbol → last flash timestamp */
   const lastPriceFlashAt = new Map<string, number>();
 
   root.innerHTML = `
@@ -629,7 +257,6 @@ export function mountWatchlist(
         } else {
           addCardTint = tint;
           saveAddCardTint(tint);
-          // Idle +Add re-render so tint class applies immediately
           if (!adding) renderFooter();
           else applyAddCardTintClass();
         }
@@ -640,7 +267,6 @@ export function mountWatchlist(
       e.stopPropagation();
       closeTintMenu();
       if (target.kind !== "item") return;
-      // Multi-select: remove all selected when the target is part of the selection
       if (selected.size > 1 && selected.has(target.id)) {
         void deleteSelected();
         return;
@@ -745,10 +371,9 @@ export function mountWatchlist(
           const points = sp?.points ?? [];
           const quotePending = !q || q.price == null;
           const sparkPending = points.length === 0;
-          const pct = sparklineChangePercent(q, sp?.previous_close ?? null);
+          const pct = sparklineChangePercent(q);
           const tone = toneForChange(pct, sparklineTone(points));
           const stroke = strokeForTone(tone);
-          const progress = sparklineProgress(points, item.asset_kind);
           const tint = normalizeTint(item.card_tint);
           const tintClass = tint !== "none" ? ` tint-${tint}` : "";
           const selectedClass = selected.has(item.id) ? " is-selected" : "";
@@ -760,11 +385,12 @@ export function mountWatchlist(
               id: `spark-${escapeAttr(item.id)}`,
               assetKind: item.asset_kind,
               stroke,
-              progress,
+              // Points are already "so far"; wall-clock clip hid the RTH selloff.
+              progress: null,
             },
-            sp?.previous_close ?? null,
+            sparklineBaseline(q, sp?.previous_close),
           );
-          const priceRows = resolvePriceRows(q, sp?.previous_close ?? null);
+          const priceRows = priceRowsForQuote(q);
           const aria = rowAriaLabel(item.symbol, priceRows, quotePending);
           return `
             <div class="watchlist-row watchlist-card${tintClass}${selectedClass}" role="listitem" tabindex="0"
@@ -798,7 +424,6 @@ export function mountWatchlist(
     if (now - prev < PRICE_FLASH_COOLDOWN_MS) return;
     lastPriceFlashAt.set(symbol, now);
     row.classList.remove("row-price-tick");
-    // Restart CSS animation if class was already present.
     void row.offsetWidth;
     row.classList.add("row-price-tick");
     window.setTimeout(() => {
@@ -813,10 +438,9 @@ export function mountWatchlist(
     sp: Sparkline,
   ): void {
     const points = sp.points ?? [];
-    const pct = sparklineChangePercent(q, sp.previous_close ?? null);
+    const pct = sparklineChangePercent(q);
     const tone = toneForChange(pct, sparklineTone(points));
     const stroke = strokeForTone(tone);
-    const progress = sparklineProgress(points, item.asset_kind);
     svg.innerHTML = sparklineSvgMarkup(
       points,
       SPARK_W,
@@ -825,9 +449,9 @@ export function mountWatchlist(
         id: `spark-${escapeAttr(item.id)}`,
         assetKind: item.asset_kind,
         stroke,
-        progress,
+        progress: null,
       },
-      sp.previous_close ?? null,
+      sparklineBaseline(q, sp.previous_close),
     );
     svg.closest(".row-sparkline-wrap")?.classList.toggle(
       "is-pending",
@@ -835,11 +459,6 @@ export function mountWatchlist(
     );
   }
 
-  /**
-   * Update price / spark without rebuilding rows (preserves DnD).
-   * - `full`: metrics if changed + spark if data changed (or force for tone)
-   * - `spark-tick`: only spark progress animation; skip metrics (stable numbers)
-   */
   function patchMarketCells(mode: "full" | "spark-tick" = "full"): void {
     const byId = new Map(items.map((item) => [item.id, item]));
 
@@ -851,10 +470,7 @@ export function mountWatchlist(
       const sp = sparks.get(symbol);
 
       if (mode === "full") {
-        const metrics = patchMetricsRow(
-          row,
-          resolvePriceRows(q, sp?.previous_close ?? null),
-        );
+        const metrics = patchMetricsRow(row, priceRowsForQuote(q));
         if (metrics.primaryPriceChanged) {
           maybeFlashPrimaryPrice(row, symbol);
         }
@@ -867,7 +483,7 @@ export function mountWatchlist(
           return;
         }
         const sfp = sparkFingerprint(sp);
-        const toneKey = String(sparklineChangePercent(q, sp.previous_close ?? null) ?? "");
+        const toneKey = String(sparklineChangePercent(q) ?? "");
         const fullSparkKey = `${sfp}|${toneKey}`;
         if (row.dataset.sparkFp === fullSparkKey) {
           return;
@@ -896,37 +512,13 @@ export function mountWatchlist(
     }
   }
 
-  function localSuggestions(q: string): SymbolSuggestion[] {
-    const u = q.trim().toUpperCase();
-    if (!u) return [];
-    const owned = new Set(items.map((i) => i.symbol.toUpperCase()));
-    return LOCAL_SYMBOLS.filter(
-      (s) =>
-        !owned.has(s.symbol) &&
-        (s.symbol.includes(u) || (s.name ?? "").toUpperCase().includes(u)),
-    ).slice(0, 8);
-  }
-
-  function mergeSuggestions(
-    remote: SymbolSuggestion[],
-    local: SymbolSuggestion[],
-  ): SymbolSuggestion[] {
-    const owned = new Set(items.map((i) => i.symbol.toUpperCase()));
-    const out: SymbolSuggestion[] = [];
-    const seen = new Set<string>();
-    for (const s of [...local, ...remote]) {
-      const sym = s.symbol.toUpperCase();
-      if (owned.has(sym) || seen.has(sym)) continue;
-      seen.add(sym);
-      out.push({ ...s, symbol: sym });
-      if (out.length >= 8) break;
-    }
-    return out;
+  function ownedSymbols(): string[] {
+    return items.map((i) => i.symbol);
   }
 
   function scheduleSearch(q: string): void {
     addQuery = q;
-    suggestions = localSuggestions(q);
+    suggestions = localSuggestions(q, ownedSymbols());
     activeSuggest = suggestions.length > 0 ? 0 : -1;
     renderFooter(true);
     if (searchTimer) clearTimeout(searchTimer);
@@ -946,12 +538,12 @@ export function mountWatchlist(
             limit: 8,
           });
           if (seq !== searchSeq) return;
-          suggestions = mergeSuggestions(remote ?? [], localSuggestions(addQuery));
+          suggestions = mergeSuggestions(remote ?? [], localSuggestions(addQuery, ownedSymbols()), ownedSymbols());
           activeSuggest = suggestions.length > 0 ? 0 : -1;
           renderFooter(true);
         } catch {
           if (seq !== searchSeq) return;
-          suggestions = localSuggestions(addQuery);
+          suggestions = localSuggestions(addQuery, ownedSymbols());
           activeSuggest = suggestions.length > 0 ? 0 : -1;
           renderFooter(true);
         }
@@ -1116,61 +708,6 @@ export function mountWatchlist(
     });
   }
 
-  function flipRows(mutate: () => void): void {
-    const rows = Array.from(listEl.querySelectorAll<HTMLElement>(".watchlist-row"));
-    const first = new Map<HTMLElement, DOMRect>();
-    for (const r of rows) first.set(r, r.getBoundingClientRect());
-    mutate();
-    for (const r of rows) {
-      if (!r.isConnected || r.classList.contains("is-dragging")) continue;
-      const a = first.get(r);
-      if (!a) continue;
-      const b = r.getBoundingClientRect();
-      const dy = a.top - b.top;
-      if (Math.abs(dy) < 0.5) continue;
-      r.style.transition = "none";
-      r.style.transform = `translateY(${dy}px)`;
-      void r.offsetHeight;
-      r.style.transition = "transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)";
-      r.style.transform = "";
-      const clear = () => {
-        r.style.transition = "";
-        r.removeEventListener("transitionend", clear);
-      };
-      r.addEventListener("transitionend", clear);
-    }
-  }
-
-  function moveDragHole(source: HTMLElement, clientY: number): void {
-    const others = Array.from(
-      listEl.querySelectorAll<HTMLElement>(".watchlist-row:not(.is-dragging)"),
-    );
-    if (others.length === 0) return;
-
-    let targetIndex = others.length;
-    for (let i = 0; i < others.length; i++) {
-      const rect = others[i].getBoundingClientRect();
-      const mid = rect.top + rect.height / 2;
-      if (clientY < mid) {
-        targetIndex = i;
-        break;
-      }
-    }
-
-    const allRows = Array.from(
-      listEl.querySelectorAll<HTMLElement>(".watchlist-row"),
-    );
-    const currentIndex = allRows.indexOf(source);
-    if (currentIndex < 0 || currentIndex === targetIndex) return;
-
-    if (targetIndex >= others.length) {
-      flipRows(() => listEl.appendChild(source));
-    } else {
-      const ref = others[targetIndex];
-      flipRows(() => listEl.insertBefore(source, ref));
-    }
-  }
-
   function bindRowEvents(): void {
     listEl.querySelectorAll<HTMLElement>(".watchlist-row").forEach((row) => {
       row.addEventListener("contextmenu", (e) => {
@@ -1183,7 +720,6 @@ export function mountWatchlist(
 
       row.addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return;
-        // Column resize grips handle their own pointer stream.
         if ((e.target as Element | null)?.closest?.(".row-col-resize")) return;
 
         const sourceId = row.dataset.id;
@@ -1245,7 +781,7 @@ export function mountWatchlist(
           }
           if (!dragging || !dragId || !ghost) return;
           ghost.style.transform = `translate3d(${ev.clientX - offsetX}px, ${ev.clientY - offsetY}px, 0) scale(1.03)`;
-          moveDragHole(row, ev.clientY);
+          moveDragHole(listEl, row, ev.clientY);
         };
 
         const finish = (ev: PointerEvent) => {
@@ -1259,7 +795,6 @@ export function mountWatchlist(
           row.removeEventListener("pointercancel", finish);
 
           if (!dragging) {
-            // Click selection — re-click sole selection toggles off
             if (range) {
               selectRange(sourceId);
             } else if (multi) {
@@ -1305,7 +840,6 @@ export function mountWatchlist(
         row.addEventListener("pointercancel", finish);
       });
     });
-
   }
 
   function setItems(next: WatchlistItem[]): void {
@@ -1415,14 +949,5 @@ export function mountWatchlist(
   };
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function escapeAttr(s: string): string {
-  return escapeHtml(s).replace(/'/g, "&#39;");
-}
+// Re-export for tests / callers that imported resize from the monolith.
+export { resizeColumnRatios } from "./columns";

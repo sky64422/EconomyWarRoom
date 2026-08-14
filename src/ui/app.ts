@@ -40,7 +40,8 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   }
   const opacity = state.settings.opacity ?? 0.92;
   // Stored as ms (legacy 1..=120 = whole seconds, normalized on Rust load).
-  const quoteRefreshSecs = state.settings.quote_refresh_secs ?? 500;
+  const quoteRefreshMs =
+    state.settings.quote_refresh_ms ?? state.settings.quote_refresh_secs ?? 500;
   const autostart = state.settings.autostart ?? true;
 
   applyPanelOpacity(panel, opacity);
@@ -91,7 +92,7 @@ export async function mountApp(root: HTMLElement): Promise<void> {
     settingsRoot,
     {
       opacity,
-      quoteRefreshSecs,
+      quoteRefreshMs,
       autostart,
       appVersion,
     },

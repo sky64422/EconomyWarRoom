@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 
 export interface SettingsPanelController {
   setOpacity: (opacity: number) => void;
-  setQuoteRefreshSecs: (secs: number) => void;
+  setQuoteRefreshMs: (ms: number) => void;
   setAutostart: (enabled: boolean) => void;
   show: () => void;
   hide: () => void;
@@ -80,7 +80,7 @@ export function mountSettingsPanel(
   root: HTMLElement,
   initial: {
     opacity: number;
-    quoteRefreshSecs: number;
+    quoteRefreshMs: number;
     autostart: boolean;
     appVersion: string;
   },
@@ -88,7 +88,7 @@ export function mountSettingsPanel(
 ): SettingsPanelController {
   let opacity = pctToOpacity(opacityToPct(initial.opacity));
   // Snap legacy/custom intervals onto the compact preset row for chip UI.
-  let quoteRefreshSecs = nearestRefreshPreset(initial.quoteRefreshSecs);
+  let quoteRefreshMs = nearestRefreshPreset(initial.quoteRefreshMs);
   let autostart = initial.autostart;
   const appVersion = initial.appVersion.trim() || "unknown";
   let visible = false;
@@ -119,7 +119,7 @@ export function mountSettingsPanel(
         <div class="segmented refresh-segmented" role="group" aria-label="Refresh interval">
           ${REFRESH_PRESETS.map(
             (s) => `
-            <button type="button" data-refresh="${s}" class="${s === quoteRefreshSecs ? "active" : ""}" aria-pressed="${s === quoteRefreshSecs ? "true" : "false"}">${formatRefresh(s)}</button>
+            <button type="button" data-refresh="${s}" class="${s === quoteRefreshMs ? "active" : ""}" aria-pressed="${s === quoteRefreshMs ? "true" : "false"}">${formatRefresh(s)}</button>
           `,
           ).join("")}
         </div>
@@ -196,18 +196,17 @@ export function mountSettingsPanel(
     });
   }
 
-  /** `ms` is milliseconds; backend param name remains `secs` for API compatibility. */
   async function applyQuoteRefresh(ms: number): Promise<void> {
-    quoteRefreshSecs = nearestRefreshPreset(ms);
+    quoteRefreshMs = nearestRefreshPreset(ms);
     render();
     try {
-      const applied = await invoke<number>("set_quote_refresh_secs", {
-        secs: quoteRefreshSecs,
+      const applied = await invoke<number>("set_quote_refresh_ms", {
+        ms: quoteRefreshMs,
       });
-      quoteRefreshSecs = nearestRefreshPreset(applied);
+      quoteRefreshMs = nearestRefreshPreset(applied);
       if (visible) render();
     } catch (err) {
-      console.error("set_quote_refresh_secs failed", err);
+      console.error("set_quote_refresh_ms failed", err);
     }
   }
 
@@ -316,8 +315,8 @@ export function mountSettingsPanel(
         meter?.style.setProperty("--opacity-fill", `${meterFillPct(pct)}%`);
       }
     },
-    setQuoteRefreshSecs: (s) => {
-      quoteRefreshSecs = nearestRefreshPreset(s);
+    setQuoteRefreshMs: (s) => {
+      quoteRefreshMs = nearestRefreshPreset(s);
       if (visible) render();
     },
     setAutostart: (enabled) => {
