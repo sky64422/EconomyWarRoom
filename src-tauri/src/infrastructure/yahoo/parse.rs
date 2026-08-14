@@ -178,8 +178,9 @@ pub fn derive_prior_close(daily_closes: &[f64], previous_close: Option<f64>) -> 
 
     if let Some(pc) = previous_close.filter(|p| p.is_finite() && *p != 0.0) {
         let tol = (pc.abs() * 0.005).max(0.01);
-        // Prefer matching from the end (most recent completed days).
-        for i in (1..n).rev() {
+        // Last bar is usually incomplete "today" — never treat it as yesterday.
+        let last_search = n.saturating_sub(1).max(1);
+        for i in (1..last_search).rev() {
             if (daily_closes[i] - pc).abs() <= tol {
                 return Some(daily_closes[i - 1]);
             }
@@ -193,18 +194,32 @@ pub fn derive_prior_close(daily_closes: &[f64], previous_close: Option<f64>) -> 
     Some(daily_closes[0])
 }
 
-/// When meta lacks `prior_close` / previous-day %, fill from a multi-day daily chart.
-/// Used for crypto (and any asset Yahoo omits `regularMarketPreviousClose` for).
+fn prior_looks_like_previous_close(quote: &Quote) -> bool {
+    match (quote.prior_close, quote.previous_close) {
+        (Some(prior), Some(pc)) if pc.is_finite() && pc != 0.0 => {
+            let tol = (pc.abs() * 0.005).max(0.01);
+            (prior - pc).abs() <= tol
+        }
+        _ => false,
+    }
+}
+
+/// When meta lacks a true T-2 close / previous-day %, fill from a multi-day daily chart.
+/// Yahoo `regularMarketPreviousClose` is T-1 (same as `previousClose`), not T-2.
 pub fn enrich_quote_prior_from_daily(quote: &mut Quote, daily_json: &Value) {
-    if quote.prior_close.is_some() && quote.previous_day_change_percent.is_some() {
+    if quote.prior_close.is_some()
+        && quote.previous_day_change_percent.is_some()
+        && !prior_looks_like_previous_close(quote)
+    {
         return;
     }
     let closes = daily_closes_from_chart(daily_json);
-    let prior = derive_prior_close(&closes, quote.previous_close);
-    if quote.prior_close.is_none() {
-        quote.prior_close = prior;
+    let derived = derive_prior_close(&closes, quote.previous_close);
+    let replace_t1_as_t2 = prior_looks_like_previous_close(quote);
+    if quote.prior_close.is_none() || replace_t1_as_t2 {
+        quote.prior_close = derived;
     }
-    if quote.previous_day_change_percent.is_none() {
+    if quote.previous_day_change_percent.is_none() || replace_t1_as_t2 {
         if let (Some(pc), Some(prior)) = (quote.previous_close, quote.prior_close) {
             quote.previous_day_change_percent = change_pct(prior, pc);
         }
@@ -237,18 +252,16 @@ pub fn parse_quote_from_chart_at(json: &Value, now_secs: i64) -> Result<Quote, S
         .and_then(|v| v.as_str())
         .unwrap_or("USD")
         .to_string();
+    // `regularMarketPreviousClose` is the official previous session close (T-1),
+    // same role as `previousClose` / `chartPreviousClose` — never T-2.
     let previous_close = meta
         .get("previousClose")
         .or_else(|| meta.get("chartPreviousClose"))
-        .and_then(|v| v.as_f64());
-    let prior_close = meta
-        .get("regularMarketPreviousClose")
+        .or_else(|| meta.get("regularMarketPreviousClose"))
         .and_then(|v| v.as_f64());
     let regular_change_percent = previous_close.and_then(|p| change_pct(p, regular_price));
-    let previous_day_change_percent = match (previous_close, prior_close) {
-        (Some(pc), Some(prior)) => change_pct(prior, pc),
-        _ => None,
-    };
+    let prior_close = None;
+    let previous_day_change_percent = None;
 
     let market_state = resolve_market_state(meta, now_secs);
 
@@ -631,6 +644,70 @@ mod tests {
     }
 
     #[test]
+    fn derive_prior_close_does_not_treat_today_bar_as_yesterday() {
+        // LIVE session: last print is near yesterday's close (flat day).
+        let closes = vec![327.51, 339.96, 339.50];
+        assert_eq!(derive_prior_close(&closes, Some(339.96)), Some(327.51));
+    }
+
+    #[test]
+    fn parse_does_not_use_regular_market_previous_as_t2() {
+        // Yahoo's regularMarketPreviousClose is T-1 (same as previousClose), not T-2.
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "TSLA",
+                  "regularMarketPrice": 334.52,
+                  "previousClose": 339.96,
+                  "regularMarketPreviousClose": 339.96,
+                  "currency": "USD",
+                  "marketState": "REGULAR"
+                }
+              }]
+            }
+        });
+        let q = parse_quote_from_chart(&v).unwrap();
+        assert_eq!(q.previous_close, Some(339.96));
+        assert_eq!(q.prior_close, None);
+        assert_eq!(q.previous_day_change_percent, None);
+        let today = q.regular_change_percent.unwrap();
+        assert!((today - (-1.60)).abs() < 0.02);
+    }
+
+    #[test]
+    fn enrich_tsla_yesterday_move_from_daily_bars() {
+        let mut q = Quote {
+            symbol: "TSLA".into(),
+            price: 334.52,
+            previous_close: Some(339.96),
+            regular_price: Some(334.52),
+            regular_change_percent: Some(-1.60),
+            prior_close: None,
+            previous_day_change_percent: None,
+            ..Quote::default()
+        };
+        let daily = serde_json::json!({
+            "chart": {
+              "result": [{
+                "indicators": {
+                  "quote": [{
+                    "close": [330.88, 332.81, 327.51, 339.96, 334.52]
+                  }]
+                }
+              }]
+            }
+        });
+        enrich_quote_prior_from_daily(&mut q, &daily);
+        assert!((q.prior_close.unwrap() - 327.51).abs() < 1e-6);
+        let pct = q.previous_day_change_percent.unwrap();
+        assert!(
+            (pct - 3.80).abs() < 0.02,
+            "yesterday move should be +3.80%, got {pct}"
+        );
+    }
+
+    #[test]
     fn derive_prior_close_fallback_without_match() {
         let closes = vec![100.0, 110.0, 105.0];
         // No bar near previous_close → assume last is today, prior is n-3
@@ -687,5 +764,27 @@ mod tests {
         enrich_quote_prior_from_daily(&mut q, &daily);
         assert_eq!(q.prior_close, Some(90.0));
         assert!((q.previous_day_change_percent.unwrap() - 11.11).abs() < 1e-9);
+    }
+
+    #[test]
+    fn enrich_replaces_t1_copied_as_t2() {
+        let mut q = Quote {
+            previous_close: Some(339.96),
+            prior_close: Some(339.96),
+            previous_day_change_percent: Some(0.0),
+            ..Quote::default()
+        };
+        let daily = serde_json::json!({
+            "chart": {
+              "result": [{
+                "indicators": {
+                  "quote": [{ "close": [327.51, 339.96, 334.52] }]
+                }
+              }]
+            }
+        });
+        enrich_quote_prior_from_daily(&mut q, &daily);
+        assert!((q.prior_close.unwrap() - 327.51).abs() < 1e-6);
+        assert!((q.previous_day_change_percent.unwrap() - 3.80).abs() < 0.02);
     }
 }

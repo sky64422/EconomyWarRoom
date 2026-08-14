@@ -13,7 +13,7 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | **Shape** | Tall floating panel, always on top, freely draggable (content-hug min height); **tray-only** (no taskbar button) |
 | **MVP assets** | US equities + crypto (providers extensible later) |
 | **Rows** | Symbol · sparkline (1d/5m) · price / change % (left → right); **resizable columns** |
-| **Quotes** | Live + **pre/post** primary; secondary regular/prior-day context |
+| **Quotes** | 1st row = current session (live / pre / post); 2nd row = last **completed** regular session (LIVE → yesterday close + yesterday %) |
 | **Watchlist** | Add via bottom **+** · remove (context menu / Delete) · drag reorder · multi-select · pastel tints |
 | **Toggle** | `Ctrl+Shift+Space`, tray click, **or** in-UI hide (hide only; app stays running) |
 | **Look** | **Dark-only** translucent **glass** · adjustable opacity · Pretendard |
@@ -36,7 +36,7 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | Content-hug min · extended quotes · resizable columns · denser UI | Done |
 | Settings overlay · compact refresh · dark-only · Copy Log footer | Done |
 | Update badge + background download → restart | Done |
-| Opacity 5% stepped meter | Done (latest GitHub release **v0.1.38**) |
+| Opacity 5% stepped meter | Done (latest GitHub release **v0.1.46**) |
 | Automated tests + coverage gate | Done (~98% business logic; ~78 unit tests) |
 | Manual OS smoke (Windows long run) | Optional — see [windows-dev.md](docs/windows-dev.md) §5 |
 | Open feature backlog | Thin — see [TODO](docs/TODO.md) |

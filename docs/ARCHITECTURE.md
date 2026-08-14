@@ -1,6 +1,6 @@
 # Architecture (as implemented)
 
-**Updated:** 2026-08-09 (v0.1.38)  
+**Updated:** 2026-08-14 (v0.1.46)  
 **Branch of truth:** `main`
 
 This document describes the **current codebase**, not only the original design sketch.
@@ -114,10 +114,19 @@ Defined in `domain/constants.rs` (names approximate):
 | `price` / `change_percent` | Latest display fields (often live/extended) |
 | `regular_price` / `regular_change_percent` | Official regular session |
 | `extended_price` / `extended_change_percent` | Pre/post when applicable |
-| `previous_close` / `prior_close` / `previous_day_change_percent` | Prior session references (crypto may fill prior-day % from daily bars) |
+| `previous_close` / `prior_close` / `previous_day_change_percent` | T-1 close / T-2 close / T-1 session % (daily bars; Yahoo `regularMarketPreviousClose` is T-1, never T-2) |
 | `market_state` | Yahoo hint: `regular`, `pre`, `post`, `closed`, … |
 
-UI: **primary** = latest (live/extended); **secondary** = regular or prior-day context. Sparkline color uses regular-session move when extended.
+UI **primary** = the print for the current session. UI **secondary** = the last **completed** regular session (not a repeat of the primary %). Sparkline color uses regular-session move when extended.
+
+| Header | Secondary price | Secondary % |
+|--------|-----------------|-------------|
+| **PRE** | Last completed regular close (usually yesterday) | That regular session’s day move |
+| **LIVE** | Yesterday’s regular close | Yesterday vs T-2 (`previous_day_change_percent`) |
+| **POST** | Today’s official regular close | Today’s regular-session % |
+| **CLOSED** | Last completed regular close (Friday if weekend) | That regular session’s day move |
+
+LIVE cannot put “today’s close” on the secondary row — the regular session is still open — so the row steps back one trading day. Prices ≥ $1 show two decimals (e.g. `339.96`, not `340.0`).
 
 ## Commands (selected)
 

@@ -90,7 +90,17 @@ impl YahooProvider {
         let json = Self::chart_json_with(client, base_url, sym, "1d", "1m").await?;
         let mut quote = parse_quote_from_chart(&json)?;
 
-        if quote.prior_close.is_none() || quote.previous_day_change_percent.is_none() {
+        let prior_is_t1 = matches!(
+            (quote.prior_close, quote.previous_close),
+            (Some(prior), Some(pc)) if pc.is_finite() && pc != 0.0 && {
+                let tol = (pc.abs() * 0.005).max(0.01);
+                (prior - pc).abs() <= tol
+            }
+        );
+        if quote.prior_close.is_none()
+            || quote.previous_day_change_percent.is_none()
+            || prior_is_t1
+        {
             // Session cache first — skips a second HTTP for crypto / thin meta.
             let cached = prior_cache
                 .lock()

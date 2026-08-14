@@ -1,5 +1,24 @@
 ﻿# Release notes
 
+## v0.1.46 - 2026-08-14
+
+### Fixed
+
+- Secondary (2nd) price row during LIVE no longer treats Yahoo `regularMarketPreviousClose` as the day-before-yesterday. That field is T-1 (yesterday’s close), same as `previousClose`.
+- Yesterday’s % now comes from daily bars (T-1 vs T-2). TSLA example: `339.96 (+3.80%)`, not a rounded `340.0` with today’s regular move.
+- Daily-bar matching skips today’s incomplete last bar so a flat open cannot be treated as yesterday.
+- Equity prices from $1 show two decimals so official closes are not rounded away (`339.96` instead of `340.0`). Secondary % uses two decimals (`+3.80%`).
+
+### Docs
+
+- Documented PRE / LIVE / POST / CLOSED meaning of the secondary row in `docs/ARCHITECTURE.md` and the README snapshot.
+
+### Verification
+
+- `cargo test --lib` (82 tests)
+- `cargo test --test integration_e2e --test risk_scenarios`
+- `npx tsc --noEmit`
+
 ## v0.1.42 - 2026-08-13
 
 ### Fixed

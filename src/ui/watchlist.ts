@@ -106,7 +106,6 @@ function formatPrice(price: number): string {
       maximumFractionDigits: 0,
     });
   }
-  if (a >= 100) return price.toFixed(1);
   if (a >= 1) return price.toFixed(2);
   if (a >= 0.01) return price.toFixed(3);
   return price.toPrecision(2);
@@ -235,7 +234,7 @@ function metricsMarkup(
     .join(" ");
   const secondaryPrice =
     rows.secondary.price != null ? formatPrice(rows.secondary.price) : "—";
-  const secondaryChange = formatChangeParen(rows.secondary.change, true);
+  const secondaryChange = formatChangeParen(rows.secondary.change);
   const secondaryCls = [
     changeClass(rows.secondary.change),
     pending ? "is-pending" : "",
@@ -340,7 +339,7 @@ function patchMetricsRow(
     secondaryPriceEl.classList.toggle("is-pending", rows.secondary.price == null);
   }
   if (secondaryChangeEl) {
-    const txt = formatChangeParen(rows.secondary.change, true);
+    const txt = formatChangeParen(rows.secondary.change);
     secondaryChangeEl.textContent = txt;
     secondaryChangeEl.hidden = !txt;
     secondaryChangeEl.classList.remove("up", "down", "is-pending");

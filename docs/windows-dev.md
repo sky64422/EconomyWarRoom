@@ -155,7 +155,7 @@ Do these once after first successful launch (optional ops checklist; not tracked
 - [ ] Remove symbol (context menu **Remove** and keyboard **Delete** with selection)  
 - [ ] Multi-select (Ctrl / Shift) and right-click pastel card tint  
 - [ ] Drag column edges; restart → column ratios kept  
-- [ ] Pre/post: extended primary + secondary reference when market state applies  
+- [ ] PRE / LIVE / POST / CLOSED: 1st row = current session; 2nd row = last completed regular session (LIVE = yesterday close + yesterday %)  
 - [ ] Settings → Price refresh interval (ms presets)  
 - [ ] Header hide; `Ctrl+Shift+Space` shows again; no network thrash while hidden  
 - [ ] Settings = compact sheet **above** watchlist (list remains usable)  
