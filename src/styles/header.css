@@ -1,5 +1,6 @@
 /* ?��?Header (TokenUsage-aligned: flat, no heavy bar chrome) ?��?*/
 .header {
+  --opacity-accent: rgba(var(--text-rgb), calc(0.38 * var(--chrome-opacity)));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -27,14 +28,14 @@
 .market-status {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  min-height: 16px;
-  padding: 0 5px 0 4px;
+  gap: 2px;
+  min-height: 14px;
+  padding: 0 4px 0 3px;
   border: 1px solid color-mix(in srgb, var(--text-tertiary) 20%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg-hover) 72%, transparent);
   color: var(--text-tertiary);
-  font-size: 8.5px;
+  font-size: 7.5px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.05em;
@@ -44,8 +45,8 @@
 }
 
 .market-status-dot {
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
   background: currentColor;
   flex-shrink: 0;
@@ -125,10 +126,91 @@
   }
 }
 
+.header-opacity {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.opacity-slider {
+  --opacity-fill: 0%;
+  --thumb: 6px;
+  position: relative;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 22px;
+  align-self: center;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.opacity-slider-rail {
+  position: absolute;
+  left: calc(var(--thumb) / 2);
+  right: calc(var(--thumb) / 2);
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.opacity-slider-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  background: rgba(var(--text-rgb), calc(0.12 * var(--chrome-opacity)));
+  overflow: hidden;
+}
+
+.opacity-slider-fill {
+  display: block;
+  height: 100%;
+  width: var(--opacity-fill);
+  border-radius: inherit;
+  background: var(--opacity-accent);
+}
+
+.opacity-slider-thumb {
+  position: absolute;
+  top: 50%;
+  left: var(--opacity-fill);
+  width: var(--thumb);
+  height: var(--thumb);
+  margin-left: calc(var(--thumb) / -2);
+  transform: translateY(-50%);
+  box-sizing: border-box;
+  border-radius: 1px;
+  border: 1px solid rgba(var(--text-rgb), calc(0.28 * var(--fg-opacity)));
+  background: color-mix(in srgb, rgb(var(--text-rgb)) 78%, rgb(var(--bg-glass-rgb)));
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.opacity-slider:hover .opacity-slider-thumb,
+.opacity-slider:focus-visible .opacity-slider-thumb,
+.opacity-slider.is-dragging .opacity-slider-thumb {
+  background: rgb(var(--text-rgb));
+}
+
+.opacity-slider:focus-visible {
+  outline-offset: 0;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -138,8 +220,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   margin: 0;
   padding: 0;
   border: none;
@@ -179,35 +261,27 @@
   pointer-events: none;
 }
 
-/* Soft update badge on header ↻ — downloading pulse, ready solid. */
-.icon-btn.update-available {
-  position: relative;
-  color: var(--accent);
-}
-
-.icon-btn.update-available::after {
+/* Update available — blue light on the settings gear (top-right). */
+#btn-settings.update-available::after {
   content: "";
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 7px;
-  height: 7px;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 35%, transparent);
+  background: rgb(var(--accent-rgb));
+  box-shadow:
+    0 0 5px 1.5px rgba(var(--accent-rgb), 0.85),
+    0 0 10px 2px rgba(var(--accent-rgb), 0.4);
   pointer-events: none;
 }
 
-.icon-btn.update-downloading::after {
+#btn-settings.update-downloading::after {
   animation: update-dot-pulse 1.8s ease-in-out infinite;
 }
 
-.icon-btn.update-ready {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-}
-
-.icon-btn.update-ready::after {
+#btn-settings.update-ready::after {
   animation: none;
   opacity: 1;
 }
@@ -225,7 +299,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .icon-btn.update-downloading::after {
+  #btn-settings.update-downloading::after {
     animation: none;
   }
 }

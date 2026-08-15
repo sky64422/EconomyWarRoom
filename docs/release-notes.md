@@ -1,5 +1,24 @@
 ﻿# Release notes
 
+## v0.1.48 - 2026-08-15
+
+### Changed
+
+- Header icons: download-style update control removed; settings is a gear; hide unchanged. Hit targets **24×24**.
+- Opacity lives on the **header slider** (TokenUsage volume-style bar). Settings no longer has an opacity meter.
+- Check for updates moved to **Settings → Version** (label + `vX.Y.Z` + download icon). Copy Log / Quit stay at the bottom of the sheet.
+- When a release is available, the **settings gear** shows a blue light (pulses while downloading).
+- Market LIVE/PRE/POST badge is slightly smaller; header opacity bar is 52px.
+
+### Docs
+
+- README, ARCHITECTURE, release.md, windows-dev, ui-references updated for header/settings update UX.
+
+### Verification
+
+- `cargo test --lib`
+- `cargo test --test integration_e2e --test risk_scenarios`
+
 ## v0.1.47 - 2026-08-15
 
 ### Fixed

@@ -91,13 +91,11 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   const settings = mountSettingsPanel(
     settingsRoot,
     {
-      opacity,
       quoteRefreshMs,
       autostart,
       appVersion,
     },
     {
-      onOpacityChange: (o) => applyPanelOpacity(panel, o),
       onCloseRequest: closeSettings,
     },
   );
@@ -105,7 +103,16 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   // Geometry hug tracks watchlist only; settings is an overlay (no size snap).
   await setupGeometryPersistence(panel);
 
-  renderHeader(headerRoot, { onSettings: toggleSettings });
+  renderHeader(headerRoot, {
+    onSettings: toggleSettings,
+    opacity,
+    onOpacityChange: (o) => {
+      applyPanelOpacity(panel, o);
+      void invoke("set_opacity", { opacity: o }).catch((err) => {
+        console.error("set_opacity failed", err);
+      });
+    },
+  });
 
   // Esc also closes when focus is on header chrome
   document.addEventListener("keydown", (e) => {

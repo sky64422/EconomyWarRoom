@@ -1,6 +1,6 @@
 # Architecture (as implemented)
 
-**Updated:** 2026-08-15 (v0.1.47)  
+**Updated:** 2026-08-15 (v0.1.48)  
 **Branch of truth:** `main`
 
 This document describes the **current codebase**, not only the original design sketch.
@@ -72,10 +72,12 @@ This document describes the **current codebase**, not only the original design s
 | Path | Role |
 |------|------|
 | `ui/app.ts` | Boot, state, geometry persist, **content-hug min** measure → `set_content_min_size` |
-| `ui/header.ts` | Drag region, update check, settings, hide |
+| `ui/header.ts` | Drag region, market badge, opacity slider, settings (update badge), hide |
 | `ui/watchlist/` | Rows, multi-select, DnD, tint/remove, column resize, add (`index` + `metrics` / `columns` / `search` / `dnd`) |
 | `ui/sparkline.ts` | SVG path helper; tone from regular-session move |
-| `ui/settings-panel.ts` | Overlay settings: opacity, refresh presets, autostart, Copy Log / Quit |
+| `ui/settings-panel.ts` | Overlay settings: refresh, autostart, Version + update check, Copy Log / Quit |
+| `ui/opacity.ts` | Shared 5% opacity snap + `applyPanelOpacity` |
+| `ui/updates.ts` | Update check helper + event types |
 | `ui/types.ts` | TS mirrors of Rust DTOs (snake_case) |
 | `styles/` | `tokens.css`, `fonts.css`, `app.css` (barrel) + `base` / `header` / `layout` / `watchlist` / `settings` / `tint-menu` |
 

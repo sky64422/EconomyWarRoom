@@ -17,8 +17,8 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | **Watchlist** | Add via bottom **+** · remove (context menu / Delete) · drag reorder · multi-select · pastel tints |
 | **Toggle** | `Ctrl+Shift+Space`, tray click, **or** in-UI hide (hide only; app stays running) |
 | **Look** | **Dark-only** translucent **glass** · adjustable opacity · Pretendard |
-| **Settings** | Overlay sheet · opacity · **refresh** (0.25s / 1s / 10s / 1m) · launch at login · **Copy Log** / Quit |
-| **Updates** | In-app updater (header ↻ + release auto-check + restart after install) |
+| **Settings** | Overlay sheet · **refresh** · launch at login · **Version** + update check · **Copy Log** / Quit |
+| **Updates** | Settings download icon · settings-gear badge when a release is ready · auto-check + restart after install |
 | **Startup** | Autostart on login (toggleable) · widget visible on launch |
 | **Stack** | [Tauri](https://tauri.app/) 2 — Rust core + vanilla TypeScript / Vite UI |
 | **Data** | Free Yahoo-style chart API + **rate-limited scheduler** (backoff on 429) |
@@ -36,7 +36,7 @@ Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, a
 | Content-hug min · extended quotes · resizable columns · denser UI | Done |
 | Settings overlay · compact refresh · dark-only · Copy Log footer | Done |
 | Update badge + background download → restart | Done |
-| Opacity 5% stepped meter | Done (latest GitHub release **v0.1.46**) |
+| Opacity 5% stepped header slider | Done (latest GitHub release **v0.1.48**) |
 | Automated tests + coverage gate | Done (~98% business logic; ~78 unit tests) |
 | Manual OS smoke (Windows long run) | Optional — see [windows-dev.md](docs/windows-dev.md) §5 |
 | Open feature backlog | Thin — see [TODO](docs/TODO.md) |
@@ -133,7 +133,7 @@ See [docs/testing.md](docs/testing.md).
 ### Updates
 
 The app checks for updates at startup (release builds) through Tauri's updater plugin.
-Manual check: header **↻** icon.
+Manual check: Settings → **Version** row download icon (gear shows a blue light when an update is ready).
 
 **Publishing a release** (signed build + GitHub `latest.json`) is documented in
 **[docs/release.md](docs/release.md)**. One-shot:
@@ -157,9 +157,10 @@ npm run run:exe
 |--------|-----|
 | Toggle visibility | **`Ctrl+Shift+Space`**, **tray left-click**, or header hide |
 | Hide widget | Header **hide** / tray Hide (process keeps running; polling pauses) |
-| Check for updates | Header **↻** (left of settings) |
+| Check for updates | Settings → **Version** download icon (gear badge when ready) |
 | Quit | **Settings → Quit** or **tray → Quit** (hide alone does not exit) |
-| Opacity / refresh / login | Settings panel |
+| Opacity | Header slider (between market badge and settings) |
+| Refresh / login | Settings panel |
 | Select cards | Click · **Ctrl** toggle · **Shift** range |
 | Delete selected | **Delete** or **Backspace** · right-click **Remove** |
 | Card color | Right-click card → pastel swatch |

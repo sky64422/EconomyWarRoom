@@ -1,6 +1,6 @@
 # UI references
 
-**Updated:** 2026-08-09  
+**Updated:** 2026-08-15  
 
 External design references for EconomyWarRoom (and the sibling floating-widget family, e.g. TokenUsage).
 
@@ -30,7 +30,7 @@ shadcn + Impeccable gaps closed in code (vanilla TS/CSS only):
 | I1 | Opacity alpha floors (fg/accent/chrome + text/border tokens) |
 | I2 | Row `aria-label` (symbol · price · change) |
 | I4 | Pending quote/spark placeholders (`—`, muted) |
-| P2–P3 | Header SVG icons, 32px hit targets |
+| P2–P3 | Header SVG icons (download/settings/hide), 24px hit targets |
 | P4 | Secondary quote no double opacity |
 | P6 | Price tick respects `prefers-reduced-motion` |
 

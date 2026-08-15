@@ -59,7 +59,7 @@ npm run run:exe
 ```
 
 **Expected:** frameless tall window, glass panel, **no taskbar button**, system **tray** icon, seed symbols **AAPL** and **BTC-USD**, quotes filling after network calls.
-Settings includes opacity, refresh presets, and **Launch at login** (dark-only UI). Header has **↻** (updates), settings, hide.
+Settings includes refresh presets, **Launch at login**, and **Version** + update check (dark-only UI). Header has market badge, **opacity slider**, settings (blue light when an update is ready), hide.
 
 ### Frontend only (no native window)
 
@@ -148,7 +148,7 @@ Do these once after first successful launch (optional ops checklist; not tracked
 - [ ] **No taskbar button**; tray icon present (left-click toggle; menu Show/Hide/Quit)  
 - [ ] Drag move; resize; restart → geometry restored  
 
-- [ ] Opacity slider changes panel transparency  
+- [ ] Header opacity slider changes panel transparency  
 - [ ] Seed quotes + sparklines for AAPL / BTC-USD  
 - [ ] **+** add symbol (e.g. `MSFT`); try several symbols for density  
 - [ ] Drag reorder; restart → order kept  
@@ -163,7 +163,7 @@ Do these once after first successful launch (optional ops checklist; not tracked
 - [ ] Cannot shrink below content (rows + **+ Add** stay visible; slight min-edge jitter OK)  
 - [ ] No useless right scrollbar when already at content min height  
 - [ ] Card order: symbol · sparkline · price  
-- [ ] Header **↻** update check (release build) · `npm run release:publish` for new versions  
+- [ ] Settings → Version download icon update check (release build); settings gear badges when ready · `npm run release:publish` for new versions  
 - [ ] Settings → Copy diagnostics works  
 - [ ] Settings → Quit **or tray Quit** fully exits  
 - [ ] Settings → **Launch at login** toggle; check Startup apps / Task Manager  

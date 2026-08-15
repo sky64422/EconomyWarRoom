@@ -1,23 +1,22 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import {
+  meterFillPct,
+  opacityToPct,
+  OPACITY_MAX_PCT,
+  OPACITY_MIN_PCT,
+  OPACITY_STEP_PCT,
+  pctToOpacity,
+  snapOpacityPct,
+} from "./opacity";
+import type { DownloadProgress, UpdateInfo, UpdatePhase } from "./updates";
 
 export interface HeaderHandlers {
   onSettings: () => void;
+  opacity: number;
+  onOpacityChange: (opacity: number) => void;
 }
 
-export interface UpdateInfo {
-  current_version: string;
-  version: string;
-}
-
-export interface DownloadProgress {
-  version: string;
-  chunk_len: number;
-  content_length: number | null;
-  received: number;
-}
-
-type UpdatePhase = "idle" | "downloading" | "ready";
 type UsMarketStatus = "live" | "pre" | "post" | "closed" | "unknown";
 
 function resolveUsMarketStatus(marketStates: Array<string | null | undefined>): UsMarketStatus {
@@ -59,16 +58,11 @@ export function setUsMarketStatus(
 }
 
 /** Stroke SVG icons — avoid platform glyph variance (P2). */
-const ICON_REFRESH = `<svg class="icon-svg" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false"><path d="M13.5 8A5.5 5.5 0 1 1 11.2 3.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M13.5 3v3.2H10.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const ICON_SETTINGS = `<svg class="icon-svg" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="2.25" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.75v1.5M8 12.75v1.5M1.75 8h1.5M12.75 8h1.5M3.4 3.4l1.06 1.06M11.54 11.54l1.06 1.06M12.6 3.4l-1.06 1.06M4.46 11.54l-1.06 1.06" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const ICON_SETTINGS = `<svg class="icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`;
 const ICON_HIDE = `<svg class="icon-svg" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 
-function setBtnChrome(btn: HTMLButtonElement, title: string): void {
-  btn.setAttribute("title", title);
-  btn.setAttribute("aria-label", title);
-}
-
 export function renderHeader(root: HTMLElement, handlers: HeaderHandlers): void {
+  const initialPct = opacityToPct(handlers.opacity);
   root.innerHTML = `
     <div class="header" data-tauri-drag-region>
       <div class="header-leading">
@@ -78,13 +72,29 @@ export function renderHeader(root: HTMLElement, handlers: HeaderHandlers): void 
           <span id="us-market-status-label">--</span>
         </div>
       </div>
+      <div class="header-opacity">
+        <div class="opacity-slider" id="opacity-slider" role="slider"
+          aria-label="Opacity" aria-valuemin="${OPACITY_MIN_PCT}"
+          aria-valuemax="${OPACITY_MAX_PCT}" aria-valuenow="${initialPct}"
+          aria-valuetext="${initialPct}%" tabindex="0"
+          title="Opacity ${initialPct}%"
+          style="--opacity-fill: ${meterFillPct(initialPct)}%">
+          <span class="opacity-slider-rail" aria-hidden="true">
+            <span class="opacity-slider-track">
+              <span class="opacity-slider-fill"></span>
+            </span>
+            <span class="opacity-slider-thumb"></span>
+          </span>
+        </div>
+      </div>
       <div class="header-actions">
-        <button type="button" class="icon-btn" id="btn-update" aria-label="Check for updates" title="Check for updates">${ICON_REFRESH}</button>
         <button type="button" class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings">${ICON_SETTINGS}</button>
         <button type="button" class="icon-btn" id="btn-hide" aria-label="Hide" title="Hide">${ICON_HIDE}</button>
       </div>
     </div>
   `;
+
+  bindOpacitySlider(root, initialPct, handlers.onOpacityChange);
 
   root.querySelector("#btn-hide")!.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -96,78 +106,7 @@ export function renderHeader(root: HTMLElement, handlers: HeaderHandlers): void 
     handlers.onSettings();
   });
 
-  const updateBtn = root.querySelector("#btn-update") as HTMLButtonElement;
-  let phase: UpdatePhase = "idle";
-  let pendingVersion: string | null = null;
-
-  const setPhase = (next: UpdatePhase, version?: string) => {
-    phase = next;
-    if (version) pendingVersion = version;
-    updateBtn.classList.toggle("update-available", next !== "idle");
-    updateBtn.classList.toggle("update-ready", next === "ready");
-    updateBtn.classList.toggle("update-downloading", next === "downloading");
-
-    if (next === "ready" && pendingVersion) {
-      setBtnChrome(updateBtn, `Update ${pendingVersion} ready — click to restart`);
-      updateBtn.dataset.updateVersion = pendingVersion;
-    } else if (next === "downloading" && pendingVersion) {
-      setBtnChrome(updateBtn, `Downloading ${pendingVersion}…`);
-      updateBtn.dataset.updateVersion = pendingVersion;
-    } else {
-      setBtnChrome(updateBtn, "Check for updates");
-      delete updateBtn.dataset.updateVersion;
-      pendingVersion = null;
-    }
-  };
-
-  updateBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    void runUpdateAction(updateBtn, () => phase, setPhase);
-  });
-
-  void listen<UpdateInfo>("update-available", (ev) => {
-    const info = ev.payload;
-    if (!info?.version) return;
-    setPhase("downloading", info.version);
-  });
-
-  void listen<DownloadProgress>("update-download-progress", (ev) => {
-    const p = ev.payload;
-    if (!p?.version || phase === "ready") return;
-    pendingVersion = p.version;
-    updateBtn.classList.add("update-available", "update-downloading");
-    // S4: keep title and aria-label in sync during download
-    if (p.content_length && p.content_length > 0) {
-      const pct = Math.min(99, Math.round((p.received / p.content_length) * 100));
-      setBtnChrome(updateBtn, `Downloading ${p.version}… ${pct}%`);
-    } else {
-      setBtnChrome(updateBtn, `Downloading ${p.version}…`);
-    }
-  });
-
-  void listen<UpdateInfo>("update-ready", (ev) => {
-    const info = ev.payload;
-    if (!info?.version) return;
-    setPhase("ready", info.version);
-  });
-
-  void listen("update-not-available", () => {
-    if (phase !== "idle") setPhase("idle");
-  });
-
-  void listen<string>("update-failed", (ev) => {
-    const msg = typeof ev.payload === "string" ? ev.payload : "Update failed";
-    setBtnChrome(updateBtn, msg.slice(0, 120));
-    updateBtn.classList.remove("update-downloading");
-    window.setTimeout(() => {
-      if (!updateBtn.isConnected) return;
-      if (phase === "ready" && pendingVersion) {
-        setPhase("ready", pendingVersion);
-      } else {
-        setPhase("idle");
-      }
-    }, 4000);
-  });
+  bindSettingsUpdateBadge(root);
 }
 
 export function setSettingsButtonActive(root: HTMLElement, active: boolean): void {
@@ -181,73 +120,167 @@ export function focusSettingsButton(root: HTMLElement): void {
 
 /** Drop update/hide from Tab/AT while settings is open; settings toggle stays usable. */
 export function setHeaderBackdropInert(root: HTMLElement, inert: boolean): void {
-  for (const id of ["btn-update", "btn-hide"] as const) {
+  for (const id of ["btn-hide", "opacity-slider"] as const) {
     const el = root.querySelector<HTMLElement>(`#${id}`);
     if (el) el.inert = inert;
   }
 }
 
-async function runUpdateAction(
-  btn: HTMLButtonElement,
-  getPhase: () => UpdatePhase,
-  setPhase: (p: UpdatePhase, version?: string) => void,
-): Promise<void> {
-  const phaseAtClick = getPhase();
-  const version = btn.dataset.updateVersion;
+export function setHeaderOpacity(root: HTMLElement, opacity: number): void {
+  const slider = root.querySelector<HTMLElement>("#opacity-slider");
+  if (!slider) return;
+  const snapped = snapOpacityPct(opacityToPct(opacity));
+  slider.style.setProperty("--opacity-fill", `${meterFillPct(snapped)}%`);
+  slider.setAttribute("aria-valuenow", String(snapped));
+  slider.setAttribute("aria-valuetext", `${snapped}%`);
+  slider.title = `Opacity ${snapped}%`;
+  slider.dataset.pct = String(snapped);
+}
 
-  btn.disabled = true;
-  btn.classList.add("busy");
+function bindOpacitySlider(
+  root: HTMLElement,
+  initialPct: number,
+  onChange: (o: number) => void,
+): void {
+  const slider = root.querySelector("#opacity-slider") as HTMLElement | null;
+  if (!slider) return;
 
-  if (phaseAtClick === "downloading") {
-    setBtnChrome(btn, "Still downloading…");
-    window.setTimeout(() => {
-      if (!btn.isConnected) return;
-      btn.disabled = false;
-      btn.classList.remove("busy");
-      if (version) setBtnChrome(btn, `Downloading ${version}…`);
-    }, 1500);
-    return;
-  }
+  slider.dataset.pct = String(snapOpacityPct(initialPct));
+  let dragging = false;
 
-  if (phaseAtClick === "ready") {
-    setBtnChrome(btn, version ? `Restarting to install ${version}…` : "Restarting…");
+  const currentPct = (): number => {
+    const raw = Number(slider.dataset.pct);
+    return Number.isFinite(raw) ? raw : snapOpacityPct(initialPct);
+  };
+
+  const paint = (next: number, emit: boolean) => {
+    const snapped = snapOpacityPct(next);
+    slider.style.setProperty("--opacity-fill", `${meterFillPct(snapped)}%`);
+    slider.setAttribute("aria-valuenow", String(snapped));
+    slider.setAttribute("aria-valuetext", `${snapped}%`);
+    slider.title = `Opacity ${snapped}%`;
+    if (snapped === currentPct()) return;
+    slider.dataset.pct = String(snapped);
+    if (emit) onChange(pctToOpacity(snapped));
+  };
+
+  const pctFromClientX = (clientX: number): number => {
+    const rail = slider.querySelector(".opacity-slider-rail") as HTMLElement | null;
+    const rect = (rail ?? slider).getBoundingClientRect();
+    if (rect.width <= 0) return currentPct();
+    const t = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    return OPACITY_MIN_PCT + t * (OPACITY_MAX_PCT - OPACITY_MIN_PCT);
+  };
+
+  slider.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = true;
+    slider.classList.add("is-dragging");
+    slider.setPointerCapture(e.pointerId);
+    paint(pctFromClientX(e.clientX), true);
+  });
+
+  slider.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    paint(pctFromClientX(e.clientX), true);
+  });
+
+  const endDrag = (e: PointerEvent) => {
+    if (!dragging) return;
+    dragging = false;
+    slider.classList.remove("is-dragging");
+    if (slider.hasPointerCapture(e.pointerId)) {
+      slider.releasePointerCapture(e.pointerId);
+    }
+  };
+  slider.addEventListener("pointerup", endDrag);
+  slider.addEventListener("pointercancel", endDrag);
+
+  slider.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+      e.preventDefault();
+      paint(currentPct() - OPACITY_STEP_PCT, true);
+    } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+      e.preventDefault();
+      paint(currentPct() + OPACITY_STEP_PCT, true);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      paint(OPACITY_MIN_PCT, true);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      paint(OPACITY_MAX_PCT, true);
+    }
+  });
+
+  slider.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      const axis = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (axis === 0) return;
+      paint(currentPct() - Math.sign(axis) * OPACITY_STEP_PCT, true);
+    },
+    { passive: false },
+  );
+}
+
+function setSettingsUpdateBadge(btn: HTMLElement, phase: UpdatePhase, version: string | null): void {
+  btn.classList.toggle("update-available", phase !== "idle");
+  btn.classList.toggle("update-downloading", phase === "downloading");
+  btn.classList.toggle("update-ready", phase === "ready");
+  if (phase === "ready" && version) {
+    btn.setAttribute("title", `Update ${version} ready — open Settings`);
+    btn.setAttribute("aria-label", `Settings, update ${version} ready`);
+  } else if (phase === "downloading" && version) {
+    btn.setAttribute("title", `Downloading ${version}…`);
+    btn.setAttribute("aria-label", `Settings, downloading ${version}`);
   } else {
-    setBtnChrome(btn, "Checking for updates…");
+    btn.setAttribute("title", "Settings");
+    btn.setAttribute("aria-label", "Settings");
   }
+}
 
-  try {
-    const hasUpdate = await invoke<boolean>("check_for_updates");
-    if (hasUpdate) {
-      setBtnChrome(btn, "Update installed — restarting…");
+function bindSettingsUpdateBadge(root: HTMLElement): void {
+  const settingsBtn = root.querySelector("#btn-settings") as HTMLButtonElement | null;
+  if (!settingsBtn) return;
+
+  let phase: UpdatePhase = "idle";
+  let pendingVersion: string | null = null;
+
+  const setPhase = (next: UpdatePhase, version?: string) => {
+    phase = next;
+    if (version) pendingVersion = version;
+    if (next === "idle") pendingVersion = null;
+    setSettingsUpdateBadge(settingsBtn, phase, pendingVersion);
+  };
+
+  void listen<UpdateInfo>("update-available", (ev) => {
+    if (!ev.payload?.version) return;
+    setPhase("downloading", ev.payload.version);
+  });
+
+  void listen<DownloadProgress>("update-download-progress", (ev) => {
+    const p = ev.payload;
+    if (!p?.version || phase === "ready") return;
+    setPhase("downloading", p.version);
+  });
+
+  void listen<UpdateInfo>("update-ready", (ev) => {
+    if (!ev.payload?.version) return;
+    setPhase("ready", ev.payload.version);
+  });
+
+  void listen("update-not-available", () => {
+    if (phase !== "idle") setPhase("idle");
+  });
+
+  void listen<string>("update-failed", () => {
+    if (phase === "ready") {
+      setPhase("ready", pendingVersion ?? undefined);
       return;
     }
     setPhase("idle");
-    setBtnChrome(btn, "Already up to date");
-    window.setTimeout(() => {
-      if (btn.isConnected) {
-        setBtnChrome(btn, "Check for updates");
-        btn.disabled = false;
-        btn.classList.remove("busy");
-      }
-    }, 2500);
-  } catch (err) {
-    console.error("check_for_updates failed", err);
-    const msg =
-      typeof err === "string"
-        ? err
-        : err && typeof err === "object" && "message" in err
-          ? String((err as { message: unknown }).message)
-          : "Update check failed";
-    setBtnChrome(btn, msg.slice(0, 120));
-    window.setTimeout(() => {
-      if (!btn.isConnected) return;
-      btn.disabled = false;
-      btn.classList.remove("busy");
-      if (phaseAtClick === "ready" && version) {
-        setPhase("ready", version);
-      } else {
-        setBtnChrome(btn, "Check for updates");
-      }
-    }, 4000);
-  }
+  });
 }

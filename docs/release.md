@@ -2,13 +2,13 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Latest published (as of doc update):** **v0.1.47** on GitHub Releases.
+**Latest published (as of doc update):** **v0.1.48** on GitHub Releases.
 
 ---
 
 ## What “publish” means
 
-In-app **Check for updates** (header **↻**) does **not** read git `main`.  
+In-app **Check for updates** (Settings → Version download icon) does **not** read git `main`.  
 It downloads:
 
 ```text
@@ -22,16 +22,16 @@ That file must list a **higher semver** than the installed app, a signed install
 | Bump version | `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` (and commit) |
 | Signed `tauri build` | Produces NSIS/MSI + `.sig` (`createUpdaterArtifacts`) |
 | GitHub Release | Hosts installer + **`latest.json`** as release assets |
-| Users on prior release builds | Startup check **badges** header ↻ when newer; click ↻ installs + restarts |
+| Users on prior release builds | Startup check **badges** the settings gear when newer; Settings download icon installs + restarts |
 
 `npm run tauri dev` **skips** startup update check (`debug_assertions`). Prefer a **release** install when testing updates.
 
 ### Client UX (Electron-like)
 
 1. ~30s after launch (release): check `latest.json`.  
-2. If newer → badge ↻ + **background download** (`update-available` → progress → `update-ready`).  
-3. When ready → tooltip `Update x.y.z ready — click to restart`; click installs cached package + restarts.  
-4. Manual ↻ with nothing pending: check → download → install in one shot.
+2. If newer → blue light on the settings gear + **background download** (`update-available` → progress → `update-ready`).  
+3. When ready → Settings → Version tooltip `Restart to install x.y.z`; click the download icon installs cached package + restarts.  
+4. Manual download-icon click with nothing pending: check → download → install in one shot.
 
 ---
 

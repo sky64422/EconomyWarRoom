@@ -1,8 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import {
+  checkForUpdates,
+  formatUpdateError,
+  type DownloadProgress,
+  type UpdateInfo,
+  type UpdatePhase,
+} from "./updates";
+
+export { applyPanelOpacity } from "./opacity";
 
 export interface SettingsPanelController {
-  setOpacity: (opacity: number) => void;
   setQuoteRefreshMs: (ms: number) => void;
   setAutostart: (enabled: boolean) => void;
   show: () => void;
@@ -12,7 +20,6 @@ export interface SettingsPanelController {
 }
 
 export interface SettingsPanelOptions {
-  onOpacityChange?: (opacity: number) => void;
   /** Esc / close request from inside the dialog (S3). */
   onCloseRequest?: () => void;
 }
@@ -28,12 +35,7 @@ function focusableIn(container: HTMLElement): HTMLElement[] {
 /** Price refresh presets in milliseconds (matches Rust clamp / storage). */
 const REFRESH_PRESETS = [250, 1000, 10_000, 60_000] as const;
 
-/** Opacity slider uses whole percent steps of 5 (35%…100%). */
-const OPACITY_MIN_PCT = 35;
-const OPACITY_MAX_PCT = 100;
-const OPACITY_STEP_PCT = 5;
-/** Intervals between min and max (35→40 … 95→100). Ticks + fill share this count. */
-const OPACITY_INTERVALS = (OPACITY_MAX_PCT - OPACITY_MIN_PCT) / OPACITY_STEP_PCT; // 13
+const ICON_DOWNLOAD = `<svg class="icon-svg" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false"><path d="M8 2.5v7.5M5 7.25 8 10.25 11 7.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 
 function nearestRefreshPreset(ms: number): number {
   return REFRESH_PRESETS.reduce((best, p) =>
@@ -41,57 +43,24 @@ function nearestRefreshPreset(ms: number): number {
   );
 }
 
-function snapOpacityPct(pct: number): number {
-  const clamped = Math.min(OPACITY_MAX_PCT, Math.max(OPACITY_MIN_PCT, pct));
-  return Math.round(clamped / OPACITY_STEP_PCT) * OPACITY_STEP_PCT;
-}
-
-function opacityToPct(o: number): number {
-  return snapOpacityPct(Math.round(o * 100));
-}
-
-function pctToOpacity(pct: number): number {
-  return snapOpacityPct(pct) / 100;
-}
-
-/** How many 5% steps above min (35% → 0, 40% → 1, …, 100% → 13). */
-function opacityStepIndex(pct: number): number {
-  return (snapOpacityPct(pct) - OPACITY_MIN_PCT) / OPACITY_STEP_PCT;
-}
-
-/** Fill width aligned to 5% cells (same geometry as tick columns). */
-function meterFillPct(pct: number): number {
-  return (opacityStepIndex(pct) / OPACITY_INTERVALS) * 100;
-}
-
-/** One flex cell per 5% interval so borders line up with fill edges. */
-function opacityTicksHtml(): string {
-  const parts: string[] = [];
-  for (let i = 0; i < OPACITY_INTERVALS; i++) {
-    const leftPct = OPACITY_MIN_PCT + i * OPACITY_STEP_PCT;
-    const rightPct = leftPct + OPACITY_STEP_PCT;
-    const major = rightPct % 10 === 0;
-    parts.push(`<span class="opacity-tick${major ? " major" : ""}"></span>`);
-  }
-  return parts.join("");
-}
-
 export function mountSettingsPanel(
   root: HTMLElement,
   initial: {
-    opacity: number;
     quoteRefreshMs: number;
     autostart: boolean;
     appVersion: string;
   },
   options: SettingsPanelOptions = {},
 ): SettingsPanelController {
-  let opacity = pctToOpacity(opacityToPct(initial.opacity));
   // Snap legacy/custom intervals onto the compact preset row for chip UI.
   let quoteRefreshMs = nearestRefreshPreset(initial.quoteRefreshMs);
   let autostart = initial.autostart;
   const appVersion = initial.appVersion.trim() || "unknown";
   let visible = false;
+  let updatePhase: UpdatePhase = "idle";
+  let updateVersion: string | null = null;
+  let updateHint = "";
+  let updateBusy = false;
 
   root.classList.add("settings-panel", "hidden");
   root.setAttribute("role", "dialog");
@@ -99,21 +68,7 @@ export function mountSettingsPanel(
   root.setAttribute("aria-label", "Settings");
 
   function render(): void {
-    const pct = opacityToPct(opacity);
     root.innerHTML = `
-      <div class="settings-section">
-        <div class="settings-label-row opacity-label-row">
-          <div class="settings-label" id="opacity-label">Opacity</div>
-          <span class="opacity-value" id="opacity-value">${pct}%</span>
-        </div>
-        <div class="opacity-meter" style="--opacity-fill: ${meterFillPct(pct)}%">
-          <div class="opacity-meter-fill" aria-hidden="true"></div>
-          <div class="opacity-meter-ticks" aria-hidden="true">${opacityTicksHtml()}</div>
-          <input type="range" id="opacity-range" class="opacity-meter-input"
-            min="${OPACITY_MIN_PCT}" max="${OPACITY_MAX_PCT}" step="${OPACITY_STEP_PCT}"
-            value="${pct}" aria-labelledby="opacity-label" aria-valuetext="${pct} percent" />
-        </div>
-      </div>
       <div class="settings-section">
         <div class="settings-label">Refresh</div>
         <div class="segmented refresh-segmented" role="group" aria-label="Refresh interval">
@@ -126,48 +81,27 @@ export function mountSettingsPanel(
       </div>
       <div class="settings-section">
         <label class="settings-toggle" for="autostart-toggle">
-          <span class="settings-toggle-text">
-            <span class="settings-toggle-title">Launch at login</span>
-            <span class="settings-toggle-hint">Start with Windows</span>
-          </span>
+          <span class="settings-toggle-title">Launch at login</span>
           <input type="checkbox" id="autostart-toggle" ${autostart ? "checked" : ""} />
           <span class="settings-switch" aria-hidden="true"></span>
         </label>
       </div>
-      <div class="settings-end">
-        <span class="settings-meta">v${escapeHtml(appVersion)}</span>
-        <div class="settings-action-row">
-          <button type="button" class="settings-debug" id="btn-diag" title="Copy diagnostic log for troubleshooting">Copy Log</button>
-          <button type="button" class="settings-quit" id="btn-quit">Quit</button>
+      <div class="settings-update">
+        <span class="settings-update-title">Version</span>
+        <div class="settings-update-copy">
+          <span class="settings-meta">v${escapeHtml(appVersion)}</span>
+          <span class="settings-update-status" id="update-status"></span>
+          <button type="button" class="icon-btn settings-update-btn" id="btn-check-update" aria-label="Check for updates" title="Check for updates">${ICON_DOWNLOAD}</button>
         </div>
-        <div class="settings-live" id="settings-live" role="status" aria-live="polite" aria-atomic="true"></div>
       </div>
+      <div class="settings-action-row">
+        <button type="button" class="settings-debug" id="btn-diag" title="Copy diagnostic log for troubleshooting">Copy Log</button>
+        <button type="button" class="settings-quit" id="btn-quit">Quit</button>
+      </div>
+      <div class="settings-live" id="settings-live" role="status" aria-live="polite" aria-atomic="true"></div>
     `;
 
-    const range = root.querySelector("#opacity-range") as HTMLInputElement;
-    const valueEl = root.querySelector("#opacity-value") as HTMLElement;
-    const meter = root.querySelector(".opacity-meter") as HTMLElement;
     const liveRegion = root.querySelector("#settings-live") as HTMLElement | null;
-
-    const paintOpacity = (nextPct: number) => {
-      const snapped = snapOpacityPct(nextPct);
-      opacity = pctToOpacity(snapped);
-      range.value = String(snapped);
-      valueEl.textContent = `${snapped}%`;
-      range.setAttribute("aria-valuetext", `${snapped} percent`);
-      meter.style.setProperty("--opacity-fill", `${meterFillPct(snapped)}%`);
-      options.onOpacityChange?.(opacity);
-    };
-
-    range.addEventListener("input", () => {
-      paintOpacity(Number(range.value));
-    });
-    range.addEventListener("change", () => {
-      paintOpacity(Number(range.value));
-      void invoke("set_opacity", { opacity }).catch((err) => {
-        console.error("set_opacity failed", err);
-      });
-    });
 
     root.querySelectorAll<HTMLButtonElement>("[data-refresh]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -194,6 +128,98 @@ export function mountSettingsPanel(
     root.querySelector("#btn-quit")!.addEventListener("click", () => {
       void invoke("quit_app");
     });
+
+    const updateBtn = root.querySelector("#btn-check-update") as HTMLButtonElement;
+    updateBtn.addEventListener("click", () => {
+      void runUpdateAction(updateBtn);
+    });
+    paintUpdateUi();
+  }
+
+  function paintUpdateUi(): void {
+    const btn = root.querySelector<HTMLButtonElement>("#btn-check-update");
+    const status = root.querySelector<HTMLElement>("#update-status");
+    if (!btn || !status) return;
+
+    btn.disabled = updateBusy;
+    btn.classList.toggle("busy", updateBusy);
+    btn.classList.toggle("update-available", updatePhase !== "idle");
+    btn.classList.toggle("update-downloading", updatePhase === "downloading");
+    btn.classList.toggle("update-ready", updatePhase === "ready");
+
+    let title = "Check for updates";
+    if (updatePhase === "ready" && updateVersion) {
+      title = `Restart to install ${updateVersion}`;
+      status.textContent = updateHint || `Update ${updateVersion} is ready`;
+    } else if (updatePhase === "downloading" && updateVersion) {
+      title = updateHint || `Downloading ${updateVersion}…`;
+      status.textContent = title;
+    } else if (updateBusy) {
+      title = "Checking for updates…";
+      status.textContent = updateHint || title;
+    } else {
+      status.textContent = updateHint;
+    }
+    btn.setAttribute("title", title);
+    btn.setAttribute("aria-label", title);
+  }
+
+  async function runUpdateAction(btn: HTMLButtonElement): Promise<void> {
+    const phaseAtClick = updatePhase;
+    const version = updateVersion;
+
+    if (phaseAtClick === "downloading") {
+      updateHint = "Still downloading…";
+      paintUpdateUi();
+      return;
+    }
+
+    updateBusy = true;
+    if (phaseAtClick === "ready") {
+      updateHint = version ? `Restarting to install ${version}…` : "Restarting…";
+    } else {
+      updateHint = "Checking for updates…";
+    }
+    paintUpdateUi();
+
+    try {
+      const hasUpdate = await checkForUpdates();
+      if (hasUpdate) {
+        updateBusy = false;
+        if (updatePhase === "idle") updatePhase = "downloading";
+        updateHint = "Update found — downloading…";
+        paintUpdateUi();
+        return;
+      }
+      updatePhase = "idle";
+      updateVersion = null;
+      updateBusy = false;
+      updateHint = "Already up to date";
+      paintUpdateUi();
+      window.setTimeout(() => {
+        if (updatePhase !== "idle") return;
+        updateHint = "";
+        paintUpdateUi();
+      }, 2500);
+    } catch (err) {
+      console.error("check_for_updates failed", err);
+      updateBusy = false;
+      updateHint = formatUpdateError(err).slice(0, 120);
+      if (phaseAtClick === "ready" && version) {
+        updatePhase = "ready";
+        updateVersion = version;
+      }
+      paintUpdateUi();
+      window.setTimeout(() => {
+        if (!btn.isConnected) return;
+        if (updatePhase === "ready") {
+          updateHint = "";
+        } else {
+          updateHint = "";
+        }
+        paintUpdateUi();
+      }, 4000);
+    }
   }
 
   async function applyQuoteRefresh(ms: number): Promise<void> {
@@ -280,41 +306,65 @@ export function mountSettingsPanel(
   render();
 
   const unlisteners: Array<() => void> = [];
-  void listen<number>("opacity-updated", (e) => {
-    const v = e.payload;
-    if (typeof v !== "number" || !Number.isFinite(v)) return;
-    opacity = pctToOpacity(opacityToPct(v));
-    options.onOpacityChange?.(opacity);
-    if (visible) {
-      const pct = opacityToPct(opacity);
-      const range = root.querySelector("#opacity-range") as HTMLInputElement | null;
-      const valueEl = root.querySelector("#opacity-value") as HTMLElement | null;
-      const meter = root.querySelector(".opacity-meter") as HTMLElement | null;
-      if (range) {
-        range.value = String(pct);
-        range.setAttribute("aria-valuetext", `${pct} percent`);
-      }
-      if (valueEl) valueEl.textContent = `${pct}%`;
-      meter?.style.setProperty("--opacity-fill", `${meterFillPct(pct)}%`);
+  void listen<UpdateInfo>("update-available", (ev) => {
+    if (!ev.payload?.version) return;
+    updatePhase = "downloading";
+    updateVersion = ev.payload.version;
+    updateBusy = false;
+    updateHint = `Downloading ${ev.payload.version}…`;
+    paintUpdateUi();
+  }).then((u) => unlisteners.push(u));
+
+  void listen<DownloadProgress>("update-download-progress", (ev) => {
+    const p = ev.payload;
+    if (!p?.version || updatePhase === "ready") return;
+    updatePhase = "downloading";
+    updateVersion = p.version;
+    updateBusy = false;
+    if (p.content_length && p.content_length > 0) {
+      const pct = Math.min(99, Math.round((p.received / p.content_length) * 100));
+      updateHint = `Downloading ${p.version}… ${pct}%`;
+    } else {
+      updateHint = `Downloading ${p.version}…`;
     }
+    paintUpdateUi();
+  }).then((u) => unlisteners.push(u));
+
+  void listen<UpdateInfo>("update-ready", (ev) => {
+    if (!ev.payload?.version) return;
+    updatePhase = "ready";
+    updateVersion = ev.payload.version;
+    updateBusy = false;
+    updateHint = `Update ${ev.payload.version} is ready`;
+    paintUpdateUi();
+  }).then((u) => unlisteners.push(u));
+
+  void listen("update-not-available", () => {
+    if (updatePhase === "idle") return;
+    updatePhase = "idle";
+    updateVersion = null;
+    updateBusy = false;
+    paintUpdateUi();
+  }).then((u) => unlisteners.push(u));
+
+  void listen<string>("update-failed", (ev) => {
+    const msg = typeof ev.payload === "string" ? ev.payload : "Update failed";
+    updateBusy = false;
+    if (updatePhase === "ready") {
+      paintUpdateUi();
+      return;
+    }
+    updatePhase = "idle";
+    updateHint = msg.slice(0, 120);
+    paintUpdateUi();
+    window.setTimeout(() => {
+      if (updatePhase !== "idle") return;
+      updateHint = "";
+      paintUpdateUi();
+    }, 4000);
   }).then((u) => unlisteners.push(u));
 
   return {
-    setOpacity: (o) => {
-      opacity = pctToOpacity(opacityToPct(o));
-      if (visible) {
-        const pct = opacityToPct(opacity);
-        const range = root.querySelector("#opacity-range") as HTMLInputElement | null;
-        const valueEl = root.querySelector("#opacity-value") as HTMLElement | null;
-        const meter = root.querySelector(".opacity-meter") as HTMLElement | null;
-        if (range) {
-          range.value = String(pct);
-          range.setAttribute("aria-valuetext", `${pct} percent`);
-        }
-        if (valueEl) valueEl.textContent = `${pct}%`;
-        meter?.style.setProperty("--opacity-fill", `${meterFillPct(pct)}%`);
-      }
-    },
     setQuoteRefreshMs: (s) => {
       quoteRefreshMs = nearestRefreshPreset(s);
       if (visible) render();
@@ -329,9 +379,7 @@ export function mountSettingsPanel(
       root.hidden = false;
       render();
       requestAnimationFrame(() => {
-        const range = root.querySelector<HTMLInputElement>("#opacity-range");
-        const target = range ?? focusableIn(root)[0];
-        target?.focus();
+        focusableIn(root)[0]?.focus();
       });
     },
     hide: () => {
@@ -390,28 +438,4 @@ async function writeClipboard(text: string): Promise<void> {
   }
 }
 
-/**
- * Glass opacity + matching text/chart/tint alpha (TokenUsage-aligned).
- * Background uses --panel-opacity; fg/accent/chrome/tint track the slider so
- * labels, prices, sparklines, and pastel card tints don't stay fully solid
- * while glass fades.
- */
-export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
-  const o = Math.min(1, Math.max(0.35, opacity));
-  // Track panel glass closely so type / up-down colors fade with opacity
-  // (not stuck near ~0.7 solid on thin glass).
-  const fg = Math.min(1, Math.max(0.40, o * 0.94 + 0.04));
-  const accent = Math.min(1, Math.max(0.36, o * 0.96 + 0.02));
-  const chrome = Math.min(1, Math.max(0.28, o * 0.90 + 0.04));
-  // Card pastel mix strength — tracks chrome so tints stay soft, not chalky
-  const tint = chrome;
 
-  const root = document.documentElement;
-  for (const el of [panel, root]) {
-    el.style.setProperty("--panel-opacity", String(o));
-    el.style.setProperty("--fg-opacity", String(fg));
-    el.style.setProperty("--accent-opacity", String(accent));
-    el.style.setProperty("--chrome-opacity", String(chrome));
-    el.style.setProperty("--tint-strength", String(tint));
-  }
-}
