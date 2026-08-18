@@ -2,7 +2,7 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Latest published (as of doc update):** **v0.1.48** on GitHub Releases.
+**Latest published (as of doc update):** **v0.1.49** on GitHub Releases.
 
 ---
 

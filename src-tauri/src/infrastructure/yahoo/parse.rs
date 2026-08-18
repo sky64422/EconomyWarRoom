@@ -379,6 +379,7 @@ pub fn parse_sparkline_from_chart(json: &Value) -> Result<Sparkline, String> {
             points.push(SparklinePoint { t: ts, close: c });
         }
     }
+    let used_regular = regular.is_some() && !points.is_empty();
     // No regular bars (crypto / missing period): keep the full series.
     if points.is_empty() {
         for (i, t) in timestamps.iter().enumerate() {
@@ -392,11 +393,20 @@ pub fn parse_sparkline_from_chart(json: &Value) -> Result<Sparkline, String> {
         }
     }
     let points = downsample(&points, SparklinePolicy::TARGET_POINTS);
+    let (session_start, session_end) = if used_regular {
+        regular
+            .map(|(start, end)| (Some(start), Some(end)))
+            .unwrap_or((None, None))
+    } else {
+        (None, None)
+    };
     Ok(Sparkline {
         symbol,
         points,
         previous_close: prev,
         as_of: chrono::Utc::now().to_rfc3339(),
+        session_start,
+        session_end,
     })
 }
 
@@ -650,6 +660,15 @@ mod tests {
         assert!((s.points[2].close - 137.02).abs() < 1e-9);
         assert!(s.points.iter().all(|p| p.t >= 2000 && p.t < 3000));
         assert!(s.points.last().unwrap().close < s.previous_close.unwrap());
+        assert_eq!(s.session_start, Some(2000));
+        assert_eq!(s.session_end, Some(3000));
+        let last_x = crate::domain::sparkline_math::session_x(
+            s.points.last().unwrap().t,
+            s.session_start.unwrap(),
+            s.session_end.unwrap(),
+        );
+        assert!(last_x < 1.0, "RTH tail must stay on-axis, not clipped");
+        assert!((last_x - 0.9).abs() < 1e-12);
     }
 
     #[test]
@@ -719,6 +738,8 @@ mod tests {
         });
         let s = parse_sparkline_from_chart(&v).unwrap();
         assert_eq!(s.points.len(), 3);
+        assert_eq!(s.session_start, None);
+        assert_eq!(s.session_end, None);
     }
 
     #[test]
@@ -741,6 +762,8 @@ mod tests {
         let s = parse_sparkline_from_chart(&v).unwrap();
         assert_eq!(s.previous_close, Some(9.0));
         assert_eq!(s.points.len(), 2);
+        assert_eq!(s.session_start, None);
+        assert_eq!(s.session_end, None);
     }
 
     #[test]

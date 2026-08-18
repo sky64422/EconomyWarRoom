@@ -16,6 +16,15 @@ export interface SparklineSvgOptions {
   assetKind: AssetKind;
   stroke: string;
   progress?: number | null;
+  sessionStart?: number | null;
+  sessionEnd?: number | null;
+}
+
+/** Fraction of `[start, end)` so early session bars sit on the left. */
+export function sessionX(t: number, start: number, end: number): number {
+  if (!(end > start)) return 1;
+  const frac = (t - start) / (end - start);
+  return Math.max(0, Math.min(1, frac));
 }
 
 const NY_TIME_ZONE = "America/New_York";
@@ -42,6 +51,7 @@ export function sparklinePaths(
   height: number,
   padding = 1,
   baselineValue?: number | null,
+  session?: { start: number; end: number } | null,
 ): SparklinePaths {
   if (points.length === 0) {
     return { line: "", area: "", baseline: "", height };
@@ -79,8 +89,17 @@ export function sparklinePaths(
   const plotWidth = Math.max(width - padding * 2, 1);
   const plotHeight = Math.max(height - padding * 2, 1);
 
+  const useSession =
+    session != null &&
+    Number.isFinite(session.start) &&
+    Number.isFinite(session.end) &&
+    session.end > session.start;
+
   const coords = points.map((p, i) => {
-    const x = padding + (i / Math.max(points.length - 1, 1)) * plotWidth;
+    const frac = useSession && session
+      ? sessionX(p.t, session.start, session.end)
+      : i / Math.max(points.length - 1, 1);
+    const x = padding + frac * plotWidth;
     const y =
       padding + plotHeight - ((p.close - chartMinY) / yRange) * plotHeight;
     return { x, y };
@@ -163,12 +182,19 @@ export function sparklineSvgMarkup(
   baselineValue?: number | null,
 ): string {
   void options.assetKind;
+  const session =
+    options.sessionStart != null &&
+    options.sessionEnd != null &&
+    options.sessionEnd > options.sessionStart
+      ? { start: options.sessionStart, end: options.sessionEnd }
+      : null;
   const { line, area, baseline } = sparklinePaths(
     points,
     width,
     height,
     1,
     baselineValue,
+    session,
   );
   if (!line) return "";
 

@@ -83,6 +83,8 @@ mod tests {
             points: vec![],
             previous_close: Some(99.0),
             as_of: "2026-01-01T00:00:00Z".into(),
+            session_start: None,
+            session_end: None,
         });
         assert!(cache.get("AAPL").is_some());
         assert!(cache.age("AAPL").is_some());

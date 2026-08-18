@@ -56,6 +56,8 @@ impl MarketDataProvider for CountingProvider {
             points: vec![],
             previous_close: Some(40.0),
             as_of: "t".into(),
+            session_start: None,
+            session_end: None,
         })
     }
 }
@@ -227,6 +229,8 @@ async fn e2e_rate_limit_does_not_wipe_cache() {
                 points: vec![],
                 previous_close: None,
                 as_of: "t".into(),
+                session_start: None,
+                session_end: None,
             })
         }
     }

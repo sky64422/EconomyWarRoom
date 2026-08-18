@@ -24,6 +24,16 @@ pub fn downsample(points: &[SparklinePoint], target: usize) -> Vec<SparklinePoin
     out
 }
 
+/// Horizontal fraction of a regular-session window `[start, end)`.
+/// Early bars sit near 0 so the sparkline fills left-to-right through the day.
+pub fn session_x(t: i64, start: i64, end: i64) -> f64 {
+    if end <= start {
+        return 1.0;
+    }
+    let span = (end - start) as f64;
+    ((t - start) as f64 / span).clamp(0.0, 1.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,5 +73,33 @@ mod tests {
         let d = downsample(&pts(5), 1);
         assert_eq!(d.len(), 1);
         assert_eq!(d[0].t, 4);
+    }
+
+    #[test]
+    fn session_x_is_zero_at_open() {
+        assert!((session_x(2000, 2000, 3000) - 0.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn session_x_is_half_at_midpoint() {
+        assert!((session_x(2500, 2000, 3000) - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn session_x_is_not_one_before_close() {
+        let x = session_x(2900, 2000, 3000);
+        assert!(x > 0.89 && x < 1.0);
+    }
+
+    #[test]
+    fn session_x_clamps_outside_window() {
+        assert_eq!(session_x(1000, 2000, 3000), 0.0);
+        assert_eq!(session_x(4000, 2000, 3000), 1.0);
+    }
+
+    #[test]
+    fn session_x_invalid_window_is_one() {
+        assert_eq!(session_x(10, 5, 5), 1.0);
+        assert_eq!(session_x(10, 8, 3), 1.0);
     }
 }

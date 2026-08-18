@@ -553,6 +553,8 @@ mod tests {
                 points: vec![],
                 previous_close: None,
                 as_of: "2026-01-01T00:00:00Z".into(),
+                session_start: None,
+                session_end: None,
             })
         }
     }

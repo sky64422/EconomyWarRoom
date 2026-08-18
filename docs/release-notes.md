@@ -1,5 +1,19 @@
 ﻿# Release notes
 
+## v0.1.49 - 2026-08-18
+
+### Fixed
+
+- Regular-session sparklines plot on Yahoo’s session time axis, so the line fills left to right from the open instead of stretching a few bars across the full width.
+- The last regular-session bars stay visible (no wall-clock clip of the RTH tail).
+- Crypto (BTC/ETH) uses the same axis when Yahoo supplies a UTC-day `regular` window (typically 00:00–23:59 UTC).
+
+### Verification
+
+- `cargo test --lib`
+- `cargo test --test integration_e2e --test risk_scenarios`
+- `tsc --noEmit`
+
 ## v0.1.48 - 2026-08-15
 
 ### Changed

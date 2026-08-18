@@ -446,6 +446,8 @@ mod tests {
                 points: vec![],
                 previous_close: Some(10.0),
                 as_of: "t".into(),
+                session_start: None,
+                session_end: None,
             })
         }
 
@@ -500,6 +502,8 @@ mod tests {
                 points: vec![],
                 previous_close: None,
                 as_of: "t".into(),
+                session_start: None,
+                session_end: None,
             })
         }
     }
@@ -535,6 +539,8 @@ mod tests {
                 points: vec![],
                 previous_close: None,
                 as_of: "t".into(),
+                session_start: None,
+                session_end: None,
             })
         }
     }

@@ -84,6 +84,8 @@ mod tests {
                 points: vec![],
                 previous_close: None,
                 as_of: "t".into(),
+                session_start: None,
+                session_end: None,
             })
         }
     }

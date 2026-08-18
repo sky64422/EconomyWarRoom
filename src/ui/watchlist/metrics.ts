@@ -97,7 +97,7 @@ export function metricsFingerprint(rows: PriceRows): string {
 export function sparkFingerprint(sp: Sparkline | undefined): string {
   if (!sp) return "";
   const last = sp.points.length ? sp.points[sp.points.length - 1] : null;
-  return `${sp.as_of}|${sp.points.length}|${last?.t ?? ""}|${last?.close ?? ""}|${sp.previous_close ?? ""}`;
+  return `${sp.as_of}|${sp.points.length}|${last?.t ?? ""}|${last?.close ?? ""}|${sp.previous_close ?? ""}|${sp.session_start ?? ""}|${sp.session_end ?? ""}`;
 }
 
 export interface PatchMetricsResult {

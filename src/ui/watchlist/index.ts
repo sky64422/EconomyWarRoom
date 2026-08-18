@@ -385,8 +385,10 @@ export function mountWatchlist(
               id: `spark-${escapeAttr(item.id)}`,
               assetKind: item.asset_kind,
               stroke,
-              // Points are already "so far"; wall-clock clip hid the RTH selloff.
+              // Time axis uses Yahoo regular-session bounds, not wall-clock clip.
               progress: null,
+              sessionStart: sp?.session_start,
+              sessionEnd: sp?.session_end,
             },
             sparklineBaseline(q, sp?.previous_close),
           );
@@ -450,6 +452,8 @@ export function mountWatchlist(
         assetKind: item.asset_kind,
         stroke,
         progress: null,
+        sessionStart: sp.session_start,
+        sessionEnd: sp.session_end,
       },
       sparklineBaseline(q, sp.previous_close),
     );

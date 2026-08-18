@@ -124,6 +124,11 @@ pub struct Sparkline {
     pub points: Vec<SparklinePoint>,
     pub previous_close: Option<f64>,
     pub as_of: String,
+    /// Regular-session unix bounds used to plot x (left-to-right through the day).
+    #[serde(default)]
+    pub session_start: Option<i64>,
+    #[serde(default)]
+    pub session_end: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

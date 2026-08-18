@@ -71,6 +71,9 @@ export interface Sparkline {
   points: SparklinePoint[];
   previous_close: number | null;
   as_of: string;
+  /** Regular-session unix bounds; when set, x is time-of-session not index. */
+  session_start?: number | null;
+  session_end?: number | null;
 }
 
 export interface WindowGeometry {
