@@ -1,5 +1,15 @@
 ﻿# Release notes
 
+## v0.1.51 - 2026-08-20
+
+### Added
+
+- Arrow keys nudge the widget when focus is on the body (not the opacity slider or search). **4px** per tap; **Shift+arrow** is **16px**. Position still persists on move.
+
+### Verification
+
+- `npx tsc --noEmit`
+
 ## v0.1.50 - 2026-08-20
 
 ### Fixed

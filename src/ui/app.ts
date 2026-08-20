@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
+import { LogicalPosition } from "@tauri-apps/api/dpi";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { arrowNudgeDelta, shouldNudgeWindow } from "./window-nudge";
 import {
   focusSettingsButton,
   renderHeader,
@@ -119,7 +121,13 @@ export async function mountApp(root: HTMLElement): Promise<void> {
     if (e.key === "Escape" && settingsOpen) {
       e.preventDefault();
       closeSettings();
+      return;
     }
+    if (!shouldNudgeWindow(e, { settingsOpen })) return;
+    const delta = arrowNudgeDelta(e.key, e.shiftKey);
+    if (!delta) return;
+    e.preventDefault();
+    void nudgeWindow(delta.dx, delta.dy);
   });
 
   // Initial market data (best-effort; empty until scheduler fills)
@@ -199,6 +207,24 @@ function measureContentHugHeight(panel: HTMLElement): number {
       s.el.style.overflow = s.overflow;
     }
   }
+}
+
+let nudgeChain: Promise<void> = Promise.resolve();
+
+function nudgeWindow(dx: number, dy: number): Promise<void> {
+  nudgeChain = nudgeChain.then(async () => {
+    try {
+      const win = getCurrentWindow();
+      const factor = await win.scaleFactor();
+      const pos = await win.outerPosition();
+      await win.setPosition(
+        new LogicalPosition(pos.x / factor + dx, pos.y / factor + dy),
+      );
+    } catch (err) {
+      console.error("nudge window failed", err);
+    }
+  });
+  return nudgeChain;
 }
 
 async function setupGeometryPersistence(
