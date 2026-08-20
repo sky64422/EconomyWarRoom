@@ -24,6 +24,44 @@ pub fn downsample(points: &[SparklinePoint], target: usize) -> Vec<SparklinePoin
     out
 }
 
+/// If the last regular bar is at/near the session close but its print is not
+/// the official regular close, pin (or append) that close at `session_end`.
+///
+/// Mid-session last bars are left alone so live quotes are not stretched to 4pm.
+pub fn stitch_session_close(
+    points: &mut Vec<SparklinePoint>,
+    session_end: i64,
+    official_close: Option<f64>,
+) {
+    const MAX_GAP_SECS: i64 = 5 * 60;
+    const EPS: f64 = 1e-6;
+    let Some(official) = official_close.filter(|c| c.is_finite()) else {
+        return;
+    };
+    let Some(last) = points.last() else {
+        return;
+    };
+    if last.t > session_end {
+        return;
+    }
+    if session_end - last.t > MAX_GAP_SECS {
+        return;
+    }
+    if (last.close - official).abs() <= EPS {
+        return;
+    }
+    if last.t == session_end {
+        if let Some(p) = points.last_mut() {
+            p.close = official;
+        }
+        return;
+    }
+    points.push(SparklinePoint {
+        t: session_end,
+        close: official,
+    });
+}
+
 /// Horizontal fraction of a regular-session window `[start, end)`.
 /// Early bars sit near 0 so the sparkline fills left-to-right through the day.
 pub fn session_x(t: i64, start: i64, end: i64) -> f64 {
@@ -101,5 +139,41 @@ mod tests {
     fn session_x_invalid_window_is_one() {
         assert_eq!(session_x(10, 5, 5), 1.0);
         assert_eq!(session_x(10, 8, 3), 1.0);
+    }
+
+    fn spark(t: i64, close: f64) -> SparklinePoint {
+        SparklinePoint { t, close }
+    }
+
+    #[test]
+    fn stitch_appends_official_close_near_session_end() {
+        let mut pts = vec![spark(2000, 100.0), spark(2940, 99.0)];
+        stitch_session_close(&mut pts, 3000, Some(100.15));
+        assert_eq!(pts.len(), 3);
+        assert_eq!(pts[2].t, 3000);
+        assert!((pts[2].close - 100.15).abs() < 1e-9);
+    }
+
+    #[test]
+    fn stitch_replaces_bar_exactly_at_close() {
+        let mut pts = vec![spark(2000, 100.0), spark(3000, 99.8)];
+        stitch_session_close(&mut pts, 3000, Some(100.15));
+        assert_eq!(pts.len(), 2);
+        assert!((pts[1].close - 100.15).abs() < 1e-9);
+    }
+
+    #[test]
+    fn stitch_skips_mid_session() {
+        let mut pts = vec![spark(2000, 100.0), spark(2500, 99.0)];
+        stitch_session_close(&mut pts, 3000, Some(100.15));
+        assert_eq!(pts.len(), 2);
+        assert_eq!(pts[1].t, 2500);
+    }
+
+    #[test]
+    fn stitch_noop_when_already_official() {
+        let mut pts = vec![spark(2940, 100.15)];
+        stitch_session_close(&mut pts, 3000, Some(100.15));
+        assert_eq!(pts.len(), 1);
     }
 }

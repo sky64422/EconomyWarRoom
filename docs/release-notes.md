@@ -1,5 +1,27 @@
 ﻿# Release notes
 
+## v0.1.50 - 2026-08-20
+
+### Fixed
+
+- Equity sparklines are **regular session only**. Premarket prints are not drawn against yesterday’s close (GOOGL-shaped PRE: line below the baseline while the quote showed yesterday’s +0.15%).
+- Fetch range is **`5d` / `5m`** so PRE and overnight can plot the last completed RTH window.
+- The Yahoo bar at `regular.end` (same instant as `post.start`) is treated as after-hours, not RTH. Official `regularMarketPrice` is stitched at session close when the last RTH bar is near 16:00.
+
+### Tests
+
+- RTH contract tests (LIVE vs yesterday, drop 16:00 post bar, skip empty-window premarket fallback).
+- Recorded GOOGL 5d PRE chart fixture through `YahooProvider.fetch_sparkline` (wiremock; no live Yahoo).
+
+### Docs
+
+- ARCHITECTURE sparkline policy; testing.md fixture layer.
+
+### Verification
+
+- `cargo test --lib`
+- `cargo test --test integration_e2e --test risk_scenarios`
+
 ## v0.1.49 - 2026-08-18
 
 ### Fixed

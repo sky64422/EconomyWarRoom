@@ -1,6 +1,6 @@
 # Architecture (as implemented)
 
-**Updated:** 2026-08-18 (v0.1.49)  
+**Updated:** 2026-08-20 (v0.1.50)  
 **Branch of truth:** `main`
 
 This document describes the **current codebase**, not only the original design sketch.
@@ -98,7 +98,7 @@ Defined in `domain/constants.rs` (names approximate):
 | Tick | **500ms** |
 | Batch / workers | batch size 4; max concurrent provider ~3 |
 | Quote refresh | UI presets **0.25s / 1s / 10s / 1m** (Rust field `quote_refresh_ms`; JSON key still `quote_refresh_secs`; clamp **250ms–120s**, default **500ms**; legacy 1..=120 = whole seconds) |
-| Sparkline | range `1d`, interval `5m`, target points 32; min refresh ~300s |
+| Sparkline | range **`5d`**, interval `5m`, target 32 points; min refresh ~300s. **RTH only:** `[regular.start, regular.end)`; bar at `end` is Yahoo post. PRE/overnight uses the last completed regular window in the 5d series. After the close, official `regularMarketPrice` is stitched at `session_end`. Premarket is never plotted for equities. |
 | Backoff | 5s initial → double up to 120s |
 | Opacity | 0.35–1.0, default ~0.92 |
 | Window | default 320×640; policy floor 260×120; **runtime min = measured content** (OS physical min + Resized clamp) |
@@ -119,7 +119,7 @@ Defined in `domain/constants.rs` (names approximate):
 | `previous_close` / `prior_close` / `previous_day_change_percent` | T-1 close / T-2 close / T-1 session % (daily bars; Yahoo `regularMarketPreviousClose` is T-1, never T-2) |
 | `market_state` | Yahoo hint: `regular`, `pre`, `post`, `closed`, … |
 
-UI **primary** = the print for the current session. UI **secondary** = the last **completed** regular session (not a repeat of the primary %). Sparkline color uses regular-session move when extended.
+UI **primary** = the print for the current session. UI **secondary** = the last **completed** regular session (not a repeat of the primary %). Sparkline **path** is the same regular session the secondary row describes (yesterday’s RTH during PRE; today’s RTH once it has bars). Sparkline color uses regular-session move when extended.
 
 | Header | Secondary price | Secondary % |
 |--------|-----------------|-------------|

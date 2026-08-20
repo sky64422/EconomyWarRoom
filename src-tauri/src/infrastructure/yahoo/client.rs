@@ -392,6 +392,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fetch_sparkline_recorded_googl_pre_is_prior_rth_not_premarket() {
+        use crate::domain::constants::SparklinePolicy;
+
+        let body = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/yahoo_chart_googl_5d_pre.json"
+        ));
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v8/finance/chart/GOOGL"))
+            .and(query_param("range", SparklinePolicy::RANGE))
+            .and(query_param("interval", SparklinePolicy::INTERVAL))
+            .and(query_param("includePrePost", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let provider = YahooProvider::with_base_url(server.uri()).unwrap();
+        let spark = provider
+            .fetch_sparkline(
+                "GOOGL",
+                SparklinePolicy::RANGE,
+                SparklinePolicy::INTERVAL,
+            )
+            .await
+            .unwrap();
+
+        let pre_start = 1787212800;
+        let pre_end = 1787232600;
+        let rth_start = 1787146200;
+        let rth_end = 1787169600;
+        assert_eq!(spark.symbol, "GOOGL");
+        assert_eq!(spark.session_start, Some(rth_start));
+        assert_eq!(spark.session_end, Some(rth_end));
+        assert!(spark.points.iter().all(|p| p.t < pre_start || p.t >= pre_end));
+        assert!(spark.points.iter().all(|p| p.t >= rth_start && p.t <= rth_end));
+        assert!(!spark.points.iter().any(|p| p.t == rth_end && (p.close - 344.83).abs() < 0.01));
+        let last = spark.points.last().unwrap();
+        assert_eq!(last.t, rth_end);
+        assert!((last.close - 344.72).abs() < 1e-6);
+        assert!(last.close > spark.previous_close.unwrap());
+    }
+
+    #[tokio::test]
     async fn search_symbols_ok_from_mock() {
         let server = MockServer::start().await;
         let body = r#"{

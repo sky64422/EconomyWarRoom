@@ -1,12 +1,12 @@
 # Testing & Coverage
 
-**Updated:** 2026-08-15
+**Updated:** 2026-08-20
 
 ## Snapshot
 
 | Metric | Value |
 |--------|--------|
-| Unit tests (`cargo test --lib`) | **109** |
+| Unit tests (`cargo test --lib`) | **126** |
 | Integration (`integration_e2e`) | 4 |
 | Risk scenarios (`risk_scenarios`) | 7 |
 | Coverage gate | **≥ 85%** business logic |
@@ -17,7 +17,7 @@
 | Layer | Location | Purpose |
 |-------|----------|---------|
 | Unit | `src-tauri/src/**` `#[cfg(test)]` | Domain, scheduler, queue, parse, store, **AppCore**, diagnostics, Yahoo wiremock |
-| HTTP mock | `yahoo/client` + **wiremock** | 200 / 429 / 5xx without live Yahoo |
+| HTTP mock | `yahoo/client` + **wiremock** | 200 / 429 / 5xx without live Yahoo; **recorded** GOOGL `5d`/`5m` PRE chart (`tests/fixtures/yahoo_chart_googl_5d_pre.json`) through `fetch_sparkline` |
 | Integration | `src-tauri/tests/integration_e2e.rs` | Store + AppCore + scheduler + mock Yahoo HTTP pipeline |
 | Risk | `src-tauri/tests/risk_scenarios.rs` | Rate limit, hide pause, corrupt JSON, invalid IDs |
 | GUI smoke | Manual `npm run run:exe` | Hotkey, tray, window chrome (not in automated coverage) |
@@ -89,6 +89,8 @@ Rationale: Tauri WebView APIs do not run headlessly in this CI shape. Product ri
 - Column ratio clamp / default on missing settings  
 - Quote refresh legacy seconds → ms normalization  
 - Diagnostics ring FIFO + throttle  
+- Sparkline RTH-only: no pre/post bars; 16:00 bar is post; PRE uses prior regular session; official close stitch  
+- Recorded Yahoo GOOGL 5d PRE fixture (parse + HTTP mock, no live Yahoo)  
 
 ## Frontend
 

@@ -1,5 +1,5 @@
 use crate::domain::constants::SparklinePolicy;
-use crate::domain::sparkline_math::downsample;
+use crate::domain::sparkline_math::{downsample, stitch_session_close};
 use crate::domain::types::{AssetKind, Quote, Sparkline, SparklinePoint, SymbolSuggestion};
 use serde_json::Value;
 
@@ -64,6 +64,65 @@ pub fn parse_search_results(json: &Value, query: &str, limit: usize) -> Vec<Symb
         }
     }
     out
+}
+
+/// Regular-session windows, oldest → newest.
+///
+/// Yahoo `tradingPeriods.regular` is a list of per-day arrays; fall back to
+/// `currentTradingPeriod.regular` when that history is missing.
+fn regular_session_windows(meta: &Value) -> Vec<(i64, i64)> {
+    let mut out: Vec<(i64, i64)> = Vec::new();
+    if let Some(days) = meta.pointer("/tradingPeriods/regular").and_then(|v| v.as_array())
+    {
+        for day in days {
+            let objs: Vec<&Value> = if let Some(arr) = day.as_array() {
+                arr.iter().collect()
+            } else {
+                vec![day]
+            };
+            for o in objs {
+                let Some(start) = o.get("start").and_then(|v| v.as_i64()) else {
+                    continue;
+                };
+                let Some(end) = o.get("end").and_then(|v| v.as_i64()) else {
+                    continue;
+                };
+                if end > start {
+                    out.push((start, end));
+                }
+            }
+        }
+    }
+    if let Some(cur) = trading_period_bounds(meta, "regular") {
+        if !out.contains(&cur) {
+            out.push(cur);
+        }
+    }
+    out.sort_by_key(|(start, _)| *start);
+    out.dedup();
+    out
+}
+
+fn points_in_window(
+    timestamps: &[Value],
+    closes: &[Value],
+    start: i64,
+    end: i64,
+) -> Vec<SparklinePoint> {
+    let mut points = Vec::new();
+    for (i, t) in timestamps.iter().enumerate() {
+        let Some(ts) = t.as_i64() else {
+            continue;
+        };
+        // `[start, end)` — `end` is also post-market start; the 16:00 bar is not RTH.
+        if ts < start || ts >= end {
+            continue;
+        }
+        if let Some(c) = closes.get(i).and_then(|c| c.as_f64()) {
+            points.push(SparklinePoint { t: ts, close: c });
+        }
+    }
+    points
 }
 
 /// `[start, end)` bounds for a named period under `meta.currentTradingPeriod`.
@@ -355,7 +414,6 @@ pub fn parse_sparkline_from_chart(json: &Value) -> Result<Sparkline, String> {
         .or_else(|| meta.get("chartPreviousClose"))
         .or_else(|| meta.get("regularMarketPreviousClose"))
         .and_then(|v| v.as_f64());
-    let regular = trading_period_bounds(meta, "regular");
     let timestamps = result
         .get("timestamp")
         .and_then(|v| v.as_array())
@@ -364,42 +422,44 @@ pub fn parse_sparkline_from_chart(json: &Value) -> Result<Sparkline, String> {
         .pointer("/indicators/quote/0/close")
         .and_then(|v| v.as_array())
         .ok_or_else(|| "close".to_string())?;
-    let mut points = Vec::new();
-    for (i, t) in timestamps.iter().enumerate() {
-        let Some(ts) = t.as_i64() else {
-            continue;
-        };
-        if let Some((start, end)) = regular {
-            if ts < start || ts >= end {
-                continue;
-            }
-        }
-        let close = closes.get(i).and_then(|c| c.as_f64());
-        if let Some(c) = close {
-            points.push(SparklinePoint { t: ts, close: c });
+    let windows = regular_session_windows(meta);
+
+    let mut chosen: Option<(i64, i64, Vec<SparklinePoint>)> = None;
+    for (start, end) in windows.iter().rev() {
+        let pts = points_in_window(timestamps, closes, *start, *end);
+        if !pts.is_empty() {
+            chosen = Some((*start, *end, pts));
+            break;
         }
     }
-    let used_regular = regular.is_some() && !points.is_empty();
-    // No regular bars (crypto / missing period): keep the full series.
-    if points.is_empty() {
+
+    let (mut points, session_start, session_end, used_regular) = if let Some((start, end, pts)) =
+        chosen
+    {
+        (pts, Some(start), Some(end), true)
+    } else if windows.is_empty() {
+        // Crypto / missing period: keep the full series.
+        let mut pts = Vec::new();
         for (i, t) in timestamps.iter().enumerate() {
             let Some(ts) = t.as_i64() else {
                 continue;
             };
-            let close = closes.get(i).and_then(|c| c.as_f64());
-            if let Some(c) = close {
-                points.push(SparklinePoint { t: ts, close: c });
+            if let Some(c) = closes.get(i).and_then(|c| c.as_f64()) {
+                pts.push(SparklinePoint { t: ts, close: c });
             }
         }
-    }
-    let points = downsample(&points, SparklinePolicy::TARGET_POINTS);
-    let (session_start, session_end) = if used_regular {
-        regular
-            .map(|(start, end)| (Some(start), Some(end)))
-            .unwrap_or((None, None))
+        (pts, None, None, false)
     } else {
-        (None, None)
+        // Regular windows exist (PRE) but this payload has no RTH bars yet.
+        // Do not plot premarket against yesterday's close.
+        (Vec::new(), None, None, false)
     };
+
+    points = downsample(&points, SparklinePolicy::TARGET_POINTS);
+    if let (Some(end), true) = (session_end, used_regular) {
+        let official = meta.get("regularMarketPrice").and_then(|v| v.as_f64());
+        stitch_session_close(&mut points, end, official);
+    }
     Ok(Sparkline {
         symbol,
         points,
@@ -420,6 +480,26 @@ mod tests {
             "/tests/fixtures/yahoo_chart_aapl.json"
         ));
         serde_json::from_str(raw).expect("parse fixture")
+    }
+
+    fn googl_5d_pre_fixture() -> Value {
+        let raw = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/yahoo_chart_googl_5d_pre.json"
+        ));
+        serde_json::from_str(raw).expect("parse googl 5d fixture")
+    }
+
+    #[test]
+    fn recorded_googl_5d_pre_sparkline_is_yesterday_rth() {
+        let s = parse_sparkline_from_chart(&googl_5d_pre_fixture()).unwrap();
+        assert_eq!(s.session_start, Some(1787146200));
+        assert_eq!(s.session_end, Some(1787169600));
+        assert!(s.points.iter().all(|p| p.t < 1787212800 || p.t >= 1787232600));
+        let last = s.points.last().unwrap();
+        assert_eq!(last.t, 1787169600);
+        assert!((last.close - 344.72).abs() < 1e-6);
+        assert!(last.close > s.previous_close.unwrap());
     }
 
     #[test]
@@ -672,6 +752,58 @@ mod tests {
     }
 
     #[test]
+    fn sparkline_drops_bar_at_regular_end_as_post_and_stitches_official_close() {
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "GOOGL",
+                  "previousClose": 100.0,
+                  "regularMarketPrice": 100.15,
+                  "currentTradingPeriod": {
+                    "regular": { "start": 2000, "end": 3000 },
+                    "post": { "start": 3000, "end": 4000 }
+                  }
+                },
+                "timestamp": [2000, 2940, 3000, 3100],
+                "indicators": {
+                  "quote": [{ "close": [99.5, 99.8, 100.4, 100.5] }]
+                }
+              }]
+            }
+        });
+        let s = parse_sparkline_from_chart(&v).unwrap();
+        assert!(s.points.iter().all(|p| p.close != 100.4 && p.close != 100.5));
+        assert_eq!(s.points.last().unwrap().t, 3000);
+        assert!((s.points.last().unwrap().close - 100.15).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sparkline_stitches_official_close_when_last_bar_is_near_end() {
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "GOOGL",
+                  "previousClose": 100.0,
+                  "regularMarketPrice": 100.15,
+                  "currentTradingPeriod": {
+                    "regular": { "start": 2000, "end": 3000 }
+                  }
+                },
+                "timestamp": [2000, 2500, 2940],
+                "indicators": {
+                  "quote": [{ "close": [99.5, 99.2, 99.8] }]
+                }
+              }]
+            }
+        });
+        let s = parse_sparkline_from_chart(&v).unwrap();
+        assert_eq!(s.points.last().unwrap().t, 3000);
+        assert!((s.points.last().unwrap().close - 100.15).abs() < 1e-9);
+    }
+
+    #[test]
     fn sparkline_skips_null_closes() {
         let v: Value = serde_json::json!({
             "chart": {
@@ -743,7 +875,7 @@ mod tests {
     }
 
     #[test]
-    fn sparkline_falls_back_when_regular_window_has_no_bars() {
+    fn sparkline_skips_premarket_when_regular_window_has_no_bars() {
         let v: Value = serde_json::json!({
             "chart": {
               "result": [{
@@ -761,9 +893,140 @@ mod tests {
         });
         let s = parse_sparkline_from_chart(&v).unwrap();
         assert_eq!(s.previous_close, Some(9.0));
-        assert_eq!(s.points.len(), 2);
+        assert!(s.points.is_empty());
         assert_eq!(s.session_start, None);
         assert_eq!(s.session_end, None);
+    }
+
+    #[test]
+    fn sparkline_uses_previous_regular_session_when_today_has_no_rth_bars() {
+        // GOOGL PRE: premarket last is below yesterday close; yesterday RTH closed +0.15%.
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "GOOGL",
+                  "previousClose": 344.2,
+                  "regularMarketPrice": 344.72,
+                  "currentTradingPeriod": {
+                    "pre": { "start": 8000, "end": 9000 },
+                    "regular": { "start": 9000, "end": 10000 }
+                  },
+                  "tradingPeriods": {
+                    "regular": [
+                      [{ "start": 2000, "end": 3000 }],
+                      [{ "start": 9000, "end": 10000 }]
+                    ]
+                  }
+                },
+                "timestamp": [2000, 2500, 2940, 8100, 8500],
+                "indicators": {
+                  "quote": [{ "close": [344.0, 344.4, 344.5, 343.1, 342.9] }]
+                }
+              }]
+            }
+        });
+        let s = parse_sparkline_from_chart(&v).unwrap();
+        assert_eq!(s.session_start, Some(2000));
+        assert_eq!(s.session_end, Some(3000));
+        assert!(s.points.iter().all(|p| p.t >= 2000 && p.t <= 3000));
+        assert!(!s.points.iter().any(|p| p.close < 343.5));
+        assert!(!s.points.iter().any(|p| (p.close - 342.9).abs() < 1e-9));
+        let last = s.points.last().unwrap();
+        assert_eq!(last.t, 3000);
+        assert!((last.close - 344.72).abs() < 1e-9);
+        assert!(last.close > s.previous_close.unwrap());
+    }
+
+    fn assert_rth_only(s: &Sparkline, pre: (i64, i64), regular: (i64, i64), post: (i64, i64)) {
+        assert_eq!(s.session_start, Some(regular.0));
+        assert_eq!(s.session_end, Some(regular.1));
+        for p in &s.points {
+            let in_pre = p.t >= pre.0 && p.t < pre.1;
+            let in_post = p.t > post.0 && p.t < post.1;
+            assert!(!in_pre, "premarket print leaked t={}", p.t);
+            assert!(!in_post, "post print leaked t={}", p.t);
+            // t == regular.end is the official-close stitch, not a Yahoo post bar.
+            assert!(
+                p.t >= regular.0 && p.t <= regular.1,
+                "point t={} outside RTH [{}, {}]",
+                p.t,
+                regular.0,
+                regular.1
+            );
+            if p.t == regular.1 {
+                continue;
+            }
+            assert!(p.t < regular.1, "Yahoo bar at regular.end is post t={}", p.t);
+        }
+    }
+
+    #[test]
+    fn sparkline_live_uses_today_rth_not_yesterday() {
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "GOOGL",
+                  "previousClose": 344.72,
+                  "regularMarketPrice": 345.0,
+                  "currentTradingPeriod": {
+                    "pre": { "start": 8000, "end": 9000 },
+                    "regular": { "start": 9000, "end": 10000 },
+                    "post": { "start": 10000, "end": 11000 }
+                  },
+                  "tradingPeriods": {
+                    "regular": [
+                      [{ "start": 2000, "end": 3000 }],
+                      [{ "start": 9000, "end": 10000 }]
+                    ]
+                  }
+                },
+                "timestamp": [2000, 2940, 8100, 9100, 9200],
+                "indicators": {
+                  "quote": [{ "close": [344.0, 344.72, 343.0, 344.8, 345.0] }]
+                }
+              }]
+            }
+        });
+        let s = parse_sparkline_from_chart(&v).unwrap();
+        assert_rth_only(&s, (8000, 9000), (9000, 10000), (10000, 11000));
+        assert_eq!(s.points[0].t, 9100);
+        assert!(s.points.iter().all(|p| p.t != 8100 && p.t != 2000));
+    }
+
+    #[test]
+    fn sparkline_never_plots_yahoo_bar_timestamped_at_regular_end() {
+        // Yahoo 5m: regular.end == post.start; the 16:00 bar is the first AH print.
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "GOOGL",
+                  "previousClose": 344.2,
+                  "regularMarketPrice": 344.72,
+                  "currentTradingPeriod": {
+                    "pre": { "start": 1000, "end": 2000 },
+                    "regular": { "start": 2000, "end": 3000 },
+                    "post": { "start": 3000, "end": 4000 }
+                  }
+                },
+                "timestamp": [1500, 2000, 2700, 2940, 3000, 3100],
+                "indicators": {
+                  "quote": [{ "close": [343.0, 344.1, 344.4, 344.78, 344.83, 344.9] }]
+                }
+              }]
+            }
+        });
+        let s = parse_sparkline_from_chart(&v).unwrap();
+        assert_rth_only(&s, (1000, 2000), (2000, 3000), (3000, 4000));
+        assert!(!s.points.iter().any(|p| (p.close - 344.83).abs() < 1e-9));
+        assert!(!s.points.iter().any(|p| (p.close - 344.9).abs() < 1e-9));
+        assert!(!s.points.iter().any(|p| (p.close - 343.0).abs() < 1e-9));
+        let last = s.points.last().unwrap();
+        assert_eq!(last.t, 3000);
+        assert!((last.close - 344.72).abs() < 1e-9);
+        assert!(last.close > s.previous_close.unwrap());
     }
 
     #[test]

@@ -54,7 +54,8 @@ pub fn clamp_quote_refresh_secs(stored: u64) -> u64 {
 pub struct SparklinePolicy;
 
 impl SparklinePolicy {
-    pub const RANGE: &'static str = "1d";
+    /// 5d so PRE / overnight can plot the last completed regular session.
+    pub const RANGE: &'static str = "5d";
     pub const INTERVAL: &'static str = "5m";
     pub const TARGET_POINTS: usize = 32;
 }
@@ -137,6 +138,13 @@ pub fn clamp_geometry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sparkline_fetch_range_includes_prior_rth_day() {
+        // 1d during PRE has only premarket bars; last completed RTH needs 5d.
+        assert_eq!(SparklinePolicy::RANGE, "5d");
+        assert_eq!(SparklinePolicy::INTERVAL, "5m");
+    }
 
     #[test]
     fn clamp_opacity_bounds() {
