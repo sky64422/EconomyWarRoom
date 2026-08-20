@@ -152,7 +152,7 @@ Do these once after first successful launch (optional ops checklist; not tracked
 - [ ] Seed quotes + sparklines for AAPL / BTC-USD  
 - [ ] **+** add symbol (e.g. `MSFT`); try several symbols for density  
 - [ ] Drag reorder; restart → order kept  
-- [ ] Arrow keys nudge the window when focus is on the body (not opacity slider / search); 4px, Shift+arrow 16px  
+- [ ] Arrow keys nudge the window when focus is on the body (not opacity slider / search); 4px, Shift 16px, Ctrl 1px  
 - [ ] Remove symbol (context menu **Remove** and keyboard **Delete** with selection)  
 - [ ] Multi-select (Ctrl / Shift) and right-click pastel card tint  
 - [ ] Drag column edges; restart → column ratios kept  

@@ -124,7 +124,7 @@ export async function mountApp(root: HTMLElement): Promise<void> {
       return;
     }
     if (!shouldNudgeWindow(e, { settingsOpen })) return;
-    const delta = arrowNudgeDelta(e.key, e.shiftKey);
+    const delta = arrowNudgeDelta(e.key, { shift: e.shiftKey, ctrl: e.ctrlKey });
     if (!delta) return;
     e.preventDefault();
     void nudgeWindow(delta.dx, delta.dy);

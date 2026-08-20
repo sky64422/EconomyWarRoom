@@ -103,7 +103,7 @@ Defined in `domain/constants.rs` (names approximate):
 | Opacity | 0.35–1.0, default ~0.92 |
 | Window | default 320×640; policy floor 260×120; **runtime min = measured content** (OS physical min + Resized clamp) |
 | Hotkey | `Ctrl+Shift+Space` |
-| Window nudge | Arrow keys **4px** (Shift **16px**) when focus is not on slider/search/settings |
+| Window nudge | Arrow keys **4px** (Shift **16px**, Ctrl **1px**) when focus is not on slider/search/settings |
 | Card tints | `none`, `rose`, `peach`, `mint`, `sky`, `lavender`, `lemon` |
 | Column ratios | default symbol **1.15** / spark **1.25** / metrics **2.0** `fr` (clamped ~0.45–8) |
 | Card layout | Left→right: **symbol · sparkline · price/change**; remove via **context menu** |
