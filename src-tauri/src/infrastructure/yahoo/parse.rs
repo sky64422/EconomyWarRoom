@@ -423,13 +423,28 @@ pub fn parse_sparkline_from_chart(json: &Value) -> Result<Sparkline, String> {
         .and_then(|v| v.as_array())
         .ok_or_else(|| "close".to_string())?;
     let windows = regular_session_windows(meta);
+    let current_regular = trading_period_bounds(meta, "regular");
+    let series_max_t = timestamps.iter().filter_map(|t| t.as_i64()).max();
+    let current_session_started = matches!(
+        (current_regular, series_max_t),
+        (Some((start, _)), Some(t)) if t >= start
+    );
 
     let mut chosen: Option<(i64, i64, Vec<SparklinePoint>)> = None;
-    for (start, end) in windows.iter().rev() {
-        let pts = points_in_window(timestamps, closes, *start, *end);
-        if !pts.is_empty() {
-            chosen = Some((*start, *end, pts));
-            break;
+    if current_session_started {
+        // LIVE/POST: do not keep yesterday's RTH once today's regular window has
+        // timestamps (including a 9:30 open with no close yet).
+        if let Some((start, end)) = current_regular {
+            let pts = points_in_window(timestamps, closes, start, end);
+            chosen = Some((start, end, pts));
+        }
+    } else {
+        for (start, end) in windows.iter().rev() {
+            let pts = points_in_window(timestamps, closes, *start, *end);
+            if !pts.is_empty() {
+                chosen = Some((*start, *end, pts));
+                break;
+            }
         }
     }
 
@@ -993,6 +1008,41 @@ mod tests {
         assert_rth_only(&s, (8000, 9000), (9000, 10000), (10000, 11000));
         assert_eq!(s.points[0].t, 9100);
         assert!(s.points.iter().all(|p| p.t != 8100 && p.t != 2000));
+    }
+
+    #[test]
+    fn sparkline_live_resets_even_when_today_has_no_rth_closes_yet() {
+        // First LIVE print: series already has t >= today's open, but no RTH close yet.
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "GOOGL",
+                  "previousClose": 344.72,
+                  "regularMarketPrice": 344.80,
+                  "currentTradingPeriod": {
+                    "pre": { "start": 8000, "end": 9000 },
+                    "regular": { "start": 9000, "end": 10000 },
+                    "post": { "start": 10000, "end": 11000 }
+                  },
+                  "tradingPeriods": {
+                    "regular": [
+                      [{ "start": 2000, "end": 3000 }],
+                      [{ "start": 9000, "end": 10000 }]
+                    ]
+                  }
+                },
+                "timestamp": [2000, 2940, 8100, 9000],
+                "indicators": {
+                  "quote": [{ "close": [344.0, 344.72, 343.0, null] }]
+                }
+              }]
+            }
+        });
+        let s = parse_sparkline_from_chart(&v).unwrap();
+        assert_eq!(s.session_start, Some(9000));
+        assert_eq!(s.session_end, Some(10000));
+        assert!(s.points.is_empty());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::application::cache::{QuoteCache, SparklineCache};
 use crate::domain::constants::{RefreshPolicy, SparklinePolicy};
-use crate::domain::types::{SymbolSuggestion, WatchlistItem};
+use crate::domain::types::{Quote, SymbolSuggestion, WatchlistItem};
 use crate::ports::market_data::MarketDataProvider;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -303,6 +303,10 @@ impl QuoteScheduler {
                         self.last_error = None;
                         for q in quotes {
                             self.last_quote_fetch.insert(q.symbol.clone(), fetched_at);
+                            if spark_should_refresh_for_session(self.quote_cache.get(&q.symbol), &q)
+                            {
+                                self.last_spark_fetch.remove(&q.symbol);
+                            }
                             self.quote_cache.put(q);
                             any_updated = true;
                         }
@@ -386,6 +390,20 @@ impl QuoteScheduler {
         }
         updated
     }
+}
+
+fn market_state_key(s: Option<&str>) -> Option<String> {
+    s.map(|v| v.to_ascii_lowercase())
+}
+
+/// PRE/POST/CLOSED → LIVE: yesterday's sparkline must not sit for SPARKLINE_MIN_INTERVAL.
+fn spark_should_refresh_for_session(prev: Option<&Quote>, new: &Quote) -> bool {
+    let new_s = market_state_key(new.market_state.as_deref());
+    if new_s.as_deref() != Some("regular") {
+        return false;
+    }
+    let prev_s = prev.and_then(|q| market_state_key(q.market_state.as_deref()));
+    prev_s.as_deref() != Some("regular")
 }
 
 #[cfg(test)]
@@ -624,6 +642,21 @@ mod tests {
         // Second tick while still in backoff must not hit the provider.
         sched.tick_once().await;
         assert_eq!(provider.call_count(), 1);
+    }
+
+    #[test]
+    fn spark_refresh_when_pre_becomes_regular() {
+        let mut prev = Quote::default();
+        prev.symbol = "GOOGL".into();
+        prev.market_state = Some("pre".into());
+        let mut live = Quote::default();
+        live.symbol = "GOOGL".into();
+        live.market_state = Some("REGULAR".into());
+        assert!(spark_should_refresh_for_session(Some(&prev), &live));
+        assert!(!spark_should_refresh_for_session(Some(&live), &live));
+        assert!(spark_should_refresh_for_session(None, &live));
+        live.market_state = Some("post".into());
+        assert!(!spark_should_refresh_for_session(Some(&prev), &live));
     }
 
     #[tokio::test]

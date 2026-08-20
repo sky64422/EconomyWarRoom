@@ -1,5 +1,16 @@
 ﻿# Release notes
 
+## v0.1.52 - 2026-08-20
+
+### Fixed
+
+- LIVE open no longer keeps yesterday’s sparkline. Once today’s regular window has started, the chart resets to today (empty until the first RTH bar). A `pre`/`post`/`closed` → `regular` quote also invalidates the 5-minute sparkline cache immediately.
+
+### Verification
+
+- `cargo test --lib sparkline_live`
+- `cargo test --lib spark_refresh_when_pre`
+
 ## v0.1.51 - 2026-08-20
 
 ### Added
