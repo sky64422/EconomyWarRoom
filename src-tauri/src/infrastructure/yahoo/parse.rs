@@ -66,13 +66,15 @@ pub fn parse_search_results(json: &Value, query: &str, limit: usize) -> Vec<Symb
     out
 }
 
-/// Regular-session windows, oldest → newest.
+/// Session windows for `pre` / `regular` / `post`, oldest → newest.
 ///
-/// Yahoo `tradingPeriods.regular` is a list of per-day arrays; fall back to
-/// `currentTradingPeriod.regular` when that history is missing.
-fn regular_session_windows(meta: &Value) -> Vec<(i64, i64)> {
+/// Yahoo `tradingPeriods.{name}` is a list of per-day arrays; fall back to
+/// `currentTradingPeriod.{name}` when that history is missing.
+fn session_windows(meta: &Value, name: &str) -> Vec<(i64, i64)> {
     let mut out: Vec<(i64, i64)> = Vec::new();
-    if let Some(days) = meta.pointer("/tradingPeriods/regular").and_then(|v| v.as_array())
+    if let Some(days) = meta
+        .pointer(&format!("/tradingPeriods/{name}"))
+        .and_then(|v| v.as_array())
     {
         for day in days {
             let objs: Vec<&Value> = if let Some(arr) = day.as_array() {
@@ -93,7 +95,7 @@ fn regular_session_windows(meta: &Value) -> Vec<(i64, i64)> {
             }
         }
     }
-    if let Some(cur) = trading_period_bounds(meta, "regular") {
+    if let Some(cur) = trading_period_bounds(meta, name) {
         if !out.contains(&cur) {
             out.push(cur);
         }
@@ -101,6 +103,52 @@ fn regular_session_windows(meta: &Value) -> Vec<(i64, i64)> {
     out.sort_by_key(|(start, _)| *start);
     out.dedup();
     out
+}
+
+/// Regular-session windows, oldest → newest.
+fn regular_session_windows(meta: &Value) -> Vec<(i64, i64)> {
+    session_windows(meta, "regular")
+}
+
+/// Last after-hours print: today's post window, else the most recent completed post
+/// (overnight/weekend `currentTradingPeriod.post` is *next* session and still empty).
+fn last_post_close(meta: &Value, result: &Value, now_secs: i64) -> Option<f64> {
+    if let Some((s, e)) = trading_period_bounds(meta, "post") {
+        if let Some(c) = last_close_in_period(result, s, e) {
+            return Some(c);
+        }
+    }
+    let mut posts: Vec<(i64, i64)> = session_windows(meta, "post")
+        .into_iter()
+        .filter(|(s, _)| *s < now_secs)
+        .collect();
+    posts.sort_by_key(|(s, _)| *s);
+    for (s, e) in posts.into_iter().rev() {
+        if let Some(c) = last_close_in_period(result, s, e) {
+            return Some(c);
+        }
+    }
+    last_close_after_elapsed_regular(meta, result, now_secs)
+}
+
+/// Bars at/after the last regular session `end` (16:00 is post, not RTH).
+fn last_close_after_elapsed_regular(
+    meta: &Value,
+    result: &Value,
+    now_secs: i64,
+) -> Option<f64> {
+    let regs = regular_session_windows(meta);
+    if let Some((_, reg_end)) = regs.iter().copied().rev().find(|(_, e)| *e <= now_secs) {
+        let next_pre = session_windows(meta, "pre")
+            .into_iter()
+            .filter(|(s, _)| *s > reg_end)
+            .map(|(s, _)| s)
+            .min();
+        let post_end = next_pre.unwrap_or(reg_end.saturating_add(14_400));
+        return last_close_in_period(result, reg_end, post_end);
+    }
+    // Meta only lists *upcoming* regular; 1d chart still holds yesterday's post bars.
+    last_close_in_period(result, i64::MIN / 4, now_secs)
 }
 
 fn points_in_window(
@@ -334,8 +382,7 @@ pub fn parse_quote_from_chart_at(json: &Value, now_secs: i64) -> Result<Quote, S
 
     let candle_pre = trading_period_bounds(meta, "pre")
         .and_then(|(s, e)| last_close_in_period(result, s, e));
-    let candle_post = trading_period_bounds(meta, "post")
-        .and_then(|(s, e)| last_close_in_period(result, s, e));
+    let candle_post = last_post_close(meta, result, now_secs);
 
     let pre_price = meta_pre.or(candle_pre);
     let post_price = meta_post.or(candle_post);
@@ -355,12 +402,9 @@ pub fn parse_quote_from_chart_at(json: &Value, now_secs: i64) -> Result<Quote, S
         _ => (None, None),
     };
 
-    // Only treat as extended when session is non-regular *and* we have a print that is not
-    // identical noise to the regular mark (allows candle fallback during pre/post).
-    let extended_price = extended_price.filter(|ext| {
-        is_extended_state(market_state.as_deref())
-            && (ext - regular_price).abs() > 1e-6
-    });
+    // Keep the after-hours/pre print even when it equals the regular close (0% move).
+    // Dropping it caused CLOSED/POST rows to reuse regular-session % on both lines.
+    let extended_price = extended_price.filter(|_| is_extended_state(market_state.as_deref()));
 
     let extended_change_percent = extended_change_meta
         .filter(|c| c.is_finite())
@@ -691,6 +735,112 @@ mod tests {
         assert_eq!(q.price, 402.5);
         let chg = q.extended_change_percent.unwrap();
         assert!((chg - 0.625).abs() < 1e-6);
+    }
+
+    #[test]
+    fn closed_post_equal_to_regular_keeps_zero_extended_change() {
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "AAPL",
+                  "regularMarketPrice": 190.0,
+                  "previousClose": 188.0,
+                  "postMarketPrice": 190.0,
+                  "postMarketChangePercent": 0.0,
+                  "marketState": "CLOSED",
+                  "currency": "USD"
+                }
+              }]
+            }
+        });
+        let mut q = parse_quote_from_chart(&v).unwrap();
+        assert_eq!(q.extended_price, Some(190.0));
+        assert_eq!(q.price, 190.0);
+        assert_eq!(q.extended_change_percent, Some(0.0));
+        crate::domain::display::attach_display(&mut q, None);
+        let d = q.display.expect("display");
+        assert_eq!(d.primary.price, Some(190.0));
+        assert_eq!(d.primary.change, Some(0.0));
+        assert_eq!(d.secondary.price, Some(190.0));
+        assert!((d.secondary.change.unwrap() - ((190.0 - 188.0) / 188.0 * 100.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn overnight_closed_uses_prior_session_post_last_print() {
+        // Fri 00:09 ET: currentTradingPeriod is *today*, but 1d bars still hold Thu post.
+        let thu_reg_start = 1_787_232_600i64;
+        let thu_reg_end = 1_787_256_000;
+        let thu_post_end = thu_reg_end + 14_400;
+        let fri_pre_start = 1_787_299_200;
+        let fri_pre_end = 1_787_319_000;
+        let fri_reg_end = 1_787_342_400;
+        let now = 1_787_285_363; // after Thu post, before Fri pre
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "TSLA",
+                  "regularMarketPrice": 345.13,
+                  "previousClose": 351.12,
+                  "currency": "USD",
+                  "currentTradingPeriod": {
+                    "pre": { "start": fri_pre_start, "end": fri_pre_end },
+                    "regular": { "start": fri_pre_end, "end": fri_reg_end },
+                    "post": { "start": fri_reg_end, "end": fri_reg_end + 14_400 }
+                  },
+                  "tradingPeriods": {
+                    "regular": [[{ "start": thu_reg_start, "end": thu_reg_end }]]
+                  }
+                },
+                "timestamp": [thu_reg_end - 60, thu_reg_end + 60, thu_post_end - 60],
+                "indicators": { "quote": [{ "close": [345.13, 345.5, 346.3] }] }
+              }]
+            }
+        });
+        let mut q = parse_quote_from_chart_at(&v, now).unwrap();
+        assert_eq!(q.market_state.as_deref(), Some("closed"));
+        assert_eq!(q.regular_price, Some(345.13));
+        assert_eq!(q.extended_price, Some(346.3));
+        assert_eq!(q.price, 346.3);
+        let chg = q.extended_change_percent.unwrap();
+        assert!((chg - ((346.3 - 345.13) / 345.13 * 100.0)).abs() < 1e-6);
+        crate::domain::display::attach_display(&mut q, None);
+        let d = q.display.expect("display");
+        assert_eq!(d.primary.price, Some(346.3));
+        assert_eq!(d.secondary.price, Some(345.13));
+    }
+
+    #[test]
+    fn overnight_closed_without_historical_periods_uses_last_chart_print() {
+        let thu_reg_end = 1_787_256_000i64;
+        let fri_pre_start = 1_787_299_200;
+        let fri_pre_end = 1_787_319_000;
+        let fri_reg_end = 1_787_342_400;
+        let now = 1_787_285_363;
+        let v: Value = serde_json::json!({
+            "chart": {
+              "result": [{
+                "meta": {
+                  "symbol": "NVDA",
+                  "regularMarketPrice": 216.85,
+                  "previousClose": 217.56,
+                  "currency": "USD",
+                  "currentTradingPeriod": {
+                    "pre": { "start": fri_pre_start, "end": fri_pre_end },
+                    "regular": { "start": fri_pre_end, "end": fri_reg_end },
+                    "post": { "start": fri_reg_end, "end": fri_reg_end + 14_400 }
+                  }
+                },
+                "timestamp": [thu_reg_end - 60, thu_reg_end + 120],
+                "indicators": { "quote": [{ "close": [216.85, 217.05] }] }
+              }]
+            }
+        });
+        let q = parse_quote_from_chart_at(&v, now).unwrap();
+        assert_eq!(q.market_state.as_deref(), Some("closed"));
+        assert_eq!(q.extended_price, Some(217.05));
+        assert_eq!(q.price, 217.05);
     }
 
     #[test]

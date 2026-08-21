@@ -1,5 +1,16 @@
 ﻿# Release notes
 
+## v0.1.53 - 2026-08-21
+
+### Fixed
+
+- CLOSED / overnight no longer copies regular-session % onto both quote rows. Primary is the last after-hours print vs official close (0% when flat).
+- When Yahoo omits `postMarketPrice` and `currentTradingPeriod.post` is the *next* session, the parser uses the last completed post window (or bars after the last regular `end`) so row 1 is not stuck on the close.
+
+### Verification
+
+- `cargo test --lib -- overnight_closed parse::tests display::tests`
+
 ## v0.1.52 - 2026-08-20
 
 ### Fixed

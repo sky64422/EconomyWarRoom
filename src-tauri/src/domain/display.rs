@@ -61,6 +61,17 @@ pub fn resolve_price_rows(q: Option<&Quote>, spark_prev_close: Option<f64>) -> P
         }
     }
 
+    // PRE/POST/CLOSED with no distinct after-hours print: last print is the regular close.
+    if is_extended_session(q.market_state.as_deref()) {
+        return PriceRows {
+            primary: PriceRow {
+                price: Some(regular_price),
+                change: Some(0.0),
+            },
+            secondary,
+        };
+    }
+
     PriceRows {
         primary: PriceRow {
             price: Some(q.price),
@@ -250,6 +261,36 @@ mod tests {
         q.regular_price = Some(200.0);
         let rows = resolve_price_rows(Some(&q), None);
         assert!((rows.primary.change.unwrap() - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn closed_without_extended_print_is_zero_vs_close() {
+        let mut q = quote();
+        q.market_state = Some("closed".into());
+        q.extended_price = None;
+        q.extended_change_percent = None;
+        q.price = 200.0;
+        q.change_percent = Some(5.263);
+        let rows = resolve_price_rows(Some(&q), None);
+        assert_eq!(rows.primary.price, Some(200.0));
+        assert_eq!(rows.primary.change, Some(0.0));
+        assert_eq!(rows.secondary.price, Some(200.0));
+        assert!((rows.secondary.change.unwrap() - 5.263).abs() < 1e-9);
+    }
+
+    #[test]
+    fn closed_flat_after_hours_shows_zero_on_primary() {
+        let mut q = quote();
+        q.market_state = Some("closed".into());
+        q.extended_price = Some(200.0);
+        q.extended_change_percent = Some(0.0);
+        q.price = 200.0;
+        q.change_percent = Some(0.0);
+        let rows = resolve_price_rows(Some(&q), None);
+        assert_eq!(rows.primary.price, Some(200.0));
+        assert_eq!(rows.primary.change, Some(0.0));
+        assert_eq!(rows.secondary.price, Some(200.0));
+        assert!((rows.secondary.change.unwrap() - 5.263).abs() < 1e-9);
     }
 
     #[test]
