@@ -308,7 +308,9 @@ pub async fn search_symbols(
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<SymbolSuggestion>, String> {
-    let limit = limit.unwrap_or(8).clamp(1, 20);
+    let limit = limit
+        .unwrap_or(crate::domain::constants::SearchPolicy::LIMIT_DEFAULT)
+        .clamp(1, crate::domain::constants::SearchPolicy::LIMIT_MAX);
     let q = query.trim();
     if q.is_empty() {
         return Ok(vec![]);

@@ -13,7 +13,11 @@ import {
 import { applyPanelOpacity, mountSettingsPanel } from "./settings-panel";
 import { mountWatchlist } from "./watchlist";
 import type { PersistedState, Quote, Sparkline } from "./types";
-import { DEFAULT_COLUMN_RATIOS } from "./types";
+import {
+  DEFAULT_COLUMN_RATIOS,
+  OPACITY_DEFAULT,
+  QUOTE_REFRESH_MS_DEFAULT,
+} from "./types";
 
 export async function mountApp(root: HTMLElement): Promise<void> {
   root.innerHTML = `
@@ -40,10 +44,12 @@ export async function mountApp(root: HTMLElement): Promise<void> {
   } catch (err) {
     console.warn("getVersion failed", err);
   }
-  const opacity = state.settings.opacity ?? 0.92;
+  const opacity = state.settings.opacity ?? OPACITY_DEFAULT;
   // Stored as ms (legacy 1..=120 = whole seconds, normalized on Rust load).
   const quoteRefreshMs =
-    state.settings.quote_refresh_ms ?? state.settings.quote_refresh_secs ?? 500;
+    state.settings.quote_refresh_ms ??
+    state.settings.quote_refresh_secs ??
+    QUOTE_REFRESH_MS_DEFAULT;
   const autostart = state.settings.autostart ?? true;
 
   applyPanelOpacity(panel, opacity);

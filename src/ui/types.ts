@@ -96,6 +96,11 @@ export const DEFAULT_COLUMN_RATIOS: ColumnRatios = {
   metrics: 2.0,
 };
 
+/** Mirrors Rust `OpacityPolicy::DEFAULT`. */
+export const OPACITY_DEFAULT = 0.92;
+/** Mirrors Rust `RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT`. */
+export const QUOTE_REFRESH_MS_DEFAULT = 500;
+
 export interface AppSettings {
   opacity: number;
   window: WindowGeometry;

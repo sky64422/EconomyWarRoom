@@ -14,10 +14,6 @@ impl RefreshPolicy {
     pub const QUOTE_REFRESH_MS_MIN: u64 = 250;
     pub const QUOTE_REFRESH_MS_MAX: u64 = 120_000;
     pub const QUOTE_REFRESH_MS_DEFAULT: u64 = 500;
-    /// @deprecated name — use QUOTE_REFRESH_MS_*; kept for call-site clarity.
-    pub const QUOTE_REFRESH_SECS_MIN: u64 = 250;
-    pub const QUOTE_REFRESH_SECS_MAX: u64 = 120_000;
-    pub const QUOTE_REFRESH_SECS_DEFAULT: u64 = 500;
     pub const MAX_CONCURRENT: usize = 3;
     pub const SPARKLINE_MIN_INTERVAL: Duration = Duration::from_secs(300);
     pub const BACKOFF_INITIAL: Duration = Duration::from_secs(5);
@@ -70,6 +66,14 @@ impl WindowPolicy {
     /// Absolute floor: header + padding + Add card (content-hug chrome).
     /// Runtime also sets min size from live panel height so rows cannot be clipped.
     pub const MIN_HEIGHT: f64 = 120.0;
+}
+
+/// Symbol search autocomplete.
+pub struct SearchPolicy;
+
+impl SearchPolicy {
+    pub const LIMIT_DEFAULT: usize = 8;
+    pub const LIMIT_MAX: usize = 20;
 }
 
 /// Global hotkey defaults.
