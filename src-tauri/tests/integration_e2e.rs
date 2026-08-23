@@ -110,7 +110,7 @@ async fn e2e_watchlist_persist_and_scheduler_refresh() {
     core.set_opacity(0.8).unwrap();
 
     // Reload from disk (simulate process restart)
-    let reloaded = load_state(dir.path());
+    let reloaded = load_state(dir.path()).unwrap();
     assert_eq!(reloaded.watchlist.len(), 2);
     assert!(reloaded.watchlist.iter().any(|i| i.symbol == "NVDA"));
     assert!(!reloaded.watchlist.iter().any(|i| i.symbol == "BTC-USD"));
@@ -262,7 +262,7 @@ fn e2e_default_state_save_load_seed() {
     let dir = tempdir().unwrap();
     let state = default_state();
     save_state(dir.path(), &state).unwrap();
-    let loaded = load_state(dir.path());
+    let loaded = load_state(dir.path()).unwrap();
     assert_eq!(loaded.watchlist.len(), 2);
     assert_eq!(loaded.watchlist[0].symbol, "AAPL");
     assert_eq!(loaded.watchlist[1].symbol, "BTC-USD");

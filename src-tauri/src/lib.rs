@@ -11,7 +11,7 @@ use application::diagnostics::DiagLevel;
 use application::scheduler::QuoteScheduler;
 use domain::constants::{HotkeyPolicy, RefreshPolicy};
 use domain::watchlist;
-use infrastructure::store::{load_state, save_state};
+use infrastructure::store::{default_state, load_state, save_state};
 use infrastructure::updater;
 use infrastructure::window_ctl;
 use infrastructure::yahoo::YahooProvider;
@@ -45,8 +45,16 @@ pub fn run() {
             // --- app data dir + persisted state ---
             let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
             std::fs::create_dir_all(&app_data_dir).map_err(|e| e.to_string())?;
-            let persisted = load_state(&app_data_dir);
-            // Ensure a valid file exists on first run.
+            let mut load_err: Option<String> = None;
+            let persisted = match load_state(&app_data_dir) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("load_state: {e}");
+                    load_err = Some(e);
+                    default_state()
+                }
+            };
+            // First run, or after a corrupt file was moved aside.
             let initial_save_err = save_state(&app_data_dir, &persisted).err();
 
             // --- market data + scheduler ---
@@ -60,6 +68,11 @@ pub fn run() {
             handle_state
                 .core
                 .note(DiagLevel::Info, "app setup starting");
+            if let Some(e) = load_err {
+                handle_state
+                    .core
+                    .note(DiagLevel::Error, format!("load_state: {e}"));
+            }
             if let Some(e) = initial_save_err {
                 eprintln!("initial save_state: {e}");
                 handle_state

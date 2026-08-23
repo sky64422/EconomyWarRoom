@@ -47,11 +47,44 @@ pub fn state_path(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("economy-war-room-state.json")
 }
 
-pub fn load_state(app_data_dir: &Path) -> PersistedState {
+fn corrupt_backup_path(path: &Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "economy-war-room-state.json".into());
+    path.with_file_name(format!("{name}.corrupt"))
+}
+
+fn sanitize_state(mut state: PersistedState) -> PersistedState {
+    state.settings.opacity = clamp_opacity(state.settings.opacity);
+    state.settings.quote_refresh_ms = clamp_quote_refresh_ms(state.settings.quote_refresh_ms);
+    state.settings.column_ratios = clamp_column_ratios(state.settings.column_ratios);
+    state
+}
+
+/// Load persisted state.
+///
+/// Missing file is a first run → `Ok(default_state())`.
+/// Unreadable or invalid JSON is **not** treated as defaults: the file is moved
+/// aside to `*.json.corrupt` and this returns `Err`.
+pub fn load_state(app_data_dir: &Path) -> Result<PersistedState, String> {
     let path = state_path(app_data_dir);
     match std::fs::read_to_string(&path) {
-        Ok(s) => serde_json::from_str(&s).unwrap_or_else(|_| default_state()),
-        Err(_) => default_state(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(default_state()),
+        Err(e) => Err(format!("read {}: {e}", path.display())),
+        Ok(s) => match serde_json::from_str::<PersistedState>(&s) {
+            Ok(state) => Ok(sanitize_state(state)),
+            Err(e) => {
+                let bak = corrupt_backup_path(&path);
+                std::fs::rename(&path, &bak).map_err(|re| {
+                    format!("corrupt state ({e}); also failed to move aside: {re}")
+                })?;
+                Err(format!(
+                    "corrupt state JSON ({e}); moved to {}",
+                    bak.display()
+                ))
+            }
+        },
     }
 }
 
@@ -77,7 +110,7 @@ mod tests {
         let mut state = default_state();
         state.settings.opacity = 0.77;
         save_state(dir.path(), &state).unwrap();
-        let loaded = load_state(dir.path());
+        let loaded = load_state(dir.path()).unwrap();
         assert!((loaded.settings.opacity - 0.77).abs() < 1e-9);
         assert_eq!(loaded.watchlist.len(), 2);
     }
@@ -85,18 +118,20 @@ mod tests {
     #[test]
     fn load_missing_file_returns_defaults() {
         let dir = tempdir().unwrap();
-        let loaded = load_state(dir.path());
+        let loaded = load_state(dir.path()).unwrap();
         assert_eq!(loaded.watchlist.len(), 2);
         assert!(loaded.settings.autostart);
     }
 
     #[test]
-    fn load_corrupt_json_falls_back_to_defaults() {
+    fn load_corrupt_json_is_err_and_keeps_backup() {
         let dir = tempdir().unwrap();
         let path = state_path(dir.path());
         std::fs::write(&path, "{not-json").unwrap();
-        let loaded = load_state(dir.path());
-        assert_eq!(loaded.watchlist[0].symbol, "AAPL");
+        let err = load_state(dir.path()).unwrap_err();
+        assert!(err.contains("corrupt"), "{err}");
+        assert!(!path.exists());
+        assert!(corrupt_backup_path(&path).exists());
     }
 
     #[test]
@@ -111,7 +146,7 @@ mod tests {
         settings.remove("column_ratios");
         obj.insert("settings".into(), serde_json::Value::Object(settings));
         std::fs::write(&path, serde_json::to_string(&obj).unwrap()).unwrap();
-        let loaded = load_state(dir.path());
+        let loaded = load_state(dir.path()).unwrap();
         assert_eq!(loaded.settings.column_ratios, ColumnRatios::default());
     }
 
@@ -126,7 +161,7 @@ mod tests {
         settings.remove("quote_refresh_secs");
         obj.insert("settings".into(), serde_json::Value::Object(settings));
         std::fs::write(&path, serde_json::to_string(&obj).unwrap()).unwrap();
-        let loaded = load_state(dir.path());
+        let loaded = load_state(dir.path()).unwrap();
         assert_eq!(
             loaded.settings.quote_refresh_ms,
             RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT
@@ -139,7 +174,7 @@ mod tests {
         let mut state = default_state();
         state.settings.opacity = 0.01;
         save_state(dir.path(), &state).unwrap();
-        let loaded = load_state(dir.path());
+        let loaded = load_state(dir.path()).unwrap();
         assert!((loaded.settings.opacity - OpacityPolicy::MIN).abs() < 1e-9);
     }
 

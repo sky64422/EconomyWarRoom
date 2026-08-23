@@ -144,8 +144,8 @@ async fn risk_duplicate_and_empty_symbol_rejected() {
 fn risk_corrupt_state_file_does_not_panic() {
     let dir = tempdir().unwrap();
     std::fs::write(state_path(dir.path()), "{{{{").unwrap();
-    let s = load_state(dir.path());
-    assert!(!s.watchlist.is_empty());
+    let err = load_state(dir.path()).unwrap_err();
+    assert!(err.contains("corrupt"), "{err}");
 }
 
 #[test]
