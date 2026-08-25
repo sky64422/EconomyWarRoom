@@ -1,5 +1,17 @@
 ﻿# Release notes
 
+## v0.1.54 - 2026-08-25
+
+### Fixed
+
+- LIVE secondary % no longer keeps the previous session’s move after T-1 rolls. A widget left running overnight (TSLA-shaped: Monday close 348.95 with Friday’s +5.14%) now shows yesterday vs T-2.
+- Daily prior-close derivation treats a last bar that *is* `previous_close` as T-1 (overnight / PRE, no incomplete today bar) without mistaking a flat LIVE print for yesterday.
+
+### Verification
+
+- `cargo test --lib -- prior_day_percent_invalidates derive_prior_close_last_bar`
+- `npm test`
+
 ## v0.1.53 - 2026-08-21
 
 ### Fixed

@@ -273,6 +273,14 @@ fn daily_closes_from_chart(json: &Value) -> Vec<f64> {
         .collect()
 }
 
+pub(crate) fn closes_near(a: f64, b: f64) -> bool {
+    if !a.is_finite() || !b.is_finite() || b == 0.0 {
+        return false;
+    }
+    let tol = (b.abs() * 0.005).max(0.01);
+    (a - b).abs() <= tol
+}
+
 /// Pick the session close immediately before `previous_close` from daily bars.
 ///
 /// Crypto chart meta often omits `regularMarketPreviousClose`. Daily bars from
@@ -284,11 +292,18 @@ pub fn derive_prior_close(daily_closes: &[f64], previous_close: Option<f64>) -> 
     }
 
     if let Some(pc) = previous_close.filter(|p| p.is_finite() && *p != 0.0) {
-        let tol = (pc.abs() * 0.005).max(0.01);
-        // Last bar is usually incomplete "today" — never treat it as yesterday.
-        let last_search = n.saturating_sub(1).max(1);
-        for i in (1..last_search).rev() {
-            if (daily_closes[i] - pc).abs() <= tol {
+        let last = n - 1;
+        if closes_near(daily_closes[last], pc) {
+            // LIVE flat: last ≈ T-1 and the previous bar *is* T-1 → last is today.
+            if n >= 3 && closes_near(daily_closes[last - 1], pc) {
+                return Some(daily_closes[last - 2]);
+            }
+            // Overnight / PRE: last bar *is* T-1 (no incomplete today yet).
+            return Some(daily_closes[last - 1]);
+        }
+        // Last bar is incomplete "today" and not near T-1 — don't treat it as yesterday.
+        for i in (1..last).rev() {
+            if closes_near(daily_closes[i], pc) {
                 return Some(daily_closes[i - 1]);
             }
         }
@@ -303,10 +318,7 @@ pub fn derive_prior_close(daily_closes: &[f64], previous_close: Option<f64>) -> 
 
 fn prior_looks_like_previous_close(quote: &Quote) -> bool {
     match (quote.prior_close, quote.previous_close) {
-        (Some(prior), Some(pc)) if pc.is_finite() && pc != 0.0 => {
-            let tol = (pc.abs() * 0.005).max(0.01);
-            (prior - pc).abs() <= tol
-        }
+        (Some(prior), Some(pc)) => closes_near(prior, pc),
         _ => false,
     }
 }
@@ -1309,6 +1321,18 @@ mod tests {
         assert_eq!(derive_prior_close(&closes, None), Some(100.0));
         assert_eq!(derive_prior_close(&[50.0, 55.0], None), Some(50.0));
         assert!(derive_prior_close(&[50.0], Some(50.0)).is_none());
+    }
+
+    #[test]
+    fn derive_prior_close_last_bar_is_t1_when_it_matches_previous_close() {
+        // Overnight / PRE: 5d has no incomplete "today" bar; last close IS yesterday.
+        // TSLA 2026-08-25 PRE: Mon 348.95, Fri 362.86 (+5.14% was Friday, not Monday).
+        let closes = vec![351.12, 345.13, 362.86, 348.95];
+        let prior = derive_prior_close(&closes, Some(348.95)).unwrap();
+        assert!(
+            (prior - 362.86).abs() < 1e-6,
+            "T-2 should be Friday 362.86, got {prior}"
+        );
     }
 
     #[test]

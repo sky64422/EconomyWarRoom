@@ -1,5 +1,5 @@
 use super::parse::{
-    enrich_quote_prior_from_daily, parse_quote_from_chart, parse_search_results,
+    closes_near, enrich_quote_prior_from_daily, parse_quote_from_chart, parse_search_results,
     parse_sparkline_from_chart,
 };
 use crate::domain::constants::RefreshPolicy;
@@ -16,7 +16,15 @@ const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (
 const DEFAULT_BASE: &str = "https://query1.finance.yahoo.com";
 
 /// Cached prior-close enrichment so we avoid a second daily chart call every tick.
-type PriorCache = Arc<Mutex<HashMap<String, (f64, Option<f64>)>>>;
+/// Keyed by symbol; `previous_close` must still match or the session has rolled.
+#[derive(Clone, Copy)]
+struct CachedPrior {
+    previous_close: f64,
+    prior_close: f64,
+    previous_day_change_percent: Option<f64>,
+}
+
+type PriorCache = Arc<Mutex<HashMap<String, CachedPrior>>>;
 
 pub struct YahooProvider {
     client: reqwest::Client,
@@ -92,44 +100,53 @@ impl YahooProvider {
 
         let prior_is_t1 = matches!(
             (quote.prior_close, quote.previous_close),
-            (Some(prior), Some(pc)) if pc.is_finite() && pc != 0.0 && {
-                let tol = (pc.abs() * 0.005).max(0.01);
-                (prior - pc).abs() <= tol
-            }
+            (Some(prior), Some(pc)) if closes_near(prior, pc)
         );
         if quote.prior_close.is_none()
             || quote.previous_day_change_percent.is_none()
             || prior_is_t1
         {
             // Session cache first — skips a second HTTP for crypto / thin meta.
-            let cached = prior_cache
-                .lock()
-                .ok()
-                .and_then(|g| g.get(sym).copied());
-            if let Some((prior, pct)) = cached {
+            // Drop the hit when T-1 rolled (same symbol, new previous_close).
+            let cached = prior_cache.lock().ok().and_then(|g| {
+                let c = g.get(sym).copied()?;
+                quote.previous_close.filter(|pc| closes_near(c.previous_close, *pc))?;
+                Some(c)
+            });
+            if let Some(cached) = cached {
                 if quote.prior_close.is_none() {
-                    quote.prior_close = Some(prior);
+                    quote.prior_close = Some(cached.prior_close);
                 }
                 if quote.previous_day_change_percent.is_none() {
-                    quote.previous_day_change_percent = pct;
+                    quote.previous_day_change_percent = cached.previous_day_change_percent;
                 }
             } else if let Ok(daily) =
                 Self::chart_json_with(client, base_url, sym, "5d", "1d").await
             {
                 enrich_quote_prior_from_daily(&mut quote, &daily);
-                if let Some(prior) = quote.prior_close {
-                    if let Ok(mut g) = prior_cache.lock() {
-                        g.insert(sym.to_string(), (prior, quote.previous_day_change_percent));
-                    }
-                }
+                Self::remember_prior(prior_cache, sym, &quote);
             }
-        } else if let Some(prior) = quote.prior_close {
-            if let Ok(mut g) = prior_cache.lock() {
-                g.insert(sym.to_string(), (prior, quote.previous_day_change_percent));
-            }
+        } else {
+            Self::remember_prior(prior_cache, sym, &quote);
         }
 
         Ok(quote)
+    }
+
+    fn remember_prior(prior_cache: &PriorCache, sym: &str, quote: &Quote) {
+        let (Some(prior), Some(pc)) = (quote.prior_close, quote.previous_close) else {
+            return;
+        };
+        if let Ok(mut g) = prior_cache.lock() {
+            g.insert(
+                sym.to_string(),
+                CachedPrior {
+                    previous_close: pc,
+                    prior_close: prior,
+                    previous_day_change_percent: quote.previous_day_change_percent,
+                },
+            );
+        }
     }
 
     /// Yahoo symbol lookup (`/v1/finance/search`) — used for add-flow autocomplete.
@@ -482,5 +499,109 @@ mod tests {
     #[test]
     fn new_builds_default_client() {
         assert!(YahooProvider::new().is_ok());
+    }
+
+    fn quote_chart(symbol: &str, price: f64, previous_close: f64) -> String {
+        format!(
+            r#"{{
+              "chart": {{
+                "result": [{{
+                  "meta": {{
+                    "currency": "USD",
+                    "symbol": "{symbol}",
+                    "regularMarketPrice": {price},
+                    "previousClose": {previous_close},
+                    "marketState": "REGULAR"
+                  }},
+                  "timestamp": [1],
+                  "indicators": {{ "quote": [{{ "close": [{price}] }}] }}
+                }}],
+                "error": null
+              }}
+            }}"#
+        )
+    }
+
+    fn daily_chart(closes: &str) -> String {
+        format!(
+            r#"{{
+              "chart": {{
+                "result": [{{
+                  "meta": {{ "symbol": "TSLA", "currency": "USD" }},
+                  "indicators": {{ "quote": [{{ "close": {closes} }}] }}
+                }}],
+                "error": null
+              }}
+            }}"#
+        )
+    }
+
+    #[tokio::test]
+    async fn prior_day_percent_invalidates_when_previous_close_rolls() {
+        // Widget left running overnight: Monday LIVE cached Friday's +5.14%.
+        // Tuesday LIVE must not keep that % next to Monday's 348.95 close.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v8/finance/chart/TSLA"))
+            .and(query_param("range", "1d"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(quote_chart("TSLA", 350.0, 362.86)),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/v8/finance/chart/TSLA"))
+            .and(query_param("range", "1d"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(quote_chart("TSLA", 351.30, 348.95)),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/v8/finance/chart/TSLA"))
+            .and(query_param("range", "5d"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(daily_chart(
+                    "[351.12, 345.13, 362.86, 350.0]",
+                )),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/v8/finance/chart/TSLA"))
+            .and(query_param("range", "5d"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(daily_chart(
+                    "[351.12, 345.13, 362.86, 348.95, 351.30]",
+                )),
+            )
+            .mount(&server)
+            .await;
+
+        let provider = YahooProvider::with_base_url(server.uri()).unwrap();
+        let monday = provider
+            .fetch_quotes(&[String::from("TSLA")])
+            .await
+            .unwrap();
+        let fri_pct = monday[0].previous_day_change_percent.unwrap();
+        assert!(
+            (fri_pct - 5.137).abs() < 0.02,
+            "Monday vs Friday should be ~+5.14%, got {fri_pct}"
+        );
+
+        let tuesday = provider
+            .fetch_quotes(&[String::from("TSLA")])
+            .await
+            .unwrap();
+        assert!((tuesday[0].previous_close.unwrap() - 348.95).abs() < 1e-9);
+        let mon_pct = tuesday[0].previous_day_change_percent.unwrap();
+        assert!(
+            (mon_pct + 3.833).abs() < 0.02,
+            "LIVE secondary must be Monday vs Friday (~-3.83%), got {mon_pct}"
+        );
     }
 }
