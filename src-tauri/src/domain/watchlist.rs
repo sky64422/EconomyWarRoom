@@ -176,7 +176,7 @@ mod tests {
         let mut items = vec![];
         let a = add_item(&mut items, "A", AssetKind::Equity, None).unwrap();
         let b = add_item(&mut items, "B", AssetKind::Equity, None).unwrap();
-        assert!(reorder(&mut items, &[a.id.clone()]).is_err());
+        assert!(reorder(&mut items, std::slice::from_ref(&a.id)).is_err());
         assert_eq!(items.len(), 2);
         assert!(reorder(&mut items, &[a.id.clone(), "x".into()]).is_err());
         assert_eq!(items.len(), 2);

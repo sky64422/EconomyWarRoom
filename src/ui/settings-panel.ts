@@ -1,441 +1,111 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import {
-  checkForUpdates,
-  formatUpdateError,
-  type DownloadProgress,
-  type UpdateInfo,
-  type UpdatePhase,
-} from "./updates";
-
+import { mountSettingsPanel as mountGeneralPanel } from "./general-settings";
+import { mountWatchlist } from "./watchlist";
+import { opacityToPct, pctToOpacity } from "./opacity";
+import { OPACITY_DEFAULT } from "./types";
+import type { AppSettings, AppTheme, PersistedState } from "./types";
 export { applyPanelOpacity } from "./opacity";
 
-export interface SettingsPanelController {
-  setQuoteRefreshMs: (ms: number) => void;
-  setAutostart: (enabled: boolean) => void;
-  show: () => void;
-  hide: () => void;
-  isVisible: () => boolean;
-  destroy: () => void;
-}
-
-export interface SettingsPanelOptions {
-  /** Esc / close request from inside the dialog (S3). */
-  onCloseRequest?: () => void;
-}
-
-function focusableIn(container: HTMLElement): HTMLElement[] {
-  const sel =
-    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-  return Array.from(container.querySelectorAll<HTMLElement>(sel)).filter(
-    (el) => !el.hasAttribute("disabled") && el.offsetParent !== null,
-  );
-}
-
-/** Price refresh presets in milliseconds (matches Rust clamp / storage). */
-const REFRESH_PRESETS = [250, 1000, 10_000, 60_000] as const;
-
-const ICON_DOWNLOAD = `<svg class="icon-svg" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false"><path d="M8 2.5v7.5M5 7.25 8 10.25 11 7.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
-
-function nearestRefreshPreset(ms: number): number {
-  return REFRESH_PRESETS.reduce((best, p) =>
-    Math.abs(p - ms) < Math.abs(best - ms) ? p : best,
-  );
-}
-
-export function mountSettingsPanel(
-  root: HTMLElement,
-  initial: {
-    quoteRefreshMs: number;
-    autostart: boolean;
-    appVersion: string;
-  },
-  options: SettingsPanelOptions = {},
-): SettingsPanelController {
-  // Snap legacy/custom intervals onto the compact preset row for chip UI.
-  let quoteRefreshMs = nearestRefreshPreset(initial.quoteRefreshMs);
-  let autostart = initial.autostart;
-  const appVersion = initial.appVersion.trim() || "unknown";
-  let visible = false;
-  let updatePhase: UpdatePhase = "idle";
-  let updateVersion: string | null = null;
-  let updateHint = "";
-  let updateBusy = false;
-
-  root.classList.add("settings-panel", "hidden");
-  root.setAttribute("role", "dialog");
-  root.setAttribute("aria-modal", "true");
-  root.setAttribute("aria-label", "Settings");
-
-  function render(): void {
-    root.innerHTML = `
-      <div class="settings-section">
-        <div class="settings-label">Refresh</div>
-        <div class="segmented refresh-segmented" role="group" aria-label="Refresh interval">
-          ${REFRESH_PRESETS.map(
-            (s) => `
-            <button type="button" data-refresh="${s}" class="${s === quoteRefreshMs ? "active" : ""}" aria-pressed="${s === quoteRefreshMs ? "true" : "false"}">${formatRefresh(s)}</button>
-          `,
-          ).join("")}
-        </div>
-      </div>
-      <div class="settings-section">
-        <label class="settings-toggle" for="autostart-toggle">
-          <span class="settings-toggle-title">Launch at login</span>
-          <input type="checkbox" id="autostart-toggle" ${autostart ? "checked" : ""} />
-          <span class="settings-switch" aria-hidden="true"></span>
-        </label>
-      </div>
-      <div class="settings-update">
-        <span class="settings-update-title">Version</span>
-        <div class="settings-update-copy">
-          <span class="settings-meta">v${escapeHtml(appVersion)}</span>
-          <span class="settings-update-status" id="update-status"></span>
-          <button type="button" class="icon-btn settings-update-btn" id="btn-check-update" aria-label="Check for updates" title="Check for updates">${ICON_DOWNLOAD}</button>
-        </div>
-      </div>
-      <div class="settings-action-row">
-        <button type="button" class="settings-debug" id="btn-diag" title="Copy diagnostic log for troubleshooting">Copy Log</button>
-        <button type="button" class="settings-quit" id="btn-quit">Quit</button>
-      </div>
-      <div class="settings-live" id="settings-live" role="status" aria-live="polite" aria-atomic="true"></div>
-    `;
-
-    const liveRegion = root.querySelector("#settings-live") as HTMLElement | null;
-
-    root.querySelectorAll<HTMLButtonElement>("[data-refresh]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const ms = Number(btn.dataset.refresh);
-        if (!Number.isFinite(ms)) return;
-        void applyQuoteRefresh(ms);
-      });
-    });
-
-    const autostartToggle = root.querySelector(
-      "#autostart-toggle",
-    ) as HTMLInputElement;
-    autostartToggle.addEventListener("change", () => {
-      void applyAutostart(autostartToggle.checked);
-    });
-
-    root.querySelector("#btn-diag")!.addEventListener("click", () => {
-      void copyDiagnostics(
-        root.querySelector("#btn-diag") as HTMLButtonElement,
-        liveRegion,
-      );
-    });
-
-    root.querySelector("#btn-quit")!.addEventListener("click", () => {
-      void invoke("quit_app");
-    });
-
-    const updateBtn = root.querySelector("#btn-check-update") as HTMLButtonElement;
-    updateBtn.addEventListener("click", () => {
-      void runUpdateAction(updateBtn);
-    });
-    paintUpdateUi();
+type Tab = "appearance" | "symbols" | "general";
+const TABS: [Tab,string][] = [["appearance","모양"],["symbols","종목"],["general","일반"]];
+const TAB_ICONS: Record<Tab,string> = {
+  appearance:'<path d="M2 5h3m3 0h6M2 11h6m3 0h3"/><circle cx="6.5" cy="5" r="1.5"/><circle cx="9.5" cy="11" r="1.5"/>',
+  symbols:'<path d="M3 3h10v10H3zM3 6.5h10M6.5 6.5V13"/>',
+  general:'<circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v1.8m0 9.4v1.8m6.5-6.5h-1.8m-9.4 0H1.5m11.1-4.6-1.3 1.3m-6.6 6.6-1.3 1.3m9.2 0-1.3-1.3m-6.6-6.6-1.3-1.3"/>',
+};
+const FALLBACK_HEIGHT = 440;
+const MAX_HEIGHT = 560;
+const PREFS = [["always_show_notch","노치 항상 표시"],["hover_detail","마우스 올릴 때 상세 열기"],["show_animation","모션 효과"]] as const;
+const THEMES: [AppTheme,string][] = [["dark","다크"],["glass","글라스"],["liquid","리퀴드"]];
+export function mountSettingsPanel(root: HTMLElement, initial: PersistedState, handlers: {
+  appearance: (settings: AppSettings) => void; openDetail: (id:string) => void;
+  close: () => void; resize: () => void; fail: (e: unknown) => void;
+}, appVersion: string) {
+  const settings = initial.settings;
+  let lastHeight = FALLBACK_HEIGHT;
+  root.classList.add("settings-root");
+  root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');root.setAttribute('aria-label','설정');
+  root.innerHTML = `<header class="settings-heading"><strong>설정</strong><button class="icon-btn" id="settings-close" aria-label="설정 닫기">×</button></header>
+    <div class="settings-tabs" role="tablist" aria-label="설정">${TABS.map(([key,label])=>`<button type="button" role="tab" id="tab-btn-${key}" aria-controls="tab-panel-${key}" data-tab="${key}"><svg class="tab-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICONS[key]}</svg><span>${label}</span></button>`).join('')}</div>
+    <div class="settings-scroll">${TABS.map(([key])=>`<section role="tabpanel" id="tab-panel-${key}" aria-labelledby="tab-btn-${key}" class="settings-tab-panel"></section>`).join('')}</div>`;
+  const panel = (tab:Tab) => root.querySelector<HTMLElement>(`#tab-panel-${tab}`)!;
+  const appearance = panel("appearance");
+  appearance.innerHTML = `<div class="settings-section"><span class="settings-label">테마</span><div class="settings-theme-picker" role="group" aria-label="테마">${THEMES.map(([key,label])=>`<button type="button" class="settings-theme-option" data-theme-option="${key}" aria-pressed="false"><span class="theme-swatch theme-swatch-${key}"></span>${label}</button>`).join('')}</div></div>
+    <div class="settings-section"><label class="settings-label" for="appearance-opacity">불투명도</label><div class="opacity-setting"><div class="opacity-meter"><span class="opacity-meter-fill" aria-hidden="true"></span><input id="appearance-opacity" type="range" min="0" max="100" step="5"/></div><output id="appearance-opacity-value"></output></div></div>
+    <div class="settings-section"><span class="settings-label">화면 표시</span><div class="settings-group">${PREFS.map(([key,label])=>`<label class="settings-toggle"><span class="settings-toggle-title">${label}</span><input type="checkbox" data-pref="${key}"/><span class="settings-switch" aria-hidden="true"></span></label>`).join('')}</div></div>`;
+  function paintAppearance() {
+    appearance.querySelectorAll<HTMLButtonElement>("[data-theme-option]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.themeOption===(settings.theme ?? 'dark'))));
+    for (const [key] of PREFS) appearance.querySelector<HTMLInputElement>(`[data-pref="${key}"]`)!.checked=settings[key] ?? key==='show_animation';
+    const percent=opacityToPct(settings.opacity ?? OPACITY_DEFAULT);
+    appearance.querySelector<HTMLInputElement>("#appearance-opacity")!.value=String(percent);
+    appearance.querySelector<HTMLElement>('.opacity-setting')!.style.setProperty('--opacity-value',percent+'%');
+    appearance.querySelector("output")!.textContent=percent+'%';
   }
-
-  function paintUpdateUi(): void {
-    const btn = root.querySelector<HTMLButtonElement>("#btn-check-update");
-    const status = root.querySelector<HTMLElement>("#update-status");
-    if (!btn || !status) return;
-
-    btn.disabled = updateBusy;
-    btn.classList.toggle("busy", updateBusy);
-    btn.classList.toggle("update-available", updatePhase !== "idle");
-    btn.classList.toggle("update-downloading", updatePhase === "downloading");
-    btn.classList.toggle("update-ready", updatePhase === "ready");
-
-    let title = "Check for updates";
-    if (updatePhase === "ready" && updateVersion) {
-      title = `Restart to install ${updateVersion}`;
-      status.textContent = updateHint || `Update ${updateVersion} is ready`;
-    } else if (updatePhase === "downloading" && updateVersion) {
-      title = updateHint || `Downloading ${updateVersion}…`;
-      status.textContent = title;
-    } else if (updateBusy) {
-      title = "Checking for updates…";
-      status.textContent = updateHint || title;
-    } else {
-      status.textContent = updateHint;
-    }
-    btn.setAttribute("title", title);
-    btn.setAttribute("aria-label", title);
+  async function save(action:()=>Promise<void>) {
+    const controls=appearance.querySelectorAll<HTMLInputElement|HTMLButtonElement>("input,button");
+    if (appearance.getAttribute('aria-busy')==='true') return;
+    controls.forEach(b=>b.disabled=true); appearance.setAttribute('aria-busy','true');
+    delete appearance.dataset.saveState;
+    try { await action(); }
+    catch(e) { appearance.dataset.saveState='restored';console.error('Settings save failed',e); }
+    finally { controls.forEach(b=>b.disabled=false); appearance.setAttribute('aria-busy','false'); paintAppearance(); handlers.appearance(settings); handlers.resize(); }
   }
-
-  async function runUpdateAction(btn: HTMLButtonElement): Promise<void> {
-    const phaseAtClick = updatePhase;
-    const version = updateVersion;
-
-    if (phaseAtClick === "downloading") {
-      updateHint = "Still downloading…";
-      paintUpdateUi();
-      return;
-    }
-
-    updateBusy = true;
-    if (phaseAtClick === "ready") {
-      updateHint = version ? `Restarting to install ${version}…` : "Restarting…";
-    } else {
-      updateHint = "Checking for updates…";
-    }
-    paintUpdateUi();
-
-    try {
-      const hasUpdate = await checkForUpdates();
-      if (hasUpdate) {
-        updateBusy = false;
-        if (updatePhase === "idle") updatePhase = "downloading";
-        updateHint = "Update found — downloading…";
-        paintUpdateUi();
-        return;
-      }
-      updatePhase = "idle";
-      updateVersion = null;
-      updateBusy = false;
-      updateHint = "Already up to date";
-      paintUpdateUi();
-      window.setTimeout(() => {
-        if (updatePhase !== "idle") return;
-        updateHint = "";
-        paintUpdateUi();
-      }, 2500);
-    } catch (err) {
-      console.error("check_for_updates failed", err);
-      updateBusy = false;
-      updateHint = formatUpdateError(err).slice(0, 120);
-      if (phaseAtClick === "ready" && version) {
-        updatePhase = "ready";
-        updateVersion = version;
-      }
-      paintUpdateUi();
-      window.setTimeout(() => {
-        if (!btn.isConnected) return;
-        if (updatePhase === "ready") {
-          updateHint = "";
-        } else {
-          updateHint = "";
-        }
-        paintUpdateUi();
-      }, 4000);
-    }
-  }
-
-  async function applyQuoteRefresh(ms: number): Promise<void> {
-    quoteRefreshMs = nearestRefreshPreset(ms);
-    render();
-    try {
-      const applied = await invoke<number>("set_quote_refresh_ms", {
-        ms: quoteRefreshMs,
-      });
-      quoteRefreshMs = nearestRefreshPreset(applied);
-      if (visible) render();
-    } catch (err) {
-      console.error("set_quote_refresh_ms failed", err);
-    }
-  }
-
-  async function applyAutostart(enabled: boolean): Promise<void> {
-    const previous = autostart;
-    autostart = enabled;
-    try {
-      await invoke("set_autostart", { enabled });
-    } catch (err) {
-      console.error("set_autostart failed", err);
-      autostart = previous;
-      if (visible) render();
-    }
-  }
-
-  async function copyDiagnostics(
-    btn: HTMLButtonElement,
-    liveRegion: HTMLElement | null,
-  ): Promise<void> {
-    const original = "Copy Log";
-    try {
-      const text = await invoke<string>("get_diagnostics");
-      await writeClipboard(text);
-      btn.textContent = "Copied";
-      btn.classList.add("is-done");
-      if (liveRegion) liveRegion.textContent = "Diagnostic log copied";
-      window.setTimeout(() => {
-        if (!btn.isConnected) return;
-        btn.textContent = original;
-        btn.classList.remove("is-done");
-        if (liveRegion) liveRegion.textContent = "";
-      }, 1600);
-    } catch (err) {
-      console.error("copy diagnostics failed", err);
-      btn.textContent = "Failed";
-      btn.classList.remove("is-done");
-      if (liveRegion) liveRegion.textContent = "Copy failed";
-      window.setTimeout(() => {
-        if (btn.isConnected) btn.textContent = original;
-        if (liveRegion) liveRegion.textContent = "";
-      }, 2000);
-    }
-  }
-
-  // S3: Esc closes; Tab cycles within dialog
-  root.addEventListener("keydown", (e) => {
-    if (!visible) return;
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      options.onCloseRequest?.();
-      return;
-    }
-    if (e.key !== "Tab") return;
-    const list = focusableIn(root);
-    if (list.length === 0) return;
-    const first = list[0];
-    const last = list[list.length - 1];
-    const active = document.activeElement as HTMLElement | null;
-    if (e.shiftKey) {
-      if (active === first || !root.contains(active)) {
-        e.preventDefault();
-        last.focus();
-      }
-    } else if (active === last) {
-      e.preventDefault();
-      first.focus();
-    }
+  appearance.querySelectorAll<HTMLButtonElement>("[data-theme-option]").forEach(button=>button.addEventListener("click",()=>void save(async()=>{
+    const theme=button.dataset.themeOption as AppTheme;
+    await invoke("set_theme",{theme}); settings.theme=theme;
+  })));
+  appearance.querySelectorAll<HTMLInputElement>("[data-pref]").forEach(input=>input.addEventListener("change",()=>void save(async()=>{
+    const next={hover_detail:settings.hover_detail ?? false,always_show_notch:settings.always_show_notch ?? false,show_animation:settings.show_animation ?? true};
+    next[input.dataset.pref as keyof typeof next]=input.checked;
+    await invoke("set_notch_preferences",{hoverDetail:next.hover_detail,alwaysShowNotch:next.always_show_notch,showAnimation:next.show_animation}); Object.assign(settings,next);
+  })));
+  const opacity=appearance.querySelector<HTMLInputElement>("#appearance-opacity")!;
+  opacity.addEventListener("input",()=>{
+    appearance.querySelector("output")!.textContent=opacity.value+'%';
+    appearance.querySelector<HTMLElement>('.opacity-setting')!.style.setProperty('--opacity-value',opacity.value+'%');
+    handlers.appearance({...settings,opacity:pctToOpacity(Number(opacity.value))});
   });
-
-  render();
-
-  const unlisteners: Array<() => void> = [];
-  void listen<UpdateInfo>("update-available", (ev) => {
-    if (!ev.payload?.version) return;
-    updatePhase = "downloading";
-    updateVersion = ev.payload.version;
-    updateBusy = false;
-    updateHint = `Downloading ${ev.payload.version}…`;
-    paintUpdateUi();
-  }).then((u) => unlisteners.push(u));
-
-  void listen<DownloadProgress>("update-download-progress", (ev) => {
-    const p = ev.payload;
-    if (!p?.version || updatePhase === "ready") return;
-    updatePhase = "downloading";
-    updateVersion = p.version;
-    updateBusy = false;
-    if (p.content_length && p.content_length > 0) {
-      const pct = Math.min(99, Math.round((p.received / p.content_length) * 100));
-      updateHint = `Downloading ${p.version}… ${pct}%`;
-    } else {
-      updateHint = `Downloading ${p.version}…`;
+  opacity.addEventListener("change",()=>void save(async()=>{ const value=pctToOpacity(Number(opacity.value)); await invoke("set_opacity",{opacity:value});settings.opacity=value; }));
+  const manager=mountWatchlist(panel("symbols"),{management:true,columnRatios:settings.column_ratios,onOpenDetail:handlers.openDetail});
+  manager.setItems(initial.watchlist);
+  const generalRoot=document.createElement('div'); panel('general').append(generalRoot);
+  const general=mountGeneralPanel(generalRoot,{quoteRefreshMs:settings.quote_refresh_ms ?? settings.quote_refresh_secs ?? 500,autostart:settings.autostart,appVersion},{embedded:true});
+  general.show(); generalRoot.removeAttribute('role');generalRoot.removeAttribute('aria-modal');
+  function switchTab(tab:Tab) {
+    manager.closeMenu();
+    root.querySelector<HTMLElement>('.settings-tabs')!.style.setProperty('--active-tab',String(TABS.findIndex(([key])=>key===tab)));
+    for(const [key] of TABS) {
+      panel(key).hidden=key!==tab;
+      const b=root.querySelector<HTMLButtonElement>(`#tab-btn-${key}`)!;
+      b.setAttribute('aria-selected',String(key===tab));b.tabIndex=key===tab ? 0 : -1;
     }
-    paintUpdateUi();
-  }).then((u) => unlisteners.push(u));
-
-  void listen<UpdateInfo>("update-ready", (ev) => {
-    if (!ev.payload?.version) return;
-    updatePhase = "ready";
-    updateVersion = ev.payload.version;
-    updateBusy = false;
-    updateHint = `Update ${ev.payload.version} is ready`;
-    paintUpdateUi();
-  }).then((u) => unlisteners.push(u));
-
-  void listen("update-not-available", () => {
-    if (updatePhase === "idle") return;
-    updatePhase = "idle";
-    updateVersion = null;
-    updateBusy = false;
-    paintUpdateUi();
-  }).then((u) => unlisteners.push(u));
-
-  void listen<string>("update-failed", (ev) => {
-    const msg = typeof ev.payload === "string" ? ev.payload : "Update failed";
-    updateBusy = false;
-    if (updatePhase === "ready") {
-      paintUpdateUi();
-      return;
-    }
-    updatePhase = "idle";
-    updateHint = msg.slice(0, 120);
-    paintUpdateUi();
-    window.setTimeout(() => {
-      if (updatePhase !== "idle") return;
-      updateHint = "";
-      paintUpdateUi();
-    }, 4000);
-  }).then((u) => unlisteners.push(u));
-
+    handlers.resize();
+  }
+  root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>button.addEventListener('click',()=>switchTab(button.dataset.tab as Tab)));
+  root.querySelector('#settings-close')!.addEventListener('click',handlers.close);
+  const observer=new MutationObserver(()=>handlers.resize());
+  observer.observe(root.querySelector('.settings-scroll')!,{subtree:true,childList:true,characterData:true});
+  paintAppearance();switchTab('appearance');
   return {
-    setQuoteRefreshMs: (s) => {
-      quoteRefreshMs = nearestRefreshPreset(s);
-      if (visible) render();
+    show(tab?:Tab){root.hidden=false;if(tab)switchTab(tab);},
+    hide(){manager.closeMenu();root.hidden=true;},
+    setItems(items:PersistedState['watchlist']){manager.setItems(items);},
+    getContentHeight(scale=1){
+      if(!root.isConnected || !root.clientWidth)return lastHeight;
+      const scroll=root.querySelector<HTMLElement>('.settings-scroll')!;
+      let tallest=0;
+      for(const [key] of TABS){const el=panel(key);const old=el.getAttribute('style');const wasHidden=el.hidden;el.hidden=false;el.style.cssText='position:absolute;visibility:hidden;display:flex;flex:none;min-height:0;height:max-content;max-height:none;overflow:visible;width:'+scroll.clientWidth+'px;';tallest=Math.max(tallest,el.scrollHeight);if(old===null)el.removeAttribute('style');else el.setAttribute('style',old);el.hidden=wasHidden;}
+      const chrome=['.settings-heading','.settings-tabs'].reduce((height,selector)=>{
+        const el=root.querySelector<HTMLElement>(selector)!,style=getComputedStyle(el);
+        return height+el.offsetHeight+(parseFloat(style.marginTop)||0)+(parseFloat(style.marginBottom)||0);
+      },0);
+      const container=root.closest<HTMLElement>('.notch-detail');
+      const css=container ? getComputedStyle(container) : null;
+      const padding=css ? ['paddingTop','paddingBottom','borderTopWidth','borderBottomWidth'].reduce((sum,key)=>sum+(parseFloat(css[key as keyof CSSStyleDeclaration] as string)||0),0) : 34*scale;
+      const gaps=(parseFloat(getComputedStyle(root).rowGap)||0)*2;
+      lastHeight=Math.min(MAX_HEIGHT*scale,Math.ceil(tallest+chrome+padding+gaps+2));
+      return lastHeight;
     },
-    setAutostart: (enabled) => {
-      autostart = enabled;
-      if (visible) render();
-    },
-    show: () => {
-      visible = true;
-      root.classList.remove("hidden");
-      root.hidden = false;
-      render();
-      requestAnimationFrame(() => {
-        focusableIn(root)[0]?.focus();
-      });
-    },
-    hide: () => {
-      visible = false;
-      root.classList.add("hidden");
-      root.hidden = true;
-      const live = root.querySelector("#settings-live");
-      if (live) live.textContent = "";
-    },
-    isVisible: () => visible,
-    destroy: () => {
-      for (const u of unlisteners) u();
-    },
+    destroy(){observer.disconnect();manager.destroy();general.destroy();},
   };
 }
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-/** Format refresh interval stored as milliseconds. */
-function formatRefresh(ms: number): string {
-  const secs = ms / 1000;
-  if (secs >= 60 && secs % 60 === 0) return `${secs / 60}m`;
-  if (Number.isInteger(secs)) return `${secs}s`;
-  // Sub-second presets (e.g. 250 → 0.25s)
-  const trimmed = Number(secs.toFixed(2)).toString();
-  return `${trimmed}s`;
-}
-
-/** Copy text to the system clipboard (clipboard API with textarea fallback). */
-async function writeClipboard(text: string): Promise<void> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-  } catch {
-    // fall through
-  }
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.setAttribute("readonly", "");
-  ta.style.position = "fixed";
-  ta.style.left = "-9999px";
-  document.body.appendChild(ta);
-  ta.select();
-  const ok = document.execCommand("copy");
-  document.body.removeChild(ta);
-  if (!ok) {
-    throw new Error("clipboard copy failed");
-  }
-}
-
-

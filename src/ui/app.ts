@@ -1,335 +1,166 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
-import { LogicalPosition } from "@tauri-apps/api/dpi";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { arrowNudgeDelta, shouldNudgeWindow } from "./window-nudge";
-import {
-  focusSettingsButton,
-  renderHeader,
-  setHeaderBackdropInert,
-  setSettingsButtonActive,
-  setUsMarketStatus,
-} from "./header";
-import { applyPanelOpacity, mountSettingsPanel } from "./settings-panel";
-import { mountWatchlist } from "./watchlist";
-import type { PersistedState, Quote, Sparkline } from "./types";
-import {
-  DEFAULT_COLUMN_RATIOS,
-  OPACITY_DEFAULT,
-  QUOTE_REFRESH_MS_DEFAULT,
-} from "./types";
+import { mountNotch, position } from "./notch";
+import { createNotchSurface } from "./notch-surface";
+import { mountNotchDrag } from "./notch-drag";
+import { mountSettingsPanel } from "./settings-panel";
+import { mountStockDetail } from "./stock-detail";
+import { mountLiquidGlass } from "./liquid-glass";
+import { applyPanelOpacity } from "./opacity";
+import { initialNotchState, reduceNotchState, CLOSE_DELAY_MS, MAX_CELLS } from "./notch-state";
+import type { NotchEvent } from "./notch-state";
+import type { DragNotice } from "./notch-drag";
+import type { AppSettings, PersistedState, Quote, Sparkline, NotchLayout } from "./types";
 
+const DETAIL_PADDING = 34;
+const SETTINGS_FALLBACK = 440;
 export async function mountApp(root: HTMLElement): Promise<void> {
-  root.innerHTML = `
-    <div class="panel" id="glass-panel">
-      <div id="header-root"></div>
-      <div class="content" id="content-root">
-        <div id="settings-root"></div>
-        <div id="watchlist-root"></div>
-      </div>
-    </div>
-  `;
-
-  const panel = root.querySelector("#glass-panel") as HTMLElement;
-  const headerRoot = root.querySelector("#header-root") as HTMLElement;
-  const watchlistRoot = root.querySelector("#watchlist-root") as HTMLElement;
-  const settingsRoot = root.querySelector("#settings-root") as HTMLElement;
-
-  let settingsOpen = false;
-
-  const state = await invoke<PersistedState>("get_state");
-  let appVersion = "unknown";
-  try {
-    appVersion = await getVersion();
-  } catch (err) {
-    console.warn("getVersion failed", err);
+  root.innerHTML=`<div class="notch-shell"><nav class="notch" aria-label="관심종목"></nav><section class="notch-detail" aria-label="종목 상세" hidden><div class="detail-body"><div class="stock-detail"></div><div class="detail-settings" hidden><div class="settings-root"></div></div><p class="notch-error" role="status" hidden></p></div></section></div>`;
+  const shell=root.querySelector<HTMLElement>('.notch-shell')!;
+  const rail=root.querySelector<HTMLElement>('.notch')!;
+  const detail=root.querySelector<HTMLElement>('.notch-detail')!;
+  const stockRoot=root.querySelector<HTMLElement>('.stock-detail')!;
+  const settingsArea=root.querySelector<HTMLElement>('.detail-settings')!;
+  const errorEl=root.querySelector<HTMLElement>('.notch-error')!;
+  const persisted=await invoke<PersistedState>('get_state');
+  let quotes:Quote[]=[],sparks:Sparkline[]=[];
+  let interaction=initialNotchState(),beforeDrag=initialNotchState();
+  let layout:NotchLayout|undefined;
+  let revealRevision=0;
+  let settings:ReturnType<typeof mountSettingsPanel>|undefined;
+  let closeTimer:ReturnType<typeof setTimeout>|undefined;
+  let measureFrame=0,destroyed=false;
+  let pendingSettingsHeight:number|null=null, settingsOpening=false;
+  const events=new AbortController(), unlisteners:(()=>void)[]=[];
+  const cancelClose=()=>{clearTimeout(closeTimer);};
+  const fail=(error:unknown)=>{console.error(error);errorEl.textContent=String(error);errorEl.hidden=false;};
+  const surface=createNotchSurface({send:request=>invoke<NotchLayout>('set_notch_surface',{...request}),paint:(next,request)=>{
+    paintLayout(next);
+    if(settingsOpening && interaction.settings && request.expanded && request.target===null && request.height===pendingSettingsHeight){
+      settingsOpening=false;detail.style.visibility='';
+    }
+  },fail});
+  const drag=mountNotchDrag(rail,()=>layout,{
+    begin:id=>invoke('begin_notch_drag',{id}),finish:(id,cancel)=>invoke('finish_notch_drag',{id,cancel}),
+    onStart:()=>{beforeDrag={...interaction};cancelClose();},
+    onNotice:notice=>{
+      if(notice.active)cancelClose();
+      if(notice.finished && notice.active)interaction=beforeDrag.settings||beforeDrag.pinned ? beforeDrag : initialNotchState();
+      if(notice.error)fail(notice.error);
+      render();
+    },fail,
+  });
+  const notch=mountNotch(rail,{
+    hover:id=>{if(!drag.dragging && persisted.settings.hover_detail){cancelClose();dispatch({type:'hover',id});}},
+    pin:id=>dispatch({type:'pin',id}),
+    more:()=>openSettings('symbols'),
+  });
+  const stock=mountStockDetail(stockRoot);
+  const liquid=mountLiquidGlass(shell,rail,detail);
+  function appearance(st:AppSettings){
+    errorEl.hidden=true;
+    shell.dataset.theme=st.theme ?? 'dark';
+    shell.classList.toggle('reduce-animation',st.show_animation===false);
+    applyPanelOpacity(shell,st.opacity);
+    liquid.setEnabled(st.theme==='glass'||st.theme==='liquid');
   }
-  const opacity = state.settings.opacity ?? OPACITY_DEFAULT;
-  // Stored as ms (legacy 1..=120 = whole seconds, normalized on Rust load).
-  const quoteRefreshMs =
-    state.settings.quote_refresh_ms ??
-    state.settings.quote_refresh_secs ??
-    QUOTE_REFRESH_MS_DEFAULT;
-  const autostart = state.settings.autostart ?? true;
-
-  applyPanelOpacity(panel, opacity);
-
-  const columnRatios = {
-    ...DEFAULT_COLUMN_RATIOS,
-    ...(state.settings.column_ratios ?? {}),
+  appearance(persisted.settings);
+  let version='unknown';try{version=await getVersion();}catch(error){fail(error);}
+  settings=mountSettingsPanel(root.querySelector<HTMLElement>('.settings-root')!,persisted,{
+    appearance,openDetail:id=>{interaction={itemId:id,pinned:true,settings:false};render();},
+    close:closeSettings,resize:requestSurface,fail,
+  },version);
+  function dispatch(event:NotchEvent){
+    if((event.type==='hover'||event.type==='pin')&&!persisted.watchlist.some(item=>item.id===event.id))return;
+    interaction=reduceNotchState(interaction,event);render();
+  }
+  function openSettings(tab?:'symbols'){
+    settingsOpening=true;pendingSettingsHeight=null;
+    detail.style.visibility='hidden';
+    cancelClose();interaction={...interaction,settings:true};render();settings?.show(tab);requestSurface();
+    void getCurrentWindow().setFocus().catch(fail);
+  }
+  function closeSettings(){errorEl.hidden=true;interaction={...interaction,settings:false};render();notch.focus(interaction.itemId);}
+  function paintLayout(next:NotchLayout){
+    if(destroyed)return;
+    layout=next;shell.dataset.edge=next.edge;
+    shell.style.setProperty('--notch-scale',String(next.metrics.content_scale));
+    shell.style.setProperty('--detail-radius',`${next.metrics.detail_radius}px`);
+    notch.layout(next);
+    notch.update(persisted.watchlist,quotes,next.metrics.slot_count);
+    notch.select(interaction.itemId,interaction.pinned);
+    if(next.detail)position(detail,next.detail,next);
+    requestSurface();
+  }
+  function requestSurface(){
+    if(destroyed || measureFrame)return;
+    measureFrame=requestAnimationFrame(()=>{
+      measureFrame=0;
+      const expanded=interaction.settings||interaction.itemId!==null;
+      const scale=layout?.metrics.content_scale ?? 1;
+      const height=interaction.settings ? settings?.getContentHeight(scale) ?? SETTINGS_FALLBACK : Math.ceil(stockRoot.scrollHeight+DETAIL_PADDING*scale+(errorEl.hidden?0:errorEl.scrollHeight));
+      if(settingsOpening)pendingSettingsHeight=height;
+      surface.request({expanded,height,target:interaction.settings ? null : notch.target(interaction.itemId),providers:persisted.watchlist.map(item=>item.id)});
+    });
+  }
+  function render(){
+    if(destroyed)return;
+    const selected=persisted.watchlist.find(item=>item.id===interaction.itemId);
+    if(interaction.itemId && !selected)interaction={...interaction,itemId:null,pinned:false};
+    detail.hidden=!interaction.settings&&!selected;
+    if(!interaction.settings){settingsOpening=false;pendingSettingsHeight=null;detail.style.visibility='';}
+    detail.classList.toggle('is-settings',interaction.settings);
+    detail.setAttribute('aria-label',interaction.settings?'설정':`${selected?.symbol ?? ''} 상세`);
+    stockRoot.hidden=interaction.settings||!selected;
+    settingsArea.hidden=!interaction.settings;
+    rail.inert=interaction.settings;
+    if(interaction.settings)settings?.show();else settings?.hide();
+    if(selected&&!interaction.settings)stock.update(selected,quotes.find(q=>q.symbol===selected.symbol),sparks.find(s=>s.symbol===selected.symbol));
+    notch.update(persisted.watchlist,quotes,layout?.metrics.slot_count ?? MAX_CELLS);
+    notch.select(interaction.itemId,interaction.pinned);
+    requestSurface();
+  }
+  rail.addEventListener('contextmenu',event=>{event.preventDefault();openSettings();},{signal:events.signal});
+  detail.addEventListener('contextmenu',event=>event.preventDefault(),{signal:events.signal});
+  const leave=()=>{
+    cancelClose();closeTimer=setTimeout(()=>{if(drag.sessionId===null)dispatch({type:'leave'});},CLOSE_DELAY_MS);
   };
-
-  const watchlist = mountWatchlist(watchlistRoot, {
-    columnRatios,
-    onQuotesChanged: (quotes) =>
-      setUsMarketStatus(headerRoot, quotes.map((quote) => quote.market_state)),
-  });
-  watchlist.setItems(state.watchlist ?? []);
-
-  function setSettingsBackdropInert(on: boolean): void {
-    watchlistRoot.inert = on;
-    setHeaderBackdropInert(headerRoot, on);
+  for(const el of [rail,detail]){
+    el.addEventListener('pointerenter',cancelClose,{signal:events.signal});el.addEventListener('pointerleave',leave,{signal:events.signal});
   }
-
-  function openSettings(): void {
-    if (settingsOpen) return;
-    settingsOpen = true;
-    setSettingsBackdropInert(true);
-    settings.show();
-    panel.classList.add("settings-open");
-    setSettingsButtonActive(headerRoot, true);
+  async function subscribe<T>(name:string,callback:(data:T)=>void){
+    const unlisten=await listen<T>(name,event=>callback(event.payload));
+    if(destroyed)unlisten();else unlisteners.push(unlisten);
   }
-
-  function closeSettings(): void {
-    if (!settingsOpen) return;
-    settingsOpen = false;
-    settings.hide();
-    panel.classList.remove("settings-open");
-    setSettingsButtonActive(headerRoot, false);
-    setSettingsBackdropInert(false);
-    focusSettingsButton(headerRoot);
-  }
-
-  function toggleSettings(): void {
-    // Overlay only: list fades under an opaque settings sheet. Window size stays put.
-    if (settingsOpen) closeSettings();
-    else openSettings();
-  }
-
-  const settings = mountSettingsPanel(
-    settingsRoot,
-    {
-      quoteRefreshMs,
-      autostart,
-      appVersion,
-    },
-    {
-      onCloseRequest: closeSettings,
-    },
-  );
-
-  // Geometry hug tracks watchlist only; settings is an overlay (no size snap).
-  await setupGeometryPersistence(panel);
-
-  renderHeader(headerRoot, {
-    onSettings: toggleSettings,
-    opacity,
-    onOpacityChange: (o) => {
-      applyPanelOpacity(panel, o);
-      void invoke("set_opacity", { opacity: o }).catch((err) => {
-        console.error("set_opacity failed", err);
-      });
-    },
-  });
-
-  // Esc also closes when focus is on header chrome
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && settingsOpen) {
-      e.preventDefault();
-      closeSettings();
-      return;
-    }
-    if (!shouldNudgeWindow(e, { settingsOpen })) return;
-    const delta = arrowNudgeDelta(e.key, { shift: e.shiftKey, ctrl: e.ctrlKey });
-    if (!delta) return;
-    e.preventDefault();
-    void nudgeWindow(delta.dx, delta.dy);
-  });
-
-  // Initial market data (best-effort; empty until scheduler fills)
-  try {
-    const quotes = await invoke<Quote[]>("get_quotes");
-    watchlist.setQuotes(quotes);
-  } catch {
-    /* not ready */
-  }
-  try {
-    const sparks = await invoke<Sparkline[]>("get_sparklines");
-    watchlist.setSparklines(sparks);
-  } catch {
-    /* not ready */
-  }
-}
-
-/**
- * True glass height (header + rows + +Add), ignoring window clamp.
- * Settings is an absolute overlay and must not inflate this measure.
- *
- * getBoundingClientRect under max-height:100% / watchlist max-height:100vh shrinks
- * with the window, so setMinSize was ratcheting down and hid +Add.
- */
-function measureContentHugHeight(panel: HTMLElement): number {
-  const liftSelectors = [
-    panel,
-    panel.querySelector<HTMLElement>(".content"),
-    panel.querySelector<HTMLElement>("#watchlist-root"),
-    panel.querySelector<HTMLElement>(".watchlist"),
-    panel.querySelector<HTMLElement>(".watchlist-view"),
-  ].filter((el): el is HTMLElement => Boolean(el));
-
-  const saved = liftSelectors.map((el) => ({
-    el,
-    maxHeight: el.style.maxHeight,
-    height: el.style.height,
-    overflow: el.style.overflow,
+  function merge<T extends {symbol:string}>(old:T[],next:T[]){const map=new Map(old.map(item=>[item.symbol,item]));for(const item of next)map.set(item.symbol,item);return Array.from(map.values());}
+  await Promise.all([
+    subscribe<Quote[]>('quotes-updated',next=>{quotes=merge(quotes,next);render();}),
+    subscribe<Sparkline[]>('sparklines-updated',next=>{sparks=merge(sparks,next);render();}),
+    subscribe<PersistedState['watchlist']>('watchlist-updated',next=>{
+      const selected=interaction.itemId;persisted.watchlist=next.slice().sort((a,b)=>a.sort_index-b.sort_index);
+      interaction=reduceNotchState(interaction,{type:'items',ids:next.map(item=>item.id)});settings?.setItems(persisted.watchlist);render();if(selected&&!interaction.itemId)notch.focus(null);
+    }),
+    subscribe<NotchLayout>('notch-layout',paintLayout),
+    subscribe<boolean>('notch-reveal',open=>{revealRevision++;notch.reveal(open);}),
+    subscribe<boolean>('widget-visibility',visible=>liquid.setVisible(visible)),
+    subscribe<DragNotice>('notch-drag',notice=>drag.notice(notice)),
+    subscribe<number>('opacity-updated',opacity=>{persisted.settings.opacity=opacity;appearance(persisted.settings);}),
+  ]);
+  unlisteners.push(await getCurrentWindow().onFocusChanged(({payload})=>{
+    if(!payload && drag.sessionId===null){(document.activeElement as HTMLElement|null)?.blur();leave();}
   }));
-
-  try {
-    for (const { el } of saved) {
-      el.style.maxHeight = "none";
-      el.style.height = "max-content";
-      el.style.overflow = "visible";
-    }
-    void panel.offsetHeight;
-    // ceil + 1px slack: avoids subpixel overflow that shows a scrollbar at min size
-    const hug = Math.ceil(panel.getBoundingClientRect().height) + 1;
-    if (hug >= 80) return hug;
-
-    // Structural fallback: header + list rows/empty + footer (settings is overlay).
-    const header = panel.querySelector<HTMLElement>("#header-root");
-    const rows = panel.querySelector<HTMLElement>(".watchlist-rows");
-    const empty = panel.querySelector<HTMLElement>(".watchlist-empty");
-    const footer = panel.querySelector<HTMLElement>(".watchlist-footer");
-    const watchlist = panel.querySelector<HTMLElement>(".watchlist");
-    let padGap = 20;
-    if (watchlist) {
-      const cs = getComputedStyle(watchlist);
-      padGap =
-        (parseFloat(cs.paddingTop) || 0) +
-        (parseFloat(cs.paddingBottom) || 0) +
-        (parseFloat(cs.gap) || 0);
-    }
-    return Math.ceil(
-      (header?.offsetHeight ?? 38) +
-        (rows?.scrollHeight ?? empty?.scrollHeight ?? 0) +
-        (footer?.scrollHeight ?? 52) +
-        padGap +
-        2,
-    );
-  } finally {
-    for (const s of saved) {
-      s.el.style.maxHeight = s.maxHeight;
-      s.el.style.height = s.height;
-      s.el.style.overflow = s.overflow;
-    }
-  }
-}
-
-let nudgeChain: Promise<void> = Promise.resolve();
-
-function nudgeWindow(dx: number, dy: number): Promise<void> {
-  nudgeChain = nudgeChain.then(async () => {
-    try {
-      const win = getCurrentWindow();
-      const factor = await win.scaleFactor();
-      const pos = await win.outerPosition();
-      await win.setPosition(
-        new LogicalPosition(pos.x / factor + dx, pos.y / factor + dy),
-      );
-    } catch (err) {
-      console.error("nudge window failed", err);
-    }
-  });
-  return nudgeChain;
-}
-
-async function setupGeometryPersistence(
-  panel: HTMLElement,
-): Promise<(growIfNeeded: boolean) => void> {
-  const noop = (_growIfNeeded: boolean) => {};
-  try {
-    const win = getCurrentWindow();
-    let saveTimer: ReturnType<typeof setTimeout> | null = null;
-    let contentMinTimer: ReturnType<typeof setTimeout> | null = null;
-    /** Last content floor (logical height). Only changes when content changes. */
-    let lastContentMinH = 0;
-    const POLICY_MIN_W = 260;
-    const CHROME_MIN_H = 120;
-
-    const persist = async () => {
-      try {
-        const factor = await win.scaleFactor();
-        const pos = await win.outerPosition();
-        const size = await win.innerSize();
-        const logical = {
-          x: pos.x / factor,
-          y: pos.y / factor,
-          width: size.width / factor,
-          height: size.height / factor,
-        };
-        await invoke("save_window_geometry", { geometry: logical });
-      } catch (err) {
-        console.error("save_window_geometry failed", err);
-      }
-    };
-
-    /**
-     * Publish content-hug min to OS. Does **not** run on every drag frame.
-     * Snap height (grow or shrink) when content changes / boot / settings toggle.
-     */
-    const syncContentMinSize = async (opts: { growIfNeeded: boolean }) => {
-      try {
-        const contentH = measureContentHugHeight(panel);
-        const minHeight = Math.max(CHROME_MIN_H, contentH);
-        const grew = minHeight > lastContentMinH + 0.5;
-        const shrank = minHeight < lastContentMinH - 0.5;
-        const changed = Math.abs(minHeight - lastContentMinH) >= 1;
-        // Snap when content grew/shrank (rows/footer), or explicit fit (boot).
-        const fit = opts.growIfNeeded || grew || shrank;
-        if (!changed && !opts.growIfNeeded) return;
-        lastContentMinH = minHeight;
-        await invoke("set_content_min_size", {
-          width: POLICY_MIN_W,
-          height: minHeight,
-          grow_if_needed: fit,
-        });
-      } catch (err) {
-        console.error("set_content_min_size failed", err);
-      }
-    };
-
-    const schedulePersist = () => {
-      if (saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => {
-        void persist();
-      }, 250);
-    };
-
-    const scheduleContentMin = (growIfNeeded: boolean) => {
-      if (contentMinTimer) clearTimeout(contentMinTimer);
-      contentMinTimer = setTimeout(() => {
-        void syncContentMinSize({ growIfNeeded });
-      }, 40);
-    };
-
-    // Content changes only — never remeasure min from window resize (that caused
-    // min to track the drag and then bounce with setSize).
-    const mutObs = new MutationObserver(() => {
-      scheduleContentMin(false);
-    });
-    mutObs.observe(panel, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "hidden"],
-    });
-
-    await win.onMoved(() => schedulePersist());
-    // Persist only; OS min + Rust Resized clamp handle the hard wall.
-    await win.onResized(() => schedulePersist());
-
-    // Boot: measure after layout, install hard min, grow if restored size too small.
-    requestAnimationFrame(() => {
-      void syncContentMinSize({ growIfNeeded: true });
-      window.setTimeout(() => {
-        void syncContentMinSize({ growIfNeeded: true });
-      }, 200);
-    });
-
-    return scheduleContentMin;
-  } catch (err) {
-    console.error("geometry persistence unavailable", err);
-    return noop;
-  }
+  const initialRevealRevision=revealRevision;
+  const [initialQuotes,initialSparks,revealed]=await Promise.all([invoke<Quote[]>('get_quotes'),invoke<Sparkline[]>('get_sparklines'),invoke<boolean>('get_notch_reveal')]);
+  quotes=merge(initialQuotes,quotes);sparks=merge(initialSparks,sparks);
+  // Quotes may wait for network polling; a newer native event owns input coverage.
+  if(revealRevision===initialRevealRevision)notch.reveal(revealed);
+  render();
+  const resize=new ResizeObserver(requestSurface);resize.observe(stockRoot);
+  document.fonts.ready.then(requestSurface).catch(fail);
+  window.addEventListener('pagehide',()=>{
+    destroyed=true;cancelClose();cancelAnimationFrame(measureFrame);events.abort();resize.disconnect();
+    surface.destroy();drag.destroy();liquid.destroy();settings?.destroy();unlisteners.forEach(fn=>fn());
+  },{once:true});
 }

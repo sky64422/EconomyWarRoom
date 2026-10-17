@@ -28,6 +28,11 @@ pub fn default_state() -> PersistedState {
             },
         ],
         settings: AppSettings {
+            theme: Default::default(),
+            notch: Default::default(),
+            hover_detail: false,
+            always_show_notch: false,
+            show_animation: true,
             opacity: OpacityPolicy::DEFAULT,
             window: WindowGeometry {
                 x: 80.0,

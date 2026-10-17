@@ -470,7 +470,7 @@ mod tests {
 
         let provider = YahooProvider::with_base_url(server.uri()).unwrap();
         let hits = provider.search_symbols("AAP", 8).await.unwrap();
-        assert!(hits.len() >= 1);
+        assert!(!hits.is_empty());
         assert!(hits.iter().any(|h| h.symbol == "AAPL"));
     }
 

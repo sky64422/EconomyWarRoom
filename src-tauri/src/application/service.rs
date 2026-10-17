@@ -7,9 +7,7 @@ use crate::application::diagnostics::{
     DiagLevel, EventRing, DIAGNOSTICS_DUMP_LINES, NOTE_THROTTLE,
 };
 use crate::application::scheduler::QuoteScheduler;
-use crate::domain::constants::{
-    clamp_geometry, clamp_opacity, clamp_quote_refresh_ms,
-};
+use crate::domain::constants::{clamp_geometry, clamp_opacity, clamp_quote_refresh_ms};
 use crate::domain::display::attach_display;
 use crate::domain::types::{
     AssetKind, CardTint, PersistedState, Quote, Sparkline, SymbolSuggestion, WatchlistItem,
@@ -119,10 +117,12 @@ impl AppCore {
             .persisted
             .lock()
             .map_err(|_| LOCK_POISONED.to_string())?;
-        let (out, persist) = f(&mut persisted)?;
+        let mut next = persisted.clone();
+        let (out, persist) = f(&mut next)?;
         if persist {
-            self.persist_locked(&persisted)?;
+            self.persist_locked(&next)?;
         }
+        *persisted = next;
         Ok(out)
     }
 
@@ -180,7 +180,9 @@ impl AppCore {
     }
 
     pub async fn reorder_symbols(&self, ordered_ids: &[String]) -> Result<(), String> {
-        self.with_persisted_mut(|persisted| watchlist::reorder(&mut persisted.watchlist, ordered_ids))?;
+        self.with_persisted_mut(|persisted| {
+            watchlist::reorder(&mut persisted.watchlist, ordered_ids)
+        })?;
         self.sync_scheduler_watchlist().await
     }
 
@@ -188,6 +190,38 @@ impl AppCore {
     pub fn set_autostart(&self, enabled: bool) -> Result<(), String> {
         self.with_persisted_mut(|persisted| {
             persisted.settings.autostart = enabled;
+            Ok(())
+        })
+    }
+
+    pub fn set_theme(&self, theme: crate::domain::types::AppTheme) -> Result<(), String> {
+        self.with_persisted_mut(|p| {
+            p.settings.theme = theme;
+            Ok(())
+        })
+    }
+
+    pub fn set_notch_placement(
+        &self,
+        placement: crate::domain::notch::NotchPlacement,
+    ) -> Result<(), String> {
+        placement.validate()?;
+        self.with_persisted_mut(|p| {
+            p.settings.notch = placement;
+            Ok(())
+        })
+    }
+
+    pub fn set_notch_preferences(
+        &self,
+        hover_detail: bool,
+        always_show_notch: bool,
+        show_animation: bool,
+    ) -> Result<(), String> {
+        self.with_persisted_mut(|p| {
+            p.settings.hover_detail = hover_detail;
+            p.settings.always_show_notch = always_show_notch;
+            p.settings.show_animation = show_animation;
             Ok(())
         })
     }

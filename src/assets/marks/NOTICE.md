@@ -1,0 +1,2 @@
+Bundled Simple Icons 16.0.0: https://github.com/simple-icons/simple-icons/tree/16.0.0 . See LICENSE.md and DISCLAIMER.md. Logos identify watched instruments; no endorsement is implied. Missing brands use ticker text.
+Surface-finish material retains Lucian 001/052 attribution in src/ui/surface-finish.ts and styles/notch.css. Native notch geometry and UI controllers adapted from the user-owned TokenUsage checkout at 251df6b.

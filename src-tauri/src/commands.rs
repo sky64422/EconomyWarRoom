@@ -2,8 +2,8 @@
 
 use crate::application::diagnostics::DiagLevel;
 use crate::domain::types::{
-    AssetKind, CardTint, PersistedState, Quote, Sparkline, SymbolSuggestion,
-    WatchlistItem, WindowGeometry,
+    AssetKind, CardTint, PersistedState, Quote, Sparkline, SymbolSuggestion, WatchlistItem,
+    WindowGeometry,
 };
 use crate::infrastructure::window_ctl;
 use crate::state::AppHandleState;
@@ -16,14 +16,15 @@ fn note_err(state: &AppHandleState, ctx: &str, e: &str) {
 }
 
 fn map_note<T>(state: &AppHandleState, ctx: &str, result: Result<T, String>) -> Result<T, String> {
-    result.map_err(|e| {
-        note_err(state, ctx, &e);
-        e
-    })
+    result.inspect_err(|e| note_err(state, ctx, e))
 }
 
 async fn emit_watchlist(app: &AppHandle, state: &AppHandleState) -> Result<(), String> {
-    let payload = map_note(state, "watchlist_snapshot", state.core.watchlist_snapshot().await)?;
+    let payload = map_note(
+        state,
+        "watchlist_snapshot",
+        state.core.watchlist_snapshot().await,
+    )?;
     app.emit("watchlist-updated", payload).map_err(|e| {
         let s = e.to_string();
         note_err(state, "emit watchlist-updated", &s);
@@ -113,6 +114,10 @@ pub fn set_autostart(
     enabled: bool,
 ) -> Result<(), String> {
     map_note(&state, "set_autostart", state.core.set_autostart(enabled))?;
+    // Development and isolated previews must not replace the installed login entry.
+    if cfg!(debug_assertions) {
+        return Ok(());
+    }
     use tauri_plugin_autostart::ManagerExt;
     let autolaunch = app.autolaunch();
     let result = if enabled {
@@ -174,12 +179,20 @@ pub fn set_column_ratios(
     state: State<'_, AppHandleState>,
     ratios: crate::domain::types::ColumnRatios,
 ) -> Result<crate::domain::types::ColumnRatios, String> {
-    map_note(&state, "set_column_ratios", state.core.set_column_ratios(ratios))
+    map_note(
+        &state,
+        "set_column_ratios",
+        state.core.set_column_ratios(ratios),
+    )
 }
 
 #[tauri::command(rename_all = "snake_case")]
 pub async fn hide_widget(app: AppHandle, state: State<'_, AppHandleState>) -> Result<(), String> {
-    map_note(&state, "hide_widget", set_visibility(&app, &state, false).await)
+    map_note(
+        &state,
+        "hide_widget",
+        set_visibility(&app, &state, false).await,
+    )
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -196,7 +209,7 @@ pub async fn toggle_widget_visibility(
     Ok(next)
 }
 
-/// Shared visibility toggle used by commands and the global hotkey handler.
+/// Shared visibility path used by commands and the system tray.
 pub async fn set_visibility(
     app: &AppHandle,
     state: &AppHandleState,
@@ -209,23 +222,24 @@ pub async fn set_visibility(
         window_ctl::hide_window(&window)?;
     }
     state.core.set_visible_state(visible).await;
+    app.emit("widget-visibility", visible)
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// Sync helper for the global-shortcut handler (no State extractor).
-pub fn toggle_visibility_from_handle(app: &AppHandle) {
+/// Sync helper for the tray handler (no State extractor).
+pub fn show_from_handle(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let Some(state) = app.try_state::<AppHandleState>() else {
-            eprintln!("toggle_visibility: AppHandleState not ready");
+            eprintln!("show_widget: AppHandleState not ready");
             return;
         };
-        let next = !state.core.is_visible();
-        if let Err(e) = set_visibility(&app, &state, next).await {
-            eprintln!("toggle_visibility failed: {e}");
+        if let Err(e) = set_visibility(&app, &state, true).await {
+            eprintln!("show_widget failed: {e}");
             state
                 .core
-                .note(DiagLevel::Error, format!("toggle_visibility failed: {e}"));
+                .note(DiagLevel::Error, format!("show_widget failed: {e}"));
         }
     });
 }
@@ -255,7 +269,11 @@ pub fn set_content_min_size(
 ) -> Result<(), String> {
     state.set_content_min_logical(width, height);
     let (w, h) = state.content_min_logical();
-    let window = map_note(&state, "set_content_min_size", window_ctl::main_window(&app))?;
+    let window = map_note(
+        &state,
+        "set_content_min_size",
+        window_ctl::main_window(&app),
+    )?;
     map_note(
         &state,
         "apply_content_min_size",
@@ -332,3 +350,68 @@ pub async fn check_for_updates(app: AppHandle) -> Result<bool, String> {
     crate::infrastructure::updater::check_and_install_update(&app).await
 }
 
+#[tauri::command]
+pub fn get_notch_reveal(app: AppHandle) -> Result<bool, String> {
+    crate::infrastructure::notch_window::get_reveal(&app)
+}
+
+#[tauri::command]
+pub fn set_notch_focus(app: AppHandle, focused: bool) -> Result<bool, String> {
+    crate::infrastructure::notch_window::set_focus(&app, focused)
+}
+
+#[tauri::command]
+pub fn get_notch_monitors(
+    app: AppHandle,
+) -> Result<Vec<crate::domain::notch::MonitorArea>, String> {
+    crate::infrastructure::notch_window::monitors(&app)
+}
+
+#[tauri::command]
+pub fn set_notch_placement(
+    app: AppHandle,
+    state: State<'_, AppHandleState>,
+    placement: crate::domain::notch::NotchPlacement,
+) -> Result<crate::domain::notch::NotchLayout, String> {
+    state.core.set_notch_placement(placement)?;
+    crate::infrastructure::notch_window::apply(&app, None)
+}
+
+#[tauri::command]
+pub fn begin_notch_drag(app: AppHandle, id: u64) -> Result<(), String> {
+    crate::infrastructure::notch_window::begin_drag(&app, id)
+}
+#[tauri::command]
+pub fn finish_notch_drag(app: AppHandle, id: u64, cancel: bool) -> Result<(), String> {
+    crate::infrastructure::notch_window::finish_drag(&app, id, cancel)
+}
+
+#[tauri::command]
+pub fn set_notch_surface(
+    app: AppHandle,
+    revision: u64,
+    expanded: bool,
+    height: f64,
+    target: Option<f64>,
+) -> Result<crate::domain::notch::NotchLayout, String> {
+    crate::infrastructure::notch_window::apply(&app, Some((revision, expanded, height, target)))
+}
+
+#[tauri::command]
+pub fn set_theme(
+    state: State<'_, AppHandleState>,
+    theme: crate::domain::types::AppTheme,
+) -> Result<(), String> {
+    state.core.set_theme(theme)
+}
+#[tauri::command]
+pub fn set_notch_preferences(
+    state: State<'_, AppHandleState>,
+    hover_detail: bool,
+    always_show_notch: bool,
+    show_animation: bool,
+) -> Result<(), String> {
+    state
+        .core
+        .set_notch_preferences(hover_detail, always_show_notch, show_animation)
+}

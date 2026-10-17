@@ -12,6 +12,8 @@ use tokio::task::JoinSet;
 /// Respects `min_interval` via `last_fetch`, prefers `priority_symbol` first when stale,
 /// advances `cursor` so subsequent calls continue around the watchlist.
 /// Skips symbols listed in `exclude` (e.g. already in-flight this tick).
+// Keep the existing, independently tested batch-policy inputs together.
+#[allow(clippy::too_many_arguments)]
 pub fn pick_batch(
     items: &[WatchlistItem],
     last_fetch: &HashMap<String, Instant>,
@@ -243,8 +245,7 @@ impl QuoteScheduler {
             .provider
             .limits()
             .max_concurrent
-            .max(1)
-            .min(RefreshPolicy::MAX_CONCURRENT);
+            .clamp(1, RefreshPolicy::MAX_CONCURRENT);
 
         let mut in_flight: HashSet<String> = HashSet::new();
         let mut join_set: JoinSet<(String, Result<Vec<crate::domain::types::Quote>, String>)> =
@@ -646,12 +647,8 @@ mod tests {
 
     #[test]
     fn spark_refresh_when_pre_becomes_regular() {
-        let mut prev = Quote::default();
-        prev.symbol = "GOOGL".into();
-        prev.market_state = Some("pre".into());
-        let mut live = Quote::default();
-        live.symbol = "GOOGL".into();
-        live.market_state = Some("REGULAR".into());
+        let prev = Quote { symbol: "GOOGL".into(), market_state: Some("pre".into()), ..Quote::default() };
+        let mut live = Quote { symbol: "GOOGL".into(), market_state: Some("REGULAR".into()), ..Quote::default() };
         assert!(spark_should_refresh_for_session(Some(&prev), &live));
         assert!(!spark_should_refresh_for_session(Some(&live), &live));
         assert!(spark_should_refresh_for_session(None, &live));

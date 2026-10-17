@@ -9,7 +9,7 @@ pub mod state;
 
 use application::diagnostics::DiagLevel;
 use application::scheduler::QuoteScheduler;
-use domain::constants::{HotkeyPolicy, RefreshPolicy};
+use domain::constants::RefreshPolicy;
 use domain::watchlist;
 use infrastructure::store::{default_state, load_state, save_state};
 use infrastructure::updater;
@@ -21,7 +21,6 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -32,21 +31,13 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, _sc, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        commands::toggle_visibility_from_handle(app);
-                    }
-                })
-                .build(),
-        )
+        .on_page_load(|view, _| infrastructure::liquid_glass::reset_on_load(view))
         .setup(|app| {
             // --- app data dir + persisted state ---
             let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
             std::fs::create_dir_all(&app_data_dir).map_err(|e| e.to_string())?;
             let mut load_err: Option<String> = None;
-            let persisted = match load_state(&app_data_dir) {
+            let mut persisted = match load_state(&app_data_dir) {
                 Ok(s) => s,
                 Err(e) => {
                     eprintln!("load_state: {e}");
@@ -54,6 +45,12 @@ pub fn run() {
                     default_state()
                 }
             };
+            if let Ok(monitors) = infrastructure::notch_window::monitors(app.handle()) {
+                persisted.settings.notch = persisted
+                    .settings
+                    .notch
+                    .restore_monitor(&persisted.settings.window, &monitors);
+            }
             // First run, or after a corrupt file was moved aside.
             let initial_save_err = save_state(&app_data_dir, &persisted).err();
 
@@ -85,12 +82,6 @@ pub fn run() {
                 let _ = window_ctl::apply_always_on_top(&window, true);
                 // Floating widget: live on the desktop + tray, not the taskbar.
                 let _ = window.set_skip_taskbar(true);
-                if let Err(e) = window_ctl::apply_geometry(&window, &persisted.settings.window) {
-                    eprintln!("apply_geometry: {e}");
-                    handle_state
-                        .core
-                        .note(DiagLevel::Warn, format!("apply_geometry: {e}"));
-                }
                 if let Err(e) = window_ctl::apply_opacity(app.handle(), persisted.settings.opacity)
                 {
                     eprintln!("apply_opacity: {e}");
@@ -113,7 +104,7 @@ pub fn run() {
                     .note(DiagLevel::Error, "main window not found at setup");
             }
 
-            // --- system tray (show / hide / quit) ---
+            // --- system tray (show / quit) ---
             if let Err(e) = setup_system_tray(app) {
                 eprintln!("system tray setup failed: {e}");
                 handle_state
@@ -122,7 +113,7 @@ pub fn run() {
             }
 
             // --- autostart (best-effort) ---
-            {
+            if !cfg!(debug_assertions) {
                 use tauri_plugin_autostart::ManagerExt;
                 let autostart = app.autolaunch();
                 if persisted.settings.autostart {
@@ -141,6 +132,10 @@ pub fn run() {
             }
 
             app.manage(handle_state);
+            app.manage(infrastructure::liquid_glass::LiquidBackdrop::default());
+            app.manage(infrastructure::notch_window::NotchController::default());
+            infrastructure::notch_window::apply(app.handle(), None)?;
+            infrastructure::notch_window::start(app.handle().clone());
             app.manage(updater::PendingUpdateState::default());
 
             if let Some(state) = app.try_state::<AppHandleState>() {
@@ -153,29 +148,6 @@ pub fn run() {
             }
 
             updater::spawn_update_check(app.handle().clone());
-
-            // --- global shortcut (best-effort) ---
-            let hotkey_str = if persisted.settings.hotkey.is_empty() {
-                HotkeyPolicy::DEFAULT.to_string()
-            } else {
-                persisted.settings.hotkey.clone()
-            };
-
-            if let Ok(shortcut) = hotkey_str.parse::<Shortcut>() {
-                if let Err(e) = app.global_shortcut().register(shortcut) {
-                    eprintln!("global-shortcut register failed: {e}");
-                    if let Some(state) = app.handle().try_state::<AppHandleState>() {
-                        state.core.note(
-                            DiagLevel::Warn,
-                            format!("global-shortcut register failed: {e}"),
-                        );
-                    }
-                } else if let Some(state) = app.handle().try_state::<AppHandleState>() {
-                    state
-                        .core
-                        .note(DiagLevel::Info, format!("hotkey registered: {hotkey_str}"));
-                }
-            }
 
             // --- quote tick loop ---
             let app_handle = app.handle().clone();
@@ -205,33 +177,31 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Hard clamp while resizing: if drag goes under content min, snap to floor
-            // and re-assert OS min so further drag hits a wall (not a rubber-band loop
-            // driven by frontend setSize after the fact).
-            if let WindowEvent::Resized(size) = event {
-                let Some(state) = window.try_state::<AppHandleState>() else {
-                    return;
-                };
-                let (min_w, min_h) = state.content_min_logical();
-                if let Err(e) =
-                    window_ctl::clamp_physical_size_to_content_min(window, *size, min_w, min_h)
+            if let WindowEvent::Focused(false) = event {
+                if let Err(e) = infrastructure::notch_window::set_focus(window.app_handle(), false)
                 {
-                    eprintln!("clamp resize: {e}");
-                }
-                // Re-apply DWM round / transparent edge after content-hug or drag resize.
-                if let Some(w) = window.app_handle().get_webview_window(window.label()) {
-                    let _ = window_ctl::apply_clean_glass_edge(&w);
+                    eprintln!("notch focus: {e}");
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
+            infrastructure::liquid_glass::capture_liquid_backdrop,
+            infrastructure::liquid_glass::release_liquid_backdrop,
+            commands::get_notch_reveal,
+            commands::set_notch_focus,
+            commands::get_notch_monitors,
+            commands::set_notch_placement,
+            commands::set_notch_surface,
+            commands::begin_notch_drag,
+            commands::finish_notch_drag,
+            commands::set_theme,
+            commands::set_notch_preferences,
             commands::add_symbol,
             commands::remove_symbol,
             commands::remove_symbols,
             commands::set_card_tint,
             commands::reorder_symbols,
-
             commands::set_opacity,
             commands::set_autostart,
             commands::set_quote_refresh_secs,
@@ -255,9 +225,8 @@ pub fn run() {
 /// Tray-only presence for a desktop widget (no taskbar button).
 fn setup_system_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
-    let hide_i = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show_i, &hide_i, &quit_i])?;
+    let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
     let icon = app
         .default_window_icon()
@@ -279,15 +248,6 @@ fn setup_system_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>>
                     let _ = commands::set_visibility(&app, &state, true).await;
                 });
             }
-            "hide" => {
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    let Some(state) = app.try_state::<AppHandleState>() else {
-                        return;
-                    };
-                    let _ = commands::set_visibility(&app, &state, false).await;
-                });
-            }
             "quit" => {
                 app.exit(0);
             }
@@ -300,8 +260,8 @@ fn setup_system_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>>
                 ..
             } = event
             {
-                // Left-click tray icon: toggle widget visibility (same as hotkey).
-                commands::toggle_visibility_from_handle(tray.app_handle());
+                // Tray clicks show; automatic edge folding remains independent.
+                commands::show_from_handle(tray.app_handle());
             }
         })
         .build(app)?;

@@ -2,7 +2,28 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Latest published (as of doc update):** **v0.1.54** on GitHub Releases.
+**Current release:** **v0.2.0** on GitHub Releases.
+
+## 0.2.0 ? 2026-10-17
+
+### Added
+
+- Screen-edge watchlist notch with instrument icons, latest-price changes and inward sparkline detail cards.
+- Shared-height appearance, instrument and general settings with mouse-first watchlist management.
+
+### Changed
+
+- Smoked Glass and zero-refraction Liquid materials with mirrored rims. Adaptive, cached desktop capture reduces static-background work while preserving movement.
+- Smaller price/change typography, finer sparklines with a visible baseline and subtle fill, and restrained animations.
+
+### Removed
+
+- Keyboard controls, tray hiding, notch add/remove buttons, percentage background badges and settings save notices.
+
+### Fixed
+
+- Delayed startup state could leave an expanded-looking notch unresponsive to the mouse.
+- Continuous watchlist reordering, first-open settings sizing and theme-switch position jitter.
 
 ---
 

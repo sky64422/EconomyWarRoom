@@ -26,7 +26,7 @@ cargo -V
 
 ### 1.3 Node.js
 
-- Node **18+** (LTS recommended) and npm  
+- Node **24+** (built-in TypeScript UI test runner) and npm
 - Verify: `node -v`, `npm -v`
 
 ### 1.4 WebView2
@@ -58,8 +58,8 @@ npm install
 npm run run:exe
 ```
 
-**Expected:** frameless tall window, glass panel, **no taskbar button**, system **tray** icon, seed symbols **AAPL** and **BTC-USD**, quotes filling after network calls.
-Settings includes refresh presets, **Launch at login**, and **Version** + update check (dark-only UI). Header has market badge, **opacity slider**, settings (blue light when an update is ready), hide.
+**Expected:** a screen-edge instrument notch, **no taskbar button**, system **tray** icon, seed symbols **AAPL** and **BTC-USD**, percentages filling after network calls. Click an icon for its sparkline and two-row quote detail.
+Right-click the notch for **모양 / 종목 / 일반** settings. Appearance includes Dark/Glass/Liquid and opacity. General retains refresh, autostart, version/update, diagnostics and quit. The tray offers Show and Quit. App-specific keyboard controls are removed. Debug builds never modify OS autostart registrations.
 
 ### Frontend only (no native window)
 
@@ -138,36 +138,21 @@ State JSON is under Tauri app data, roughly:
 
 ---
 
-## 5. Runtime checklist (first Windows session)
+## 5. Current native runtime checklist
 
-**Toolchain on this Windows host (2026-07-22):** Node 24 + npm, Rust `stable-x86_64-pc-windows-msvc`, VS Build Tools 2022 (Desktop C++ / MSVC), WebView2, `npm install` complete. Unit lib tests pass. **UI smoke below still open.**
+- Four edges, mouse drag/dock, restart placement persistence.
+- Instrument icon plus latest primary percentage; click opens that instrument's existing sparkline and primary/secondary grid.
+- First settings opening after a short card; equal height across all three tabs; body-only scrolling when constrained.
+- Add/remove/reorder/multi-select/tint and overflow instrument access.
+- Detail column ratios persist across restart.
+- Opacity readability, Dark/Glass/Liquid; foreground remains sharp.
+- Transparent corners pass input through; hover never activates the window.
+- Fold keeps polling and leaves an edge tab; explicit hide pauses new polling.
+- Glass/Liquid capture stops on fold/hide; display affinity restores on theme change/reload/hide.
+- Tray show/hide/quit, global shortcut, update progress/restart, diagnostics, release autostart.
 
-Do these once after first successful launch (optional ops checklist; not tracked as build work in TODO):
-
-- [ ] Window always on top, frameless, tall  
-- [ ] **No taskbar button**; tray icon present (left-click toggle; menu Show/Hide/Quit)  
-- [ ] Drag move; resize; restart → geometry restored  
-
-- [ ] Header opacity slider changes panel transparency  
-- [ ] Seed quotes + sparklines for AAPL / BTC-USD  
-- [ ] **+** add symbol (e.g. `MSFT`); try several symbols for density  
-- [ ] Drag reorder; restart → order kept  
-- [ ] Arrow keys nudge the window when focus is on the body (not opacity slider / search); 4px, Shift 16px, Ctrl 1px  
-- [ ] Remove symbol (context menu **Remove** and keyboard **Delete** with selection)  
-- [ ] Multi-select (Ctrl / Shift) and right-click pastel card tint  
-- [ ] Drag column edges; restart → column ratios kept  
-- [ ] PRE / LIVE / POST / CLOSED: 1st row = current session; 2nd row = last completed regular session (LIVE = yesterday close + yesterday %)  
-- [ ] Settings → Price refresh interval (ms presets)  
-- [ ] Header hide; `Ctrl+Shift+Space` shows again; no network thrash while hidden  
-- [ ] Settings = compact sheet **above** watchlist (list remains usable)  
-- [ ] Max height: extra space goes to quote list, not a hollow settings panel  
-- [ ] Cannot shrink below content (rows + **+ Add** stay visible; slight min-edge jitter OK)  
-- [ ] No useless right scrollbar when already at content min height  
-- [ ] Card order: symbol · sparkline · price  
-- [ ] Settings → Version download icon update check (release build); settings gear badges when ready · `npm run release:publish` for new versions  
-- [ ] Settings → Copy diagnostics works  
-- [ ] Settings → Quit **or tray Quit** fully exits  
-- [ ] Settings → **Launch at login** toggle; check Startup apps / Task Manager  
+Recorded evidence and reproducible smoke commands: [testing.md](testing.md).
+Native hardware tests and Rust geometry tests are separate evidence.
 
 ---
 
@@ -283,3 +268,30 @@ The dump includes version, OS, visibility, settings, watchlist, quote cache summ
 
 - Rolling file log under app data (survives hard crash)  
 - `EWR_LOG=debug` verbose scheduler tracing
+
+## 11. Isolated notch preview
+
+Keep the installed app's settings separate. Create a local ignored config from the current base:
+
+```powershell
+New-Item -ItemType Directory -Force tmp | Out-Null
+$previewConfig = Get-Content -Raw src-tauri/tauri.conf.json | ConvertFrom-Json
+$previewConfig.identifier = 'com.economywarroom.notch-preview'
+$previewConfig.productName = 'EconomyWarRoom Preview'
+$previewConfig.build.beforeDevCommand = ''
+$previewConfig.build.devUrl = 'http://localhost:1521'
+$previewConfig.app.windows[0].title = 'Economy War Room Preview'
+$previewJson = $previewConfig | ConvertTo-Json -Depth 30
+[IO.File]::WriteAllText((Join-Path $PWD 'tmp/native-preview.json'), $previewJson, (New-Object Text.UTF8Encoding $false))
+```
+
+Run Vite on 1521 separately. Then:
+
+```powershell
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=9251'
+npm run tauri dev -- --config tmp/native-preview.json
+```
+
+Use the browser/native scripts listed in [testing.md](testing.md). Native scripts assert the preview identifier before changing fixture preferences. They never target the normal application identifier. Global shortcuts are no longer registered; the legacy JSON hotkey value is ignored.
+
+The former freely resizable list/content-hug checklist was superseded by the 2026-10-17 notch design. Legacy window coordinates remain persisted for migration, while Rust's notch controller owns current placement.

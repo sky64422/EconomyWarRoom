@@ -1,7 +1,7 @@
 {
   "name": "economy-war-room",
   "private": true,
-  "version": "0.1.54",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,8 +10,10 @@
     "tauri": "tauri",
     "run:exe": "node scripts/run-release.mjs",
     "release:publish": "node scripts/publish-release.mjs",
-    "test": "cd src-tauri && cargo test --lib && cargo test --test integration_e2e --test risk_scenarios",
-    "test:coverage": "bash scripts/coverage.sh"
+    "test": "npm run test:ui && cd src-tauri && cargo test --lib && cargo test --test integration_e2e --test risk_scenarios --test notch --test liquid_frames",
+    "test:coverage": "bash scripts/coverage.sh",
+    "test:ui": "node --experimental-strip-types --test tests/ui/*.test.mjs",
+    "test:coverage:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/coverage-windows.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

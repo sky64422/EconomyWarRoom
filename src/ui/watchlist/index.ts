@@ -25,6 +25,7 @@ import {
 } from "./metrics";
 import { guessAssetKind, localSuggestions, mergeSuggestions } from "./search";
 import { loadAddCardTint, normalizeTint, saveAddCardTint } from "./tint";
+import { markMarkup } from "../stock-marks";
 
 const SPARK_W = 100;
 const SPARK_H = 28;
@@ -32,17 +33,22 @@ const SPARK_TICK_MS = 1000;
 const DRAG_THRESHOLD_PX = 6;
 const PRICE_FLASH_COOLDOWN_MS = 1400;
 const PRICE_FLASH_MS = 560;
+const MENU_INSET_PX = 8;
+const ASSET_LABELS:Record<AssetKind,string>={equity:'주식',crypto:'암호화폐',commodity:'원자재',other:'기타'};
 
 export interface WatchlistController {
   setItems: (items: WatchlistItem[]) => void;
   setQuotes: (quotes: Quote[]) => void;
   setSparklines: (sparks: Sparkline[]) => void;
   setColumnRatios: (ratios: ColumnRatios) => void;
+  closeMenu: () => void;
   destroy: () => void;
 }
 
 export interface WatchlistMountOptions {
   columnRatios?: ColumnRatios;
+  management?: boolean;
+  onOpenDetail?: (id: string) => void;
   onQuotesChanged?: (quotes: Quote[]) => void;
 }
 
@@ -72,7 +78,8 @@ export function mountWatchlist(
   const quotes = new Map<string, Quote>();
   const sparks = new Map<string, Sparkline>();
   const selected = new Set<string>();
-  let anchorId: string | null = null;
+  const removing = new Set<string>();
+  const removeErrors = new Set<string>();
   let columnRatios: ColumnRatios = {
     ...DEFAULT_COLUMN_RATIOS,
     ...(opts?.columnRatios ?? {}),
@@ -80,11 +87,11 @@ export function mountWatchlist(
 
   let dragId: string | null = null;
   let pendingFullRender = false;
-  let adding = false;
+  let adding = opts?.management ?? false;
+  let addPending = false;
   let addError: string | null = null;
   let addQuery = "";
   let suggestions: SymbolSuggestion[] = [];
-  let activeSuggest = -1;
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let searchSeq = 0;
   let sparkTickTimer: ReturnType<typeof setInterval> | null = null;
@@ -93,7 +100,7 @@ export function mountWatchlist(
   const lastPriceFlashAt = new Map<string, number>();
 
   root.innerHTML = `
-    <div class="watchlist-view">
+    <div class="watchlist-view${opts?.management ? ' management-view' : ''}">
       <div class="watchlist" id="watchlist-scroll">
         <div class="watchlist-rows" id="watchlist-list" role="list"></div>
         <div class="watchlist-footer" id="watchlist-footer"></div>
@@ -103,6 +110,7 @@ export function mountWatchlist(
 
   const listEl = root.querySelector("#watchlist-list") as HTMLElement;
   const footerEl = root.querySelector("#watchlist-footer") as HTMLElement;
+  if(opts?.management)listEl.before(footerEl);
   applyColumnRatiosCss(root, columnRatios);
 
   function setColumnRatios(ratios: ColumnRatios): void {
@@ -183,12 +191,6 @@ export function mountWatchlist(
       .filter((id): id is string => Boolean(id));
   }
 
-  function orderedItemIds(): string[] {
-    return [...items]
-      .sort((a, b) => a.sort_index - b.sort_index)
-      .map((i) => i.id);
-  }
-
   function closeTintMenu(): void {
     if (tintMenuEl) {
       tintMenuEl.remove();
@@ -209,12 +211,8 @@ export function mountWatchlist(
     const menu = document.createElement("div");
     menu.className = "tint-menu";
     menu.setAttribute("role", "menu");
-    const removeLabel =
-      target.kind === "item" && selected.size > 1 && selected.has(target.id)
-        ? `Remove ${selected.size}`
-        : "Remove";
     menu.innerHTML = `
-      <div class="tint-menu-label">Card color</div>
+      <div class="tint-menu-label">카드 색상</div>
       <div class="tint-swatches">
         ${CARD_TINTS.map(
           (t) => `
@@ -226,20 +224,24 @@ export function mountWatchlist(
       ${
         target.kind === "item"
           ? `<div class="tint-menu-divider" role="separator"></div>
-      <button type="button" class="tint-menu-action tint-menu-action--danger" data-action="remove" role="menuitem">${escapeHtml(removeLabel)}</button>`
+      <button type="button" class="tint-menu-action tint-menu-action--danger" data-action="remove" role="menuitem">제거</button>`
           : ""
       }
     `;
-    document.body.appendChild(menu);
-    const pad = 8;
+    const host=opts?.management ? root.closest<HTMLElement>('.settings-root') : null;
+    (host ?? document.body).appendChild(menu);
+    const pad = MENU_INSET_PX;
+    if(host){menu.style.position='absolute';menu.style.maxWidth=`${host.clientWidth-pad*2}px`;menu.style.minWidth='0';menu.style.maxHeight=`${host.clientHeight-pad*2}px`;menu.style.overflow='auto';}
     const rect = menu.getBoundingClientRect();
-    let left = clientX;
-    let top = clientY;
-    if (left + rect.width > window.innerWidth - pad) {
-      left = window.innerWidth - rect.width - pad;
+    const bounds=host?.getBoundingClientRect();
+    let left = clientX-(bounds?.left ?? 0)-(host?.clientLeft ?? 0);
+    let top = clientY-(bounds?.top ?? 0)-(host?.clientTop ?? 0);
+    const width=host?.clientWidth ?? window.innerWidth,height=host?.clientHeight ?? window.innerHeight;
+    if (left + rect.width > width - pad) {
+      left = width - rect.width - pad;
     }
-    if (top + rect.height > window.innerHeight - pad) {
-      top = window.innerHeight - rect.height - pad;
+    if (top + rect.height > height - pad) {
+      top = height - rect.height - pad;
     }
     menu.style.left = `${Math.max(pad, left)}px`;
     menu.style.top = `${Math.max(pad, top)}px`;
@@ -267,14 +269,8 @@ export function mountWatchlist(
       e.stopPropagation();
       closeTintMenu();
       if (target.kind !== "item") return;
-      if (selected.size > 1 && selected.has(target.id)) {
-        void deleteSelected();
-        return;
-      }
       selected.delete(target.id);
-      void invoke("remove_symbol", { id: target.id }).catch((err) => {
-        console.error("remove_symbol failed", err);
-      });
+      void removeItem(target.id);
     });
   }
 
@@ -302,33 +298,6 @@ export function mountWatchlist(
   function selectSingle(id: string): void {
     selected.clear();
     selected.add(id);
-    anchorId = id;
-    applySelectionClasses();
-  }
-
-  function toggleSelect(id: string): void {
-    if (selected.has(id)) {
-      selected.delete(id);
-    } else {
-      selected.add(id);
-    }
-    anchorId = id;
-    applySelectionClasses();
-  }
-
-  function selectRange(toId: string): void {
-    const order = orderedItemIds();
-    const from = anchorId && order.includes(anchorId) ? anchorId : toId;
-    const a = order.indexOf(from);
-    const b = order.indexOf(toId);
-    if (a < 0 || b < 0) {
-      selectSingle(toId);
-      return;
-    }
-    const lo = Math.min(a, b);
-    const hi = Math.max(a, b);
-    selected.clear();
-    for (let i = lo; i <= hi; i++) selected.add(order[i]);
     applySelectionClasses();
   }
 
@@ -337,35 +306,26 @@ export function mountWatchlist(
     for (const id of [...selected]) {
       if (!alive.has(id)) selected.delete(id);
     }
-    if (anchorId && !alive.has(anchorId)) {
-      anchorId = selected.values().next().value ?? null;
-    }
-  }
-
-  async function deleteSelected(): Promise<void> {
-    if (selected.size === 0) return;
-    const ids = [...selected];
-    selected.clear();
-    anchorId = null;
-    try {
-      if (ids.length === 1) {
-        await invoke("remove_symbol", { id: ids[0] });
-      } else {
-        await invoke("remove_symbols", { ids });
-      }
-    } catch (err) {
-      console.error("remove failed", err);
-    }
   }
 
   function renderRows(): void {
     pruneSelection();
     if (items.length === 0) {
-      listEl.innerHTML = `<div class="watchlist-empty" role="status">No symbols yet. Use + Add below.</div>`;
+      listEl.innerHTML = opts?.management ? `<div class="management-empty" role="status"><span>관심종목이 없습니다</span><small>위에서 종목을 검색해 추가하세요.</small></div>` : `<div class="watchlist-empty" role="status">No symbols yet. Use + Add below.</div>`;
     } else {
       const sorted = [...items].sort((a, b) => a.sort_index - b.sort_index);
       listEl.innerHTML = sorted
         .map((item) => {
+          const tint = normalizeTint(item.card_tint);
+          const tintClass = tint !== "none" ? ` tint-${tint}` : "";
+          const selectedClass = selected.has(item.id) ? " is-selected" : "";
+          if(opts?.management){
+            const name=item.display_name && item.display_name!==item.symbol ? item.display_name : ASSET_LABELS[item.asset_kind];
+            return `<div class="watchlist-row management-row${tintClass}${selectedClass}" role="listitem" tabindex="0" data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}" data-tint="${tint}" aria-label="${escapeAttr(item.symbol)}, ${escapeAttr(name)}">
+              <span class="management-mark">${markMarkup(item.symbol)}${tint!=='none' ? `<span class="tint-swatch tint-${tint} management-tint" aria-hidden="true"></span>` : ''}</span>
+              <span class="management-info"><span class="row-symbol">${escapeHtml(item.symbol)}</span><span class="management-name">${escapeHtml(name)}</span>${removeErrors.has(item.id) ? '<span class="management-remove-error" role="status">제거 실패 · 다시 시도해 주세요</span>' : ''}</span>
+              <button type="button" class="management-remove" aria-label="${escapeAttr(item.symbol)} 관심종목에서 제거" ${removing.has(item.id) ? 'disabled aria-busy="true"' : ''}><svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5.5h13M8 3.5h4m-7 2 1 11h8l1-11M8.5 8.5v5m3-5v5"/></svg></button></div>`;
+          }
           const q = quotes.get(item.symbol);
           const sp = sparks.get(item.symbol);
           const points = sp?.points ?? [];
@@ -374,9 +334,6 @@ export function mountWatchlist(
           const pct = sparklineChangePercent(q);
           const tone = toneForChange(pct, sparklineTone(points));
           const stroke = strokeForTone(tone);
-          const tint = normalizeTint(item.card_tint);
-          const tintClass = tint !== "none" ? ` tint-${tint}` : "";
-          const selectedClass = selected.has(item.id) ? " is-selected" : "";
           const sparkMarkup = sparklineSvgMarkup(
             points,
             SPARK_W,
@@ -416,8 +373,16 @@ export function mountWatchlist(
         })
         .join("");
     }
+    if (opts?.management) {
+      for (const row of listEl.querySelectorAll<HTMLElement>(".watchlist-row")) {
+        const item=items.find(item=>item.id===row.dataset.id)!;
+        const remove=row.querySelector<HTMLButtonElement>('.management-remove')!;
+        remove.addEventListener("pointerdown",e=>e.stopPropagation());
+        remove.addEventListener("click",e=>{e.stopPropagation();void removeItem(item.id);});
+      }
+    }
     bindRowEvents();
-    bindColumnResizers();
+    if (!opts?.management) bindColumnResizers();
   }
 
   function maybeFlashPrimaryPrice(row: HTMLElement, symbol: string): void {
@@ -523,17 +488,17 @@ export function mountWatchlist(
   function scheduleSearch(q: string): void {
     addQuery = q;
     suggestions = localSuggestions(q, ownedSymbols());
-    activeSuggest = suggestions.length > 0 ? 0 : -1;
+
     renderFooter(true);
     if (searchTimer) clearTimeout(searchTimer);
+    const seq = ++searchSeq;
     const trimmed = q.trim();
     if (!trimmed) {
       suggestions = [];
-      activeSuggest = -1;
+
       renderFooter(true);
       return;
     }
-    const seq = ++searchSeq;
     searchTimer = setTimeout(() => {
       void (async () => {
         try {
@@ -543,12 +508,12 @@ export function mountWatchlist(
           });
           if (seq !== searchSeq) return;
           suggestions = mergeSuggestions(remote ?? [], localSuggestions(addQuery, ownedSymbols()), ownedSymbols());
-          activeSuggest = suggestions.length > 0 ? 0 : -1;
+
           renderFooter(true);
         } catch {
           if (seq !== searchSeq) return;
           suggestions = localSuggestions(addQuery, ownedSymbols());
-          activeSuggest = suggestions.length > 0 ? 0 : -1;
+
           renderFooter(true);
         }
       })();
@@ -563,74 +528,47 @@ export function mountWatchlist(
         : addQuery.length;
       footerEl.innerHTML = `
         <div class="add-wrap">
-          <form class="add-card add-card--active watchlist-card" id="add-form" autocomplete="off">
-            <input type="text" id="add-symbol-input" class="add-card-input" placeholder="Symbol..." maxlength="32" spellcheck="false" value="${escapeAttr(addQuery)}" aria-autocomplete="list" aria-controls="add-suggest" />
-            <button type="submit" class="add-card-btn primary">Add</button>
-            <button type="button" class="add-card-btn" id="add-cancel">Cancel</button>
-          </form>
+          <div role="search" class="${opts?.management ? 'management-search' : 'add-card add-card--active watchlist-card'}" id="add-form" aria-busy="${addPending}">
+            ${opts?.management ? '<svg class="management-search-icon" viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5"/><path d="m12 12 4 4"/></svg>' : ''}
+            <input type="text" id="add-symbol-input" class="${opts?.management ? 'management-search-input' : 'add-card-input'}" placeholder="종목명 또는 티커 검색" maxlength="32" spellcheck="false" value="${escapeAttr(addQuery)}" aria-label="종목 검색" role="combobox" aria-expanded="${suggestions.length>0}" aria-autocomplete="list" aria-controls="add-suggest" ${addPending ? 'disabled' : ''}/>
+            <button type="button" class="${opts?.management ? 'management-search-submit' : 'add-card-btn primary'}" aria-label="종목 추가" ${addPending ? 'disabled' : ''}>${opts?.management ? '<svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>' : '추가'}</button>
+            ${opts?.management ? '' : '<button type="button" class="add-card-btn" id="add-cancel">취소</button>'}
+          </div>
           ${
             suggestions.length > 0
               ? `<ul class="add-suggest" id="add-suggest" role="listbox">
             ${suggestions
               .map(
                 (s, i) => `
-              <li role="option" class="add-suggest-item ${i === activeSuggest ? "active" : ""}" data-suggest-idx="${i}" data-symbol="${escapeAttr(s.symbol)}" data-kind="${escapeAttr(s.asset_kind)}">
+              <li role="option" id="add-option-${i}" class="add-suggest-item" data-suggest-idx="${i}" data-symbol="${escapeAttr(s.symbol)}" data-kind="${escapeAttr(s.asset_kind)}">
+                ${opts?.management ? `<span class="management-result-mark">${markMarkup(s.symbol)}</span><span class="management-result-info">` : ''}
                 <span class="suggest-symbol">${escapeHtml(s.symbol)}</span>
                 <span class="suggest-meta">${escapeHtml(s.name ?? s.exchange ?? s.asset_kind)}</span>
+                ${opts?.management ? '</span><span class="management-result-add" aria-hidden="true">+</span>' : ''}
               </li>`,
               )
               .join("")}
           </ul>`
               : addQuery.trim()
-                ? `<div class="add-suggest-empty">No matches</div>`
+                ? `<div class="add-suggest-empty">${opts?.management ? '종목 코드를 입력해 바로 추가할 수 있어요.' : 'No matches'}</div>`
                 : ""
           }
-          ${addError ? `<div class="add-error">${escapeHtml(addError)}</div>` : ""}
+          ${addError ? `<div class="add-error" role="status">${escapeHtml(addError)}</div>` : ""}
         </div>
       `;
-      const form = footerEl.querySelector("#add-form") as HTMLFormElement;
+      const form = footerEl.querySelector("#add-form") as HTMLElement;
       const input = footerEl.querySelector("#add-symbol-input") as HTMLInputElement;
-      const cancel = footerEl.querySelector("#add-cancel") as HTMLButtonElement;
+      const cancel = footerEl.querySelector<HTMLButtonElement>("#add-cancel");
       input.focus();
       try {
         input.setSelectionRange(caret, caret);
       } catch {
         /* ignore */
       }
-      form.addEventListener("submit", (e) => {
-        e.preventDefault();
-        if (activeSuggest >= 0 && suggestions[activeSuggest]) {
-          void onAdd(
-            suggestions[activeSuggest].symbol,
-            suggestions[activeSuggest].asset_kind,
-          );
-        } else {
-          void onAdd(input.value);
-        }
-      });
+      form.querySelector("button")!.addEventListener("click", () => void onAdd(input.value));
       input.addEventListener("input", () => {
         addError = null;
         scheduleSearch(input.value);
-      });
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "ArrowDown" && suggestions.length > 0) {
-          e.preventDefault();
-          activeSuggest = (activeSuggest + 1) % suggestions.length;
-          renderFooter(true);
-        } else if (e.key === "ArrowUp" && suggestions.length > 0) {
-          e.preventDefault();
-          activeSuggest =
-            activeSuggest <= 0 ? suggestions.length - 1 : activeSuggest - 1;
-          renderFooter(true);
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          adding = false;
-          addError = null;
-          addQuery = "";
-          suggestions = [];
-          activeSuggest = -1;
-          renderFooter();
-        }
       });
       footerEl.querySelectorAll<HTMLElement>("[data-suggest-idx]").forEach((el) => {
         el.addEventListener("mousedown", (e) => {
@@ -640,12 +578,14 @@ export function mountWatchlist(
           if (s) void onAdd(s.symbol, s.asset_kind);
         });
       });
-      cancel.addEventListener("click", () => {
+      cancel?.addEventListener("click", () => {
+        if(addPending)return;
+        ++searchSeq;
         adding = false;
         addError = null;
         addQuery = "";
         suggestions = [];
-        activeSuggest = -1;
+
         if (searchTimer) clearTimeout(searchTimer);
         renderFooter();
       });
@@ -653,7 +593,7 @@ export function mountWatchlist(
       footerEl.innerHTML = `
         <button type="button" class="add-card watchlist-card${addCardTintClass()}" id="btn-add"
           aria-label="Add symbol"
-          title="Click to add · right-click color">+ Add</button>
+          title="Click to add · right-click color">+ 추가</button>
       `;
       const btn = footerEl.querySelector("#btn-add") as HTMLButtonElement;
       btn.addEventListener("click", () => {
@@ -661,7 +601,7 @@ export function mountWatchlist(
         addError = null;
         addQuery = "";
         suggestions = [];
-        activeSuggest = -1;
+
         renderFooter();
       });
       btn.addEventListener("contextmenu", (e) => {
@@ -673,25 +613,38 @@ export function mountWatchlist(
   }
 
   async function onAdd(raw: string, kind?: AssetKind): Promise<void> {
+    if(addPending)return;
     const symbol = raw.trim().toUpperCase();
     if (!symbol) {
-      addError = "Enter a symbol";
+      addError = opts?.management ? "종목 코드를 입력해 주세요." : "Enter a symbol";
       renderFooter(true);
       return;
     }
     const asset_kind = kind ?? guessAssetKind(symbol);
+    addPending=true;
+    ++searchSeq;if(searchTimer)clearTimeout(searchTimer);
+    renderFooter(true);
     try {
       await invoke("add_symbol", { symbol, asset_kind });
-      adding = false;
+      adding = opts?.management ?? false;
       addError = null;
       addQuery = "";
       suggestions = [];
-      activeSuggest = -1;
-      renderFooter();
+
     } catch (err) {
       addError = String(err);
-      renderFooter(true);
+    } finally {
+      addPending=false;renderFooter(adding);
+      if(!adding)footerEl.querySelector<HTMLButtonElement>('#btn-add')?.focus({preventScroll:true});
     }
+  }
+
+  async function removeItem(id:string):Promise<void> {
+    if(removing.has(id))return;
+    removing.add(id);removeErrors.delete(id);renderRows();
+    try { await invoke('remove_symbol',{id}); }
+    catch(error) { console.error('remove_symbol failed',error);removeErrors.add(id); }
+    finally { removing.delete(id);renderRows(); }
   }
 
   function syncItemsFromDom(): string[] {
@@ -734,8 +687,6 @@ export function mountWatchlist(
 
         const startX = e.clientX;
         const startY = e.clientY;
-        const multi = e.ctrlKey || e.metaKey;
-        const range = e.shiftKey;
         let dragging = false;
         let ghost: HTMLElement | null = null;
         let offsetX = 0;
@@ -772,12 +723,14 @@ export function mountWatchlist(
         };
 
         try {
-          row.setPointerCapture(e.pointerId);
+          // Reordering reparents the row and releases its capture; the list stays put.
+          listEl.setPointerCapture(e.pointerId);
         } catch {
           /* ignore */
         }
 
         const onMove = (ev: PointerEvent) => {
+          if(ev.pointerId!==e.pointerId)return;
           const dx = ev.clientX - startX;
           const dy = ev.clientY - startY;
           if (!dragging && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
@@ -789,23 +742,24 @@ export function mountWatchlist(
         };
 
         const finish = (ev: PointerEvent) => {
+          if(ev.pointerId!==e.pointerId)return;
+          listEl.removeEventListener("pointermove", onMove);
+          listEl.removeEventListener("pointerup", finish);
+          listEl.removeEventListener("pointercancel", finish);
+          listEl.removeEventListener("lostpointercapture", finish);
           try {
-            row.releasePointerCapture(ev.pointerId);
+            listEl.releasePointerCapture(ev.pointerId);
           } catch {
             /* already released */
           }
-          row.removeEventListener("pointermove", onMove);
-          row.removeEventListener("pointerup", finish);
-          row.removeEventListener("pointercancel", finish);
 
           if (!dragging) {
-            if (range) {
-              selectRange(sourceId);
-            } else if (multi) {
-              toggleSelect(sourceId);
-            } else if (selected.has(sourceId) && selected.size === 1) {
+            if(opts?.management){
+              if(ev.type==='pointerup')opts.onOpenDetail?.(sourceId);
+              return;
+            }
+            if (selected.has(sourceId) && selected.size === 1) {
               selected.delete(sourceId);
-              anchorId = null;
               applySelectionClasses();
             } else {
               selectSingle(sourceId);
@@ -839,9 +793,10 @@ export function mountWatchlist(
           }
         };
 
-        row.addEventListener("pointermove", onMove);
-        row.addEventListener("pointerup", finish);
-        row.addEventListener("pointercancel", finish);
+        listEl.addEventListener("pointermove", onMove);
+        listEl.addEventListener("pointerup", finish);
+        listEl.addEventListener("pointercancel", finish);
+        listEl.addEventListener("lostpointercapture", finish);
       });
     });
   }
@@ -892,23 +847,6 @@ export function mountWatchlist(
   renderFooter();
   startSparklineTicker();
 
-  const onKeyDown = (e: KeyboardEvent) => {
-    const target = e.target as HTMLElement | null;
-    if (target?.closest?.("input, textarea, [contenteditable=true]")) return;
-    if (e.key === "Delete" || e.key === "Backspace") {
-      if (selected.size === 0) return;
-      e.preventDefault();
-      void deleteSelected();
-    } else if (e.key === "Escape") {
-      closeTintMenu();
-      if (selected.size > 0) {
-        selected.clear();
-        applySelectionClasses();
-      }
-    }
-  };
-  document.addEventListener("keydown", onKeyDown);
-
   const onDocPointer = (e: PointerEvent) => {
     if (tintMenuEl && !tintMenuEl.contains(e.target as Node)) {
       closeTintMenu();
@@ -941,11 +879,11 @@ export function mountWatchlist(
     setQuotes,
     setSparklines,
     setColumnRatios,
+    closeMenu:closeTintMenu,
     destroy: () => {
       if (searchTimer) clearTimeout(searchTimer);
       stopSparklineTicker();
       closeTintMenu();
-      document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("pointerdown", onDocPointer, true);
       document.removeEventListener("visibilitychange", onVis);
       for (const u of unlisteners) u();

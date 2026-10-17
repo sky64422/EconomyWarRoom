@@ -1,184 +1,89 @@
-# Architecture (as implemented)
+# Architecture
 
-**Updated:** 2026-08-25 (v0.1.54)  
-**Branch of truth:** `main`
+Updated: 2026-10-17. Version 0.2.0 includes the TokenUsage UI adoption.
 
-This document describes the **current codebase**, not only the original design sketch.
+```text
+Edge notch: instrument icon + primary change
+  ├─ click → single-instrument detail: symbol | sparkline | primary/secondary rows
+  └─ context menu → appearance / instruments / general settings
+                   │ invoke / events
+Thin Tauri commands│
+                   ▼
+AppCore ── QuoteScheduler + RateLimitedQueue ── YahooProvider
+  └─ atomic preference/watchlist persistence to existing JSON store
 
-## Runtime
-
-```
-┌─────────────────────────────────────────────┐
-│  Web UI  src/                               │
-│  · glass panel, rows, SVG sparklines        │
-│  · DnD reorder, select / multi-select       │
-│  · pastel card tints, bottom +, hide        │
-│  · resizable columns (persisted ratios)     │
-│  · extended/pre-post primary + secondary %  │
-│  · settings overlay (list fades under sheet)│
-└──────────────────┬──────────────────────────┘
-                   │ invoke / listen (events)
-┌──────────────────▼──────────────────────────┐
-│  commands.rs  (thin Tauri adapters)        │
-│  lib.rs        (setup: plugins, hotkey,     │
-│                 tray, tick loop, updater)   │
-└──────────────────┬──────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────┐
-│  AppCore  application/service.rs            │
-│  · watchlist CRUD + card_tint + persist     │
-│  · opacity / geometry / autostart           │
-│  · quote_refresh_ms (JSON: quote_refresh_secs) │
-│  · column_ratios                            │
-│  · visibility flag → scheduler              │
-│  · quote / sparkline cache reads            │
-└──────────┬─────────────────┬────────────────┘
-           │                 │
-           ▼                 ▼
-   QuoteScheduler      JSON store
-   + RateLimitedQueue  infrastructure/store.rs
-           │
-           ▼
-   MarketDataProvider
-   infrastructure/yahoo (HTTP + parse)
-
-   infrastructure/updater  (Tauri updater plugin)
-   system tray (show / hide / quit; skip taskbar)
+domain/notch + reveal ── infrastructure/notch_window ── fixed transparent HWND
+Glass / Liquid ── bounded desktop capture ── serialized TS renderer (background only)
 ```
 
-## Source layout
+## Rust modules
 
-### Rust (`src-tauri/src/`)
+| Path under `src-tauri/src` | Responsibility |
+|---|---|
+| `domain/types.rs`, `constants.rs` | Existing market DTOs, settings, refresh/opacity/column policies; theme defaults |
+| `domain/display.rs` | Existing primary/secondary rows; remains the sole quote display calculation |
+| `domain/watchlist.rs`, `sparkline_math.rs` | Existing watchlist and chart rules |
+| `domain/notch.rs`, `notch/drag.rs` | Physical geometry, edge selection, scaling, hit regions, dynamic cell capacity, capture bounds |
+| `domain/reveal.rs` | Fold/reveal timing and physical edge target; accepts supplied time |
+| `application/service.rs` | AppCore use cases; cloned state is saved before committing in memory |
+| `application/scheduler.rs`, `queue.rs`, `cache.rs` | Existing rate-limited quote/sparkline pipeline and cache |
+| `application/diagnostics.rs` | Existing bounded diagnostics and error throttling |
+| `infrastructure/notch_window.rs` | Native layout, pointer/input polling, drag session and monitor reconciliation |
+| `infrastructure/liquid_glass.rs`, `liquid_capture.rs` | Capture-affinity leases; dedicated worker with reusable GDI surfaces, raw RGBA cache and legacy BMP support |
+| `infrastructure/topmost.rs` | Reasserts the widget's topmost band without activating it |
+| `infrastructure/window_ctl.rs` | Show/hide, transparent edge; legacy geometry adapters retained |
+| `infrastructure/store.rs`, `yahoo/`, `updater.rs` | Existing JSON, market provider and signed updater |
+| `commands.rs`, `lib.rs`, `state.rs` | Thin adapters, setup/tray/tick wiring and managed state |
 
-| Path | Role |
-|------|------|
-| `domain/` | Types (`WatchlistItem`, `CardTint`, `Quote` + `PriceRows` display, `ColumnRatios`, `AppSettings`), policy constants, watchlist + **display rows**, sparkline downsample |
-| `ports/market_data.rs` | `MarketDataProvider` + `ProviderLimits` |
-| `application/cache.rs` | In-memory quote / sparkline caches |
-| `application/queue.rs` | `RateLimitedQueue` (max concurrent, key coalesce, priority) |
-| `application/scheduler.rs` | Pipeline / RR workers, configurable min quote interval (ms), backoff, sparkline cadence |
-| `application/service.rs` | **`AppCore`** — testable app use cases |
-| `application/diagnostics.rs` | In-process event ring for Copy diagnostics |
-| `infrastructure/yahoo/` | `YahooProvider` (mockable base URL), chart parse, search, prior-day enrich |
-| `infrastructure/store.rs` | Load/save `economy-war-room-state.json` |
-| `infrastructure/window_ctl.rs` | Show/hide/geometry/opacity; **content min-size** (physical) + resize clamp; clean glass edge |
-| `infrastructure/updater.rs` | Startup auto-check + manual install + restart path |
-| `commands.rs` | `#[tauri::command]` handlers (incl. `set_content_min_size`, `set_column_ratios`) |
-| `state.rs` | `AppHandleState { core, content_min_w/h }` |
-| `lib.rs` | Tauri `run()`, autostart, hotkey, **system tray**, tick loop, updater, **on_window_event Resized** |
+The former content-hug observer is no longer mounted, and the native Resized clamp is no longer active. Rust owns physical geometry. DWM rounding is disabled for the custom SVG silhouette.
 
-### Web (`src/`)
+## Frontend modules
 
-| Path | Role |
-|------|------|
-| `ui/app.ts` | Boot, state, geometry persist, **content-hug min** measure → `set_content_min_size` |
-| `ui/header.ts` | Drag region, market badge, opacity slider, settings (update badge), hide |
-| `ui/watchlist/` | Rows, multi-select, DnD, tint/remove, column resize, add (`index` + `metrics` / `columns` / `search` / `dnd`) |
-| `ui/sparkline.ts` | SVG path helper; tone from regular-session move |
-| `ui/settings-panel.ts` | Overlay settings: refresh, autostart, Version + update check, Copy Log / Quit |
-| `ui/opacity.ts` | Shared 5% opacity snap + `applyPanelOpacity` |
-| `ui/updates.ts` | Update check helper + event types |
-| `ui/types.ts` | TS mirrors of Rust DTOs (snake_case) |
-| `styles/` | `tokens.css`, `fonts.css`, `app.css` (barrel) + `base` / `header` / `layout` / `watchlist` / `settings` / `tint-menu` |
+| Path under `src` | Responsibility |
+|---|---|
+| `ui/app.ts` | Snapshot/event subscriptions, shell lifecycle, selected card/settings composition |
+| `ui/notch.ts`, `notch-state.ts` | Instrument icons, primary percentages, overflow, mouse pin/hover state |
+| `ui/notch-drag.ts`, `notch-surface.ts` | Gesture sessions; serialized geometry requests and stale-reply suppression |
+| `ui/stock-detail.ts` | One instrument in a two-tier grid, reusing existing quote metrics and sparkline policies |
+| `ui/watchlist/metrics.ts`, `format.ts`, `columns.ts`, `ui/sparkline.ts` | Shared existing quote presentation and chart policies |
+| `ui/settings-panel.ts` | Three tabs, shared intrinsic height, appearance saves and instrument management |
+| `ui/general-settings.ts` | Existing refresh/autostart/updater/diagnostics/quit controls, embedded in General |
+| `ui/watchlist/index.ts`, `dnd.ts`, `search.ts`, `tint.ts` | Existing watchlist CRUD/selection/reorder/tint; management rows in Instruments |
+| `ui/liquid-glass.ts`, `liquid-loop.ts`, `liquid-frame.ts` | Glass lens / Liquid blur rendering, serialized capture, stale-frame disposal and explicit visibility |
+| `ui/stock-marks.ts`, `assets/marks/` | Bundled instrument icon registry and ticker fallback |
+| `styles/notch.css`, `notch-widget.css` | Adopted silhouette/material and market-specific cards/settings |
 
-### Tests
+The app uses vanilla TS/CSS/SVG/canvas, with no new product package dependency.
 
-| Path | Role |
-|------|------|
-| `src/**` `#[cfg(test)]` | Unit tests (109) |
-| `tests/integration_e2e.rs` | Store + AppCore + scheduler + Yahoo mock HTTP |
-| `tests/risk_scenarios.rs` | Rate limit, hide, corrupt JSON, invalid input |
+## Data contracts
 
-## Key policies (constants)
+- **Notch = `Quote.display.primary.change`**. Missing/nonfinite primary is unknown; explicit zero stays zero. Do not substitute secondary/regular percentages.
+- Detail top/bottom rows remain `display.primary` / `display.secondary`. The existing `resolve_price_rows` calculation remains unchanged.
+- During LIVE the second row describes the previous completed regular session. Extended sessions retain their existing primary/secondary distinction.
+- Equity sparklines remain RTH-only, with the existing prior regular window during PRE and the current regular window during LIVE. Their regular-session color can differ from an extended primary percentage.
+- Settings offer 1s / 10s / 60s. Existing custom/legacy intervals remain unchanged on opening; they are not shown as a different selected preset. Rust's 500ms default and legacy bounds remain compatible. `quote_refresh_secs` is still the persisted millisecond key, including legacy seconds normalization.
 
-Defined in `domain/constants.rs` (names approximate):
+## Placement and lifecycle contracts
 
-| Policy | Defaults |
-|--------|----------|
-| Tick | **500ms** |
-| Batch / workers | batch size 4; max concurrent provider ~3 |
-| Quote refresh | UI presets **0.25s / 1s / 10s / 1m** (Rust field `quote_refresh_ms`; JSON key still `quote_refresh_secs`; clamp **250ms–120s**, default **500ms**; legacy 1..=120 = whole seconds) |
-| Sparkline | range **`5d`**, interval `5m`, target 32 points; min refresh ~300s. **RTH only:** `[regular.start, regular.end)`; bar at `end` is Yahoo post. PRE/overnight uses the last completed regular window. **LIVE** uses today’s window as soon as the series reaches the open (empty until the first RTH close); session change to `regular` skips the 5-minute spark cadence. After the close, official `regularMarketPrice` is stitched at `session_end`. Premarket is never plotted for equities. |
-| Backoff | 5s initial → double up to 120s |
-| Opacity | 0.35–1.0, default ~0.92 |
-| Window | default 320×640; policy floor 260×120; **runtime min = measured content** (OS physical min + Resized clamp) |
-| Hotkey | `Ctrl+Shift+Space` |
-| Window nudge | Arrow keys **4px** (Shift **16px**, Ctrl **1px**) when focus is not on slider/search/settings |
-| Card tints | `none`, `rose`, `peach`, `mint`, `sky`, `lavender`, `lemon` |
-| Column ratios | default symbol **1.15** / spark **1.25** / metrics **2.0** `fr` (clamped ~0.45–8) |
-| Card layout | Left→right: **symbol · sparkline · price/change**; remove via **context menu** |
+- Default depth 56 DIP; vertical/horizontal cells 72/96 DIP; ends 44 DIP; detail/settings width 260 DIP and maximum height 560 DIP, matching TokenUsage. Monitor content scale is 0.92–1.0, separate from physical Windows DPI.
+- At most six cells fit; native geometry reduces capacity for small work areas. All slots show instruments until overflow requires a final list cell. A one-slot notch shows the single instrument, or a list button when overflowing. Addition is available only in settings; an empty list keeps a right-clickable notch surface. All watchlist instruments stay in the scheduler.
+- Reserve a stable transparent canvas for details/settings. Changing selected card or tab does not move the HWND/notch origin. Only visible surfaces/bridge take pointer input.
+- Default click pin, optional hover detail, 180ms leave grace. Fold after 800ms outside unless held by detail/settings/drag/always-show. Custom keyboard handlers and global shortcuts are not installed.
+- **Fold:** 10×80 DIP edge target remains; quotes continue, Glass/Liquid capture stops.
+- **Explicit hide:** core visibility false; new quote polling and Glass/Liquid capture stop. `widget-visibility` explicitly informs the renderer because WebView2 does not reliably change `document.hidden` on hide.
+- **Show:** existing scheduler resumes; renderer capture can resume. **Quit** terminates the process.
+- Glass and Liquid capture visible rectangles only, has at most one normal renderer batch in flight, rejects hidden/Dark requests, discards old generations and restores display affinity on stop/theme change/reload/lease expiry. Capture bounds are pure domain rules inside the coverage gate.
 
-## Quote model (extended)
+## Persistence
 
-`Quote` carries more than a single last price:
+Existing watchlist IDs/order/tints, window geometry, column ratios, opacity, hotkey, autostart and refresh fields are retained. New fields: `theme`, `notch`, `hover_detail`, `always_show_notch`, `show_animation`, with defaults dark/right-centre/false/false/true.
 
-| Field | Role |
-|-------|------|
-| `price` / `change_percent` | Latest display fields (often live/extended) |
-| `regular_price` / `regular_change_percent` | Official regular session |
-| `extended_price` / `extended_change_percent` | Pre/post when applicable |
-| `previous_close` / `prior_close` / `previous_day_change_percent` | T-1 close / T-2 close / T-1 session % (daily bars; Yahoo `regularMarketPreviousClose` is T-1, never T-2) |
-| `market_state` | Yahoo hint: `regular`, `pre`, `post`, `closed`, … |
+Legacy column ratios and the inactive hotkey field remain persisted for compatibility; the current detail uses an intrinsic identity/price row above a full-width chart. Instrument rings stay neutral; notch cells have no add/remove actions. The Symbols tab uses flat rows and mouse reorder, with always-visible search; no count, search-close control, detail-navigation button, Ctrl/Shift selection, Delete or implicit Enter submission remains. Row pointer release opens the detail unless a drag or cancellation occurred. The trailing trash button stops pointer propagation and owns removal, pending/error/retry feedback and duplicate-request suppression.
 
-UI **primary** = the print for the current session. UI **secondary** = the last **completed** regular session (not a repeat of the primary %). Sparkline **path** is the same regular session the secondary row describes (yesterday’s RTH during PRE; today’s RTH once it has bars). Sparkline color uses regular-session move when extended.
+Missing placement monitor is initialized from the old window's logical coordinates and the current monitor DPI, with a primary-monitor fallback. Explicit placement is retained. Preference/placement saves clone, validate, persist, then commit; a failed write leaves memory and UI at the committed value.
 
-| Header | Secondary price | Secondary % |
-|--------|-----------------|-------------|
-| **PRE** | Last completed regular close (usually yesterday) | That regular session’s day move |
-| **LIVE** | Yesterday’s regular close | Yesterday vs T-2 (`previous_day_change_percent`) |
-| **POST** | Today’s official regular close | Today’s regular-session % |
-| **CLOSED** | Last completed regular close (Friday if weekend) | That regular session’s day move |
+Settings measure all three tabs, including inactive ones, using actual header/tab/gap/padding/border sizes. Active-tab selection does not control panel height. Monitor/content changes can recompute height. Normal contents fit without scrolling; constrained work areas or long lists scroll the body without visible scrollbars or reserved gutter. The body therefore stays horizontally centered with the header and tabs.
 
-LIVE cannot put “today’s close” on the secondary row — the regular session is still open — so the row steps back one trading day. Prices ≥ $1 show two decimals (e.g. `339.96`, not `340.0`).
+Tab buttons match TokenUsage's 37 DIP height. General stretches to the available body height with its two action buttons at the bottom; intrinsic measurement temporarily clears panel min-height/flex growth so the footer cannot feed back into window sizing. Tab spring/fade, switch/opacity and copy/update icon transitions share motion preferences. Four-edge detail reveal uses clip-path/opacity only; its native/DOM rectangles stay fixed throughout. Detail chart projection and session/baseline policy remain in `sparkline.ts`; the detail variant only changes presentation and adds the last sample's exact projected marker.
 
-## Commands (selected)
-
-| Command | Role |
-|---------|------|
-| `add_symbol` / `remove_symbol` / `remove_symbols` | Watchlist mutations |
-| `set_card_tint` | Persist pastel row highlight |
-| `reorder_symbols` | DnD order |
-| `set_opacity` / `set_autostart` | Settings |
-| `set_quote_refresh_ms` / `set_quote_refresh_secs` | Persist + apply scheduler interval (**ms**; `_secs` is the historical IPC name) |
-| `set_column_ratios` | Persist proportional column widths |
-| `set_content_min_size` | OS min from UI content measure; optional grow if content grew |
-| `search_symbols` | Yahoo autocomplete (+ local fallback in UI) |
-| `check_for_updates` | Manual updater path (install + restart) |
-| `get_diagnostics` / `hide_widget` / `quit_app` | Ops |
-
-## Events (Rust → UI)
-
-| Event | Payload |
-|-------|---------|
-| `watchlist-updated` | Ordered watchlist items (includes `card_tint`) |
-| `quotes-updated` | Quote list from cache |
-| `sparklines-updated` | Sparkline list from cache |
-| `opacity-updated` | Clamped opacity (CSS; Tauri has no native set_opacity) |
-
-## UI interaction notes
-
-- **Click** selects a card; **Ctrl/Cmd+click** toggles; **Shift+click** range-selects.  
-- **Delete / Backspace** removes selection (not while typing in the add input).  
-- **Right-click** opens menu: pastel tint + **Remove**.  
-- Drag-reorder starts after a small pointer movement threshold so clicks stay clicks.  
-- Column edges between symbol|spark and spark|metrics are draggable; ratios persist.  
-- Sparkline 1s UI ticker pauses when `document.hidden`.  
-- Quote DOM updates skip unchanged cells (quieter UI).  
-- **Window min height** follows content (add/remove cards); near the floor, frameless Windows may show slight resize jitter (accepted limitation).  
-- List scrolls only when content truly overflows (not at content-hug min).  
-- **Tray:** left-click toggles visibility; menu Show / Hide / Quit. Window has **no taskbar button**.
-
-## Extending markets
-
-1. Implement `MarketDataProvider` for the new source.  
-2. Register / select provider in setup (today: Yahoo only).  
-3. Keep `AssetKind` and UI row model market-agnostic.
-
-## Related docs
-
-- **Windows setup:** [windows-dev.md](./windows-dev.md)  
-- Product decisions: [superpowers/specs/2026-07-22-economy-war-room-design.md](./superpowers/specs/2026-07-22-economy-war-room-design.md)  
-- Implementation history: [superpowers/plans/2026-07-22-economy-war-room-mvp.md](./superpowers/plans/2026-07-22-economy-war-room-mvp.md)  
-- Testing: [testing.md](./testing.md)  
-- Backlog: [TODO.md](./TODO.md)  
-
+See [testing.md](testing.md) for evidence and native limitations.

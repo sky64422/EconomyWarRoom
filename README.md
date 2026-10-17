@@ -1,193 +1,90 @@
 # EconomyWarRoom
 
-Lightweight **Windows floating widget** for watching markets at a glance — not a portfolio manager.
+A lightweight Windows **screen-edge watchlist widget** for US equities and crypto.
+Its notch shows each instrument's icon and the percentage associated with its latest price. Click an icon to open that instrument's existing **symbol · sparkline · price/change** card, including the primary and secondary price rows.
 
-Add US stocks and crypto to a tall glass panel, see **sparklines**, **price**, and **change %**, reorder by drag-and-drop, highlight cards with soft colors, and toggle visibility with a hotkey or an in-widget hide button.
+Version **0.2.0** brings the TokenUsage-style edge notch, inward detail cards and settings, with Dark / Glass / Liquid materials and adaptive desktop capture.
 
-> Contrast: [AssetStocker](../AssetStocker) is a full local-first finance app (holdings, imports, snapshots). EconomyWarRoom intentionally stays small: **watchlist + quotes only**.
+## Controls
 
-## Product snapshot
+| Action | Control |
+|---|---|
+| Open / pin a stock card | Click the instrument icon; click again to close |
+| Move / dock | Drag the notch to any screen edge or display; release to save |
+| Open settings | Right-click the notch, including its empty surface |
+| Add an instrument | Settings → **종목** → search and click a result or the input's **+** |
+| Remove an instrument | Trash icon at the right end of its row in Settings → **종목** |
+| Manage / reorder instruments | Settings → **종목**; drag a row to reorder, right-click for tint/remove |
+| Open an overflow instrument | `⋯ / +N` cell → **종목** → click the instrument row |
+| Change material | Settings → **모양** → 다크 / 글라스 / 리퀴드 |
+| Change opacity / hover / folding / motion | Settings → **모양** |
+| Refresh / autostart / updates / diagnostics | Settings → **일반** |
+| Explicitly hide | Tray |
+| Show again | Tray |
+| Quit | Settings → **일반** → 종료, or tray Quit |
 
-| | |
-|--|--|
-| **Shape** | Tall floating panel, always on top, freely draggable (content-hug min height); **tray-only** (no taskbar button) |
-| **MVP assets** | US equities + crypto (providers extensible later) |
-| **Rows** | Symbol · sparkline (1d/5m) · price / change % (left → right); **resizable columns** |
-| **Quotes** | 1st row = current session (live / pre / post); 2nd row = last **completed** regular session (LIVE → yesterday close + yesterday %) |
-| **Watchlist** | Add via bottom **+** · remove (context menu / Delete) · drag reorder · multi-select · pastel tints |
-| **Toggle** | `Ctrl+Shift+Space`, tray click, **or** in-UI hide (hide only; app stays running) |
-| **Look** | **Dark-only** translucent **glass** · adjustable opacity · Pretendard |
-| **Settings** | Overlay sheet · **refresh** · launch at login · **Version** + update check · **Copy Log** / Quit |
-| **Updates** | Settings download icon · settings-gear badge when a release is ready · auto-check + restart after install |
-| **Startup** | Autostart on login (toggleable) · widget visible on launch |
-| **Stack** | [Tauri](https://tauri.app/) 2 — Rust core + vanilla TypeScript / Vite UI |
-| **Data** | Free Yahoo-style chart API + **rate-limited scheduler** (backoff on 429) |
+Up to six instrument cells fit along the notch. When needed, the final **⋯ / +N** cell gives access to the remaining instruments; even a one-slot notch can open the full list. Addition lives only in settings. An empty list leaves the notch surface available for right-click settings. Missing icons use ticker initials. The widget does not reorder instruments automatically as prices change.
 
-## Status
+Custom keyboard controls and the global visibility shortcut have been removed. Symbol typing and native text editing remain available; Enter does not add a symbol implicitly.
 
-**MVP + post-MVP UX on `main`.** Design, implementation plan (Tasks 1–14), unit/integration/risk tests, and ≥85% business-logic coverage gate are in place.
+**Fold ≠ hide ≠ quit.** Folding leaves a small edge target and continues quote polling. Explicit hide stops new quote polling; the process stays running. Both fold and hide stop Glass/Liquid background capture. The tray provides Show and Quit; application keyboard shortcuts are not installed.
 
-| Area | State |
-|------|--------|
-| Core widget + glass UI | Done |
-| Yahoo quotes / sparklines + scheduler | Done |
-| Hotkey / hide / tray / settings / JSON persist | Done |
-| Card tint · multi-select · quote interval · autostart UI · updater | Done |
-| Content-hug min · extended quotes · resizable columns · denser UI | Done |
-| Settings overlay · compact refresh · dark-only · Copy Log footer | Done |
-| Update badge + background download → restart | Done |
-| Opacity 5% stepped header slider | Done (latest GitHub release **v0.1.54**) |
-| Automated tests + coverage gate | Done (~98% business logic; ~78 unit tests) |
-| Manual OS smoke (Windows long run) | Optional — see [windows-dev.md](docs/windows-dev.md) §5 |
-| Open feature backlog | Thin — see [TODO](docs/TODO.md) |
+## Quote semantics
 
-### Continuing on a new machine (especially Windows)
+- The notch percentage is exactly `Quote.display.primary.change`, matching the detail's **top row**. There is no separate notch calculation or secondary-row fallback.
+- The top row is the existing latest/session print; the second row is the existing last completed regular-session reference. PRE/LIVE/POST/CLOSED behavior is preserved.
+- The existing sparkline uses its regular-session window and regular-session color policy. Its color can differ from the latest extended-hours percentage.
+- The provider is the existing rate-limited Yahoo pipeline. Missing values are `—`; existing cache survives provider errors.
 
-| Start here | Purpose |
-|------------|---------|
-| [docs/windows-dev.md](docs/windows-dev.md) | Windows prerequisites, first run, troubleshooting |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module layout and data flow |
-| [AGENTS.md](AGENTS.md) | Short rules for coding agents |
+## Appearance
+
+The notch has concave shoulders, inward detail/settings cards, transparent input regions, and four-edge docking. Rust owns physical placement and DPI; invisible canvas regions pass input to other applications. The detail/settings canvas stays fixed while card contents change.
+
+Detail and settings use the same **260 DIP** width and **16 DIP** padding as TokenUsage, with the same monitor-aware scaling. Each detail is one surface: icon/name and primary/secondary prices above a full-width sparkline. It has no nested card, separate heading or timestamp footer. The notch has no add/remove controls. Rings stay neutral; only percentages use up/down colors.
+
+The detail sparkline uses a 52 DIP chart area, a fixed 1.15px stroke, faint baseline/fill and a small last-sample marker. The marker stays at the last observed session time; a partially completed session is not stretched to the close. Empty/single-sample data does not fabricate a trend.
+
+Dark is the default. Glass uses a neutral smoked material with narrow highlights, matching the lock-screen reference. Liquid uses an undistorted desktop backdrop with blur and its colored reflected rim. Both sample an in-memory desktop capture and keep foreground text/icons sharp. Windows excludes either live-glass widget from screen capture/sharing to avoid recursive captures; unsupported capture uses a tint fallback. Theme exit, hide and renderer reload release that exclusion.
+
+Settings use **모양 / 종목 / 일반** with one intrinsic measured height across tabs, including the first opening after a short card. Normal contents fit without scrolling. There is no visible scrollbar or reserved scrollbar gutter, so header/tabs/body share the same center. Header/tabs stay fixed; exceptionally long lists remain wheel-scrollable inside screen bounds.
+
+TokenUsage's icon tabs/sliding selection, grouped setting rows, compact switches, opacity track, and restrained press/loading/completion feedback are reused. The instruments tab has flat icon/ticker/name rows, always-visible search, and mouse reorder. There is no count, search-close control or detail-navigation button. Each row opens its detail; its trailing trash button removes only that instrument, with pending/error/retry feedback. Update and log-copy status stay inside settings; failures allow retry. See the [transfer inventory](docs/ui-references.md#tokenusage-transfer-inventory).
+
+Tabs use TokenUsage's 37 DIP button height. General offers **1s / 10s / 60s** refresh choices; its neutral log-copy and softly tinted quit buttons stay at the bottom of the panel. Existing custom intervals are preserved until the user selects a preset. Notch snap/fold, tab spring/fade, switch/opacity response and copy/update icon transitions respect motion preferences. Detail reveal animates clipping/opacity without transforming the measured panel.
+
+## Develop
+
+Windows 10/11 with MSVC Build Tools, Rust stable, WebView2, and **Node 24+** for the built-in UI test runner.
 
 ```powershell
-git clone https://github.com/sky64422/EconomyWarRoom.git
-cd EconomyWarRoom
 npm install
-npm run run:exe
-```
-
-| Document | Purpose |
-|----------|---------|
-| [Architecture](docs/ARCHITECTURE.md) | Current module layout and data flow |
-| [UI references](docs/ui-references.md) | External design refs: [ui.shadcn.com](https://ui.shadcn.com), [impeccable.style](https://impeccable.style) |
-| [Design spec](docs/superpowers/specs/2026-07-22-economy-war-room-design.md) | Goals, decisions, non-goals |
-| [MVP plan](docs/superpowers/plans/2026-07-22-economy-war-room-mvp.md) | Implementation task breakdown (complete) |
-| [TODO](docs/TODO.md) | Open implementation candidates only |
-| [Testing](docs/testing.md) | Unit / integration / risk / coverage policy |
-
-## Architecture (short)
-
-```
-Web UI (src/)          Tauri bridge              Rust (src-tauri/)
-  glass list      ←→   commands / events   ←→   AppCore service
-  DnD / select / +      invoke + emit            QuoteScheduler + queue
-  columns / tint                                 MarketDataProvider (Yahoo)
-  opacity / refresh                              JSON store (app data dir)
-  refresh / login                                updater + system tray
-  update icon
-```
-
-- **Layers:** `domain` → `ports` → `application` (scheduler, queue, **AppCore**) → `infrastructure` (Yahoo, store, window, updater).
-- Commands are thin adapters; business logic lives in `AppCore` (unit-tested).
-- Network and rate limits run in **Rust** (no webview CORS).
-- Persistence: **one JSON file** under Tauri `app_data_dir` (no SQLite).
-
-More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Non-goals
-
-- Portfolio, P&L, trades, broker sync  
-- Heavy historical DB / snapshot backfill  
-- Windows 11 Widgets board  
-- API-key-required feeds as MVP hard dependency  
-
-## Release notes`n`nThe current header spacing refinement is **v0.1.45**. It increases the separation between the WarRoom title and the compact regular-market status pill while retaining the subtle LIVE pulse and reduced-motion behavior. See [release notes](docs/release-notes.md) for details.`n`n## Develop
-
-**Requirements:**
-
-- **Rust** stable (`rustc`, `cargo`) — [rustup](https://rustup.rs/)
-- **Node.js 18+** and npm
-- **Tauri 2** OS deps — [prerequisites](https://tauri.app/start/prerequisites/)
-  - **Linux:** WebKitGTK, GTK, etc.
-  - **Windows:** Edge WebView2 (usually preinstalled)
-
-**Primary target is Windows** (hotkey, glass, always-on-top, autostart). Linux works for development; transparent windows and global hotkeys may vary by compositor / Wayland.
-
-```bash
-npm install
-npm run run:exe
-```
-
-Frontend-only (no native shell; `invoke` will fail outside Tauri):
-
-```bash
-npm run dev
-```
-
-Development shell with hot reload:
-
-```bash
 npm run tauri dev
 ```
 
-### Tests & coverage
-
-```bash
-npm test                 # unit + integration_e2e + risk_scenarios
-npm run test:coverage    # tarpaulin ≥ 85% business logic (currently ~98%)
-npm run build            # tsc + Vite production bundle
-```
-
-See [docs/testing.md](docs/testing.md).
-
-### Updates
-
-The app checks for updates at startup (release builds) through Tauri's updater plugin.
-Manual check: Settings → **Version** row download icon (gear shows a blue light when an update is ready).
-
-**Publishing a release** (signed build + GitHub `latest.json`) is documented in
-**[docs/release.md](docs/release.md)**. One-shot:
-
 ```powershell
-# Bump version in package.json + src-tauri/tauri.conf.json + Cargo.toml first
-$env:TAURI_SIGNING_PRIVATE_KEY_PATH="C:\path\to\updater.key"
-npm run release:publish
+npm test                       # UI state/lifecycle + Rust unit/integration/risk/notch
+npm run build                  # TypeScript + Vite
+npm run test:coverage:windows   # business logic >=85%; cargo-llvm-cov required
 ```
 
-Local signed build + launch only (no GitHub):
+`npm run dev` alone runs the frontend without native APIs. Focused browser smoke supplies mocked native APIs and synthetic prices; native smoke uses a separate application identifier. See [Windows development](docs/windows-dev.md) and [Testing](docs/testing.md).
 
-```powershell
-$env:TAURI_SIGNING_PRIVATE_KEY_PATH="C:\path\to\updater.key"
-npm run run:exe
-```
+Debug builds persist their own preferences but do not modify OS autostart entries. Tray controls remain available when the notch is hidden. No global keyboard shortcut is registered.
 
-### Controls
+## Data and architecture
 
-| Action | How |
-|--------|-----|
-| Toggle visibility | **`Ctrl+Shift+Space`**, **tray left-click**, or header hide |
-| Hide widget | Header **hide** / tray Hide (process keeps running; polling pauses) |
-| Check for updates | Settings → **Version** download icon (gear badge when ready) |
-| Quit | **Settings → Quit** or **tray → Quit** (hide alone does not exit) |
-| Opacity | Header slider (between market badge and settings) |
-| Refresh / login | Settings panel |
-| Select cards | Click · **Ctrl** toggle · **Shift** range |
-| Delete selected | **Delete** or **Backspace** · right-click **Remove** |
-| Card color | Right-click card → pastel swatch |
-| Column widths | Drag edges between symbol / spark / metrics |
-| Watchlist | Bottom **+** · drag to reorder |
-| Publish release | See [docs/release.md](docs/release.md) · `npm run release:publish` |
+Watchlist, order, card tints, opacity, legacy column ratios, refresh presets, autostart and legacy window geometry remain in the existing `economy-war-room-state.json`. The legacy `hotkey` field is retained for file compatibility but has no runtime effect. The new two-tier detail no longer exposes the old three-column resizers. New theme/placement preferences use backward-compatible defaults. Existing files reopen without losing their watchlist; the former window's monitor is used when initializing placement.
 
-Default seed watchlist: **AAPL**, **BTC-USD**.
+This remains a **watchlist**, with no portfolio, P&L, broker integration or SQLite history. No TokenUsage quota/auth/activity collectors are imported.
 
-## Configuration
+| Document | Purpose |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | Current module map and contracts |
+| [Windows development](docs/windows-dev.md) | Native launch, isolated preview and diagnostics |
+| [Testing](docs/testing.md) | Automated and native evidence, coverage scope |
+| [UI references](docs/ui-references.md) | Design references |
+| [Adoption design](docs/superpowers/specs/2026-10-17-tokenusage-ui-adoption-design.md) | Agreed UI information hierarchy |
+| [Implementation plan](docs/superpowers/plans/2026-10-17-tokenusage-ui-adoption.md) | Tasks and acceptance checks |
+| [Releases/updater](docs/release.md) | Existing signed publication workflow |
 
-JSON under the OS app data directory (Tauri `app_data_dir`), file name roughly `economy-war-room-state.json`:
-
-- Watchlist symbols, order, and **card_tint**  
-- Opacity (clamped ~0.35–1.0); UI is **dark-only**  
-
-- Window geometry  
-- **Autostart** flag (launch at login)  
-- **quote_refresh_secs** — JSON key historical; Rust field `quote_refresh_ms`; stored as **milliseconds** (default 500; legacy 1–120 = seconds)  
-- **column_ratios** (symbol / spark / metrics `fr` shares)  
-- Hotkey string (default `Ctrl+Shift+Space`)  
-
-## Design references
-
-- UI motion/materials: [apple-design skill](https://github.com/emilkowalski/skills/tree/main/skills/apple-design)  
-- Market-data patterns (ideas only): **AssetStocker** rate limiter, job queue, Yahoo chart + sparkline policy  
-
-## License
-
-TBD.
+Instrument marks are bundled from [Simple Icons 16.0.0](https://github.com/simple-icons/simple-icons/tree/16.0.0); source license and disclaimer are in `src/assets/marks/`. Missing brands use ticker text. Notch and material code is adapted from the user's local TokenUsage checkout; existing Lucian material attribution is retained.

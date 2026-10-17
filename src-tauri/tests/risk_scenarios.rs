@@ -16,6 +16,58 @@ use tempfile::tempdir;
 
 struct AlwaysRateLimited;
 
+#[test]
+fn legacy_settings_gain_notch_defaults_without_losing_watchlist() {
+    let before = default_state();
+    let mut json = serde_json::to_value(&before).unwrap();
+    for key in [
+        "theme",
+        "notch",
+        "hover_detail",
+        "always_show_notch",
+        "show_animation",
+    ] {
+        json["settings"].as_object_mut().unwrap().remove(key);
+    }
+    let loaded: economy_war_room_lib::domain::types::PersistedState =
+        serde_json::from_value(json).unwrap();
+    assert_eq!(loaded.watchlist, before.watchlist);
+    assert_eq!(loaded.settings.column_ratios, before.settings.column_ratios);
+    assert_eq!(loaded.settings.opacity, before.settings.opacity);
+    assert_eq!(
+        loaded.settings.quote_refresh_ms,
+        before.settings.quote_refresh_ms
+    );
+    assert_eq!(
+        loaded.settings.theme,
+        economy_war_room_lib::domain::types::AppTheme::Dark
+    );
+    assert!(!loaded.settings.hover_detail);
+    assert!(loaded.settings.show_animation);
+}
+
+#[test]
+fn failed_theme_save_does_not_commit_in_memory_and_retry_persists() {
+    use economy_war_room_lib::domain::types::AppTheme;
+    let dir = tempdir().unwrap();
+    let blocked = dir.path().join("blocked");
+    std::fs::write(&blocked, "file").unwrap();
+    let core = AppCore::new(
+        default_state(),
+        blocked.clone(),
+        QuoteScheduler::new(Arc::new(AlwaysRateLimited)),
+        true,
+    );
+    assert!(core.set_theme(AppTheme::Glass).is_err());
+    assert_eq!(core.get_state().unwrap().settings.theme, AppTheme::Dark);
+    std::fs::remove_file(&blocked).unwrap();
+    core.set_theme(AppTheme::Liquid).unwrap();
+    assert_eq!(
+        load_state(&blocked).unwrap().settings.theme,
+        AppTheme::Liquid
+    );
+}
+
 #[async_trait]
 impl MarketDataProvider for AlwaysRateLimited {
     fn id(&self) -> &'static str {

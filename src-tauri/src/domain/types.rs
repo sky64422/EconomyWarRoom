@@ -169,6 +169,16 @@ impl Default for ColumnRatios {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppSettings {
+    #[serde(default)]
+    pub theme: AppTheme,
+    #[serde(default)]
+    pub notch: super::notch::NotchPlacement,
+    #[serde(default)]
+    pub hover_detail: bool,
+    #[serde(default)]
+    pub always_show_notch: bool,
+    #[serde(default = "default_show_animation")]
+    pub show_animation: bool,
     pub opacity: f64,
     pub window: WindowGeometry,
     pub hotkey: String,
@@ -198,4 +208,17 @@ fn default_quote_refresh_ms() -> u64 {
 pub struct PersistedState {
     pub watchlist: Vec<WatchlistItem>,
     pub settings: AppSettings,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AppTheme {
+    Glass,
+    Liquid,
+    #[default]
+    #[serde(other)]
+    Dark,
+}
+fn default_show_animation() -> bool {
+    true
 }

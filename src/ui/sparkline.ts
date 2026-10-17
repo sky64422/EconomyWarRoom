@@ -9,6 +9,8 @@ export interface SparklinePaths {
   baseline: string;
   /** SVG height used by the gradient. */
   height: number;
+  /** Exact projected coordinate of the last observed sample; never session end. */
+  lastPoint: { x: number; y: number } | null;
 }
 
 export interface SparklineSvgOptions {
@@ -18,7 +20,16 @@ export interface SparklineSvgOptions {
   progress?: number | null;
   sessionStart?: number | null;
   sessionEnd?: number | null;
+  variant?: "compact" | "detail";
 }
+
+const DETAIL_PADDING = 4;
+const DETAIL_LINE_WIDTH = 1.15;
+const DETAIL_BASELINE_WIDTH = 0.85;
+const DETAIL_BASELINE_OPACITY = 0.8;
+const DETAIL_AREA_OPACITY = 0.12;
+const DETAIL_MARKER_RADIUS = 1.8;
+const DETAIL_MARKER_HALO_RADIUS = 4;
 
 /** Fraction of `[start, end)` so early session bars sit on the left. */
 export function sessionX(t: number, start: number, end: number): number {
@@ -54,7 +65,7 @@ export function sparklinePaths(
   session?: { start: number; end: number } | null,
 ): SparklinePaths {
   if (points.length === 0) {
-    return { line: "", area: "", baseline: "", height };
+    return { line: "", area: "", baseline: "", height, lastPoint:null };
   }
 
   const closes = points.map((p) => p.close);
@@ -117,7 +128,7 @@ export function sparklinePaths(
   const last = coords[coords.length - 1];
   const area = `${line} L${last.x.toFixed(2)} ${baselineY.toFixed(2)} L${first.x.toFixed(2)} ${baselineY.toFixed(2)} Z`;
 
-  return { line, area, baseline, height };
+  return { line, area, baseline, height, lastPoint:last };
 }
 
 /** @deprecated Prefer {@link sparklinePaths}. */
@@ -182,17 +193,18 @@ export function sparklineSvgMarkup(
   baselineValue?: number | null,
 ): string {
   void options.assetKind;
+  const detail = options.variant === "detail";
   const session =
     options.sessionStart != null &&
     options.sessionEnd != null &&
     options.sessionEnd > options.sessionStart
       ? { start: options.sessionStart, end: options.sessionEnd }
       : null;
-  const { line, area, baseline } = sparklinePaths(
+  const { line, area, baseline, lastPoint } = sparklinePaths(
     points,
     width,
     height,
-    1,
+    detail ? DETAIL_PADDING : 1,
     baselineValue,
     session,
   );
@@ -211,11 +223,11 @@ export function sparklineSvgMarkup(
 
   return `
     <defs>
-      <linearGradient id="${gradientId}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="${height}">
-        <stop offset="0%" stop-color="${options.stroke}" stop-opacity="0.62" />
-        <stop offset="45%" stop-color="${options.stroke}" stop-opacity="0.34" />
-        <stop offset="100%" stop-color="${options.stroke}" stop-opacity="0.08" />
-      </linearGradient>
+      ${detail ? "" : `<linearGradient id="${gradientId}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="${height}">
+        <stop offset="0%" stop-color="${options.stroke}" stop-opacity=".62" />
+        <stop offset="45%" stop-color="${options.stroke}" stop-opacity=".34" />
+        <stop offset="100%" stop-color="${options.stroke}" stop-opacity=".08" />
+      </linearGradient>`}
       ${
         animate
           ? `<clipPath id="${clipId}" clipPathUnits="userSpaceOnUse">
@@ -224,10 +236,13 @@ export function sparklineSvgMarkup(
           : ""
       }
     </defs>
-    <path class="spark-baseline" d="${baseline}" fill="none" stroke="var(--sparkline-baseline)" stroke-width="1" stroke-dasharray="3 3" stroke-linecap="round" />
     <g ${animate ? `clip-path="url(#${clipId})"` : ""}>
-      <path d="${area}" fill="url(#${gradientId})" stroke="none" />
-      <path d="${line}" fill="none" stroke="${options.stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" ${animate ? 'pathLength="100" stroke-dasharray="100" stroke-dashoffset="' + dashOffset.toFixed(2) + '"' : ""} />
+      <path class="spark-area" d="${area}" fill="${detail ? options.stroke : `url(#${gradientId})`}" fill-opacity="${detail ? DETAIL_AREA_OPACITY : 1}" stroke="none" />
+    </g>
+    <path class="spark-baseline" d="${baseline}" fill="none" stroke="var(--sparkline-baseline)" stroke-width="${detail ? DETAIL_BASELINE_WIDTH : 1}" stroke-opacity="${detail ? DETAIL_BASELINE_OPACITY : 1}" stroke-dasharray="3 3" stroke-linecap="round" ${detail ? 'vector-effect="non-scaling-stroke"' : ''}/>
+    <g ${animate ? `clip-path="url(#${clipId})"` : ""}>
+      <path class="spark-line" d="${line}" fill="none" stroke="${options.stroke}" stroke-width="${detail ? DETAIL_LINE_WIDTH : 1.75}" stroke-linecap="round" stroke-linejoin="round" ${detail ? 'vector-effect="non-scaling-stroke"' : ''} ${animate ? 'pathLength="100" stroke-dasharray="100" stroke-dashoffset="' + dashOffset.toFixed(2) + '"' : ""} />
+      ${detail && lastPoint ? `<g class="spark-endpoint" fill="${options.stroke}"><circle cx="${lastPoint.x.toFixed(2)}" cy="${lastPoint.y.toFixed(2)}" r="${DETAIL_MARKER_HALO_RADIUS}" opacity=".12"/><circle cx="${lastPoint.x.toFixed(2)}" cy="${lastPoint.y.toFixed(2)}" r="${DETAIL_MARKER_RADIUS}"/></g>` : ''}
     </g>
   `;
 }

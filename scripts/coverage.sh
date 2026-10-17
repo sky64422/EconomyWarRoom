@@ -12,12 +12,15 @@ EXCLUDE=(
   --exclude-files 'src/lib.rs'
   --exclude-files 'src/infrastructure/window_ctl.rs'
   --exclude-files 'src/infrastructure/updater.rs'
+  --exclude-files 'src/infrastructure/notch_window.rs'
+  --exclude-files 'src/infrastructure/topmost.rs'
+  --exclude-files 'src/infrastructure/liquid_glass.rs'
   --exclude-files 'src/commands.rs'
 )
 
 echo "== cargo test (lib + integration) =="
 cargo test --lib
-cargo test --test integration_e2e --test risk_scenarios
+cargo test --test integration_e2e --test risk_scenarios --test notch
 
 echo "== tarpaulin (fail-under 85) =="
 cargo tarpaulin --lib \

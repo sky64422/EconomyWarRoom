@@ -101,7 +101,13 @@ export const OPACITY_DEFAULT = 0.92;
 /** Mirrors Rust `RefreshPolicy::QUOTE_REFRESH_MS_DEFAULT`. */
 export const QUOTE_REFRESH_MS_DEFAULT = 500;
 
+export type AppTheme = "dark" | "glass" | "liquid";
 export interface AppSettings {
+  theme?: AppTheme;
+  notch?: NotchPlacement;
+  hover_detail?: boolean;
+  always_show_notch?: boolean;
+  show_animation?: boolean;
   opacity: number;
   window: WindowGeometry;
   hotkey: string;
@@ -123,4 +129,50 @@ export interface SymbolSuggestion {
   name: string | null;
   asset_kind: AssetKind;
   exchange: string | null;
+}
+
+export type NotchEdge = "top" | "right" | "bottom" | "left";
+export interface NotchPlacement {
+  edge: NotchEdge;
+  monitor_hint: string | null;
+  offset: number;
+}
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type AnchorX = "left" | "right";
+export type AnchorY = "top" | "bottom";
+
+export interface NotchLayout {
+  metrics: {
+    slot_count: number;
+    content_scale?: number;
+    rest_depth: number;
+    rest_length: number;
+    depth: number;
+    cell: number;
+    shoulder: number;
+    inner_radius: number;
+    inset: number;
+    detail_radius: number;
+    drag_threshold: number;
+  };
+  edge: NotchEdge;
+  anchor_x: AnchorX;
+  anchor_y: AnchorY;
+  notch: Rect;
+  detail: Rect | null;
+  window: Rect;
+  scale: number;
+  monitor: string;
+}
+export interface MonitorArea {
+  name: string;
+  bounds: Rect;
+  work: Rect;
+  scale: number;
 }

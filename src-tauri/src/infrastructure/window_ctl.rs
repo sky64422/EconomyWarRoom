@@ -68,12 +68,12 @@ pub fn apply_clean_glass_edge(window: &WebviewWindow) -> Result<(), String> {
 fn apply_dwm_round_corners(window: &WebviewWindow) -> Result<(), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Dwm::{
-        DwmSetWindowAttribute, DWM_WINDOW_CORNER_PREFERENCE, DWMWA_WINDOW_CORNER_PREFERENCE,
-        DWMWCP_ROUND,
+        DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+        DWM_WINDOW_CORNER_PREFERENCE,
     };
 
     let hwnd = window.hwnd().map_err(|e| e.to_string())?;
-    let pref = DWMWCP_ROUND;
+    let pref = DWMWCP_DONOTROUND;
     unsafe {
         let _ = DwmSetWindowAttribute(
             HWND(hwnd.0),
