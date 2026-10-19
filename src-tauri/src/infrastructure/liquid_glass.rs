@@ -1,189 +1,211 @@
-//! Native material sessions. Geometry updates are serialized on the window UI thread.
-use super::liquid_capture::{CaptureWorker, FrameKey};
+//! In-memory Windows backdrop capture, enabled by the Glass and Liquid themes.
+//! Capture -> web lens follows https://github.com/molian313/dynamic-island;
+//! raw RGBA IPC avoids per-frame decoding; legacy probes can still request BMP.
+
+use crate::application::diagnostics::DiagLevel;
 use crate::domain::types::AppTheme;
+use super::liquid_capture::{CaptureWorker, FrameKey};
 use crate::state::AppHandleState;
-use serde::Deserialize;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::{Manager, State, WebviewWindow};
 
-const MAX_CAPTURE_PIXELS: u64 = 1_048_576;
-const MAX_BLUR: f32 = 64.;
+use crate::domain::notch::valid_region;
+const CAPTURE_LEASE: Duration = Duration::from_millis(750);
+const LEASE_CHECK: Duration = Duration::from_millis(250);
+
 #[derive(Default)]
 pub struct LiquidBackdrop(Mutex<BackdropState>, CaptureWorker);
+
 #[derive(Default)]
 struct BackdropState {
-    session: u64,
-    revision: u64,
-    #[cfg(windows)]
-    material: Option<super::native_material::NativeMaterial>,
+    lease: Option<Lease>,
+    watching: bool,
+    in_flight: usize,
+    release_pending: bool,
 }
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+struct Lease {
+    hwnd: usize,
+    original: u32,
+    renewed: Instant,
+}
+
+pub fn reset_on_load(view: &tauri::Webview) {
+    if let Some(window) = view.get_webview_window("main") {
+        if let Err(error) = release_liquid_backdrop(window) {
+            eprintln!("Liquid backdrop reset: {error}");
+        }
+    }
+}
+
+#[tauri::command]
+pub fn release_liquid_backdrop(window: WebviewWindow) -> Result<(), String> {
+    if let Some(state) = window.try_state::<LiquidBackdrop>() {
+        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+        if guard.in_flight > 0 { guard.release_pending = true; return Ok(()); }
+        if let Some(lease) = &guard.lease {
+            set_affinity(lease.hwnd, lease.original)?;
+            guard.lease = None;
+        }
+        guard.release_pending = false;
+        state.1.reset()?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+struct InFlight(WebviewWindow);
+#[cfg(windows)]
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        let state = self.0.state::<LiquidBackdrop>();
+        let pending = match state.0.lock() {
+            Ok(mut guard) => { guard.in_flight = guard.in_flight.saturating_sub(1); guard.release_pending && guard.in_flight == 0 }
+            Err(error) => { eprintln!("Liquid completion: {error}"); false }
+        };
+        if pending {
+            if let Err(error) = release_liquid_backdrop(self.0.clone()) { eprintln!("Liquid deferred release: {error}"); }
+        }
+    }
+}
+
+#[cfg(windows)]
+fn set_affinity(hwnd: usize, value: u32) -> Result<(), String> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowDisplayAffinity, WINDOW_DISPLAY_AFFINITY,
+    };
+    unsafe { SetWindowDisplayAffinity(HWND(hwnd as *mut _), WINDOW_DISPLAY_AFFINITY(value)) }
+        .map_err(|e| format!("Liquid capture exclusion: {e}"))
+}
+#[cfg(not(windows))]
+fn set_affinity(_: usize, _: u32) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(windows)]
+fn live_window(hwnd: usize) -> bool {
+    use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::IsWindow};
+    unsafe { IsWindow(Some(HWND(hwnd as *mut _))).as_bool() }
+}
+#[cfg(not(windows))]
+fn live_window(_: usize) -> bool {
+    false
+}
+
+fn watch_lease(window: WebviewWindow) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(LEASE_CHECK);
+        let state = window.state::<LiquidBackdrop>();
+        let mut guard = state.0.lock().unwrap_or_else(|p| p.into_inner());
+        if guard.in_flight > 0 { continue; }
+        if guard
+            .lease
+            .as_ref()
+            .is_some_and(|lease| lease.renewed.elapsed() < CAPTURE_LEASE)
+        {
+            continue;
+        }
+        if let Some(lease) = &guard.lease {
+            if let Err(error) = set_affinity(lease.hwnd, lease.original) {
+                window
+                    .state::<AppHandleState>()
+                    .core
+                    .note(DiagLevel::Warn, error);
+                if live_window(lease.hwnd) {
+                    continue;
+                }
+            }
+            guard.lease = None;
+        }
+        if let Err(error) = state.1.reset() { eprintln!("Liquid reset: {error}"); }
+        guard.watching = false;
+        break;
+    });
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn capture_liquid_backdrop(
+    window: WebviewWindow,
+    state: State<'_, AppHandleState>,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    surface: Option<u8>,
+    generation: Option<u64>,
+) -> Result<tauri::ipc::Response, String> {
+    if !state.core.is_visible() || !matches!(state.core.get_state()?.settings.theme, AppTheme::Glass | AppTheme::Liquid) {
+        return Err("Desktop capture requires a live glass theme".into());
+    }
+    if surface.is_some_and(|s| s > 1) || (surface.is_some() && generation.is_none()) {
+        return Err("Invalid Liquid surface generation".into());
+    }
+    let size = window.inner_size().map_err(|e| e.to_string())?;
+    if !valid_region(x, y, width, height, size.width, size.height)? {
+        return Ok(tauri::ipc::Response::new(Vec::<u8>::new()));
+    }
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::Graphics::Dwm::DwmFlush;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE,
+        };
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+        let pos = window.inner_position().map_err(|e| e.to_string())?;
+        let backdrop = window.state::<LiquidBackdrop>();
+        {
+        let mut guard = backdrop.0.lock().map_err(|e| e.to_string())?;
+        if guard.lease.is_none() {
+            let mut original = 0;
+            unsafe {
+                GetWindowDisplayAffinity(HWND(hwnd.0), &mut original).map_err(|e| e.to_string())?;
+            }
+            set_affinity(hwnd.0 as usize, WDA_EXCLUDEFROMCAPTURE.0)
+                .inspect_err(|e| state.core.note(DiagLevel::Warn, e.clone()))?;
+            guard.lease = Some(Lease {
+                hwnd: hwnd.0 as usize,
+                original,
+                renewed: Instant::now(),
+            });
+            if !guard.watching {
+                guard.watching = true;
+                watch_lease(window.clone());
+            }
+            unsafe {
+                DwmFlush().map_err(|e| e.to_string())?;
+            }
+        }
+        guard.lease.as_mut().unwrap().renewed = Instant::now();
+        guard.in_flight += 1;
+        }
+        let _flight = InFlight(window.clone());
+        let bytes = backdrop.1.frame(FrameKey {
+            x: pos.x + x as i32, y: pos.y + y as i32, width, height,
+            generation: generation.unwrap_or(0),
+        }, surface).await
+            .inspect_err(|e| state.core.note(DiagLevel::Warn, e.clone()))?;
+        Ok(tauri::ipc::Response::new(bytes))
+    }
+    #[cfg(not(windows))]
+    Err("Live Liquid backdrop requires Windows".into())
+}
+
+#[derive(Clone, Debug, serde::Deserialize, PartialEq)]
 pub struct BackdropSurface {
     pub slot: u8,
     pub x: f32, pub y: f32, pub width: f32, pub height: f32,
     pub edge: Option<String>, pub radius: f32, pub blur: f32,
 }
-fn validate_surfaces(surfaces: &[BackdropSurface]) -> Result<(), String> {
-    let mut slots = [false; 2];
-    if surfaces.len() > slots.len() { return Err("Too many backdrop surfaces".into()); }
-    for s in surfaces {
-        if s.slot > 1 || slots[s.slot as usize]
-            || ![s.x,s.y,s.width,s.height,s.radius,s.blur].iter().all(|n| n.is_finite())
-            || s.width <= 0. || s.height <= 0. || s.width * s.height > MAX_CAPTURE_PIXELS as f32
-            || s.radius < 0. || !(0. ..=MAX_BLUR).contains(&s.blur)
-            || (s.slot == 0 && !matches!(s.edge.as_deref(), Some("left" | "right" | "top" | "bottom")))
-            || (s.slot == 1 && s.edge.is_some()) {
-            return Err("Invalid backdrop surface".into());
-        }
-        slots[s.slot as usize] = true;
-    }
+
+#[tauri::command]
+pub async fn begin_liquid_backdrop() -> Result<u64, String> {
+    Ok(1)
+}
+
+#[tauri::command]
+pub async fn sync_liquid_backdrop(_session: u64, _revision: u64, _surfaces: Vec<BackdropSurface>) -> Result<(), String> {
     Ok(())
-}
-async fn on_ui<T: Send + 'static>(window: WebviewWindow,
-    operation: impl FnOnce(&WebviewWindow) -> Result<T, String> + Send + 'static) -> Result<T, String> {
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    let view = window.clone();
-    window.run_on_main_thread(move || { let _ = sender.send(operation(&view)); }).map_err(|e| e.to_string())?;
-    receiver.await.map_err(|e| e.to_string())?
-}
-
-pub fn reset_on_load(view: &tauri::Webview) {
-    if let Some(window) = view.get_webview_window("main") {
-        let ui = window.clone();
-        if let Err(error) = window.run_on_main_thread(move || {
-            let Some(state) = ui.try_state::<LiquidBackdrop>() else { return; };
-            let mut guard = state.0.lock().unwrap_or_else(|p| p.into_inner());
-            guard.session += 1;
-            guard.revision = 0;
-            #[cfg(windows)]
-            if let Some(material) = &mut guard.material {
-                if let Err(error) = material.sync(&[]) { eprintln!("Backdrop navigation reset: {error}"); }
-            }
-        }) { eprintln!("Backdrop navigation reset: {error}"); }
-    }
-}
-#[tauri::command]
-pub async fn begin_liquid_backdrop(window: WebviewWindow) -> Result<u64, String> {
-    on_ui(window, |window| {
-        let state = window.state::<LiquidBackdrop>();
-        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-        #[cfg(windows)]
-        {
-            if guard.material.is_none() {
-                let hwnd = window.hwnd().map_err(|e| e.to_string())?;
-                guard.material = Some(super::native_material::NativeMaterial::new(windows::Win32::Foundation::HWND(hwnd.0)).map_err(|e| e.to_string())?);
-            }
-            guard.material.as_mut().unwrap().sync(&[]).map_err(|e| e.to_string())?;
-            guard.session += 1;
-            guard.revision = 0;
-            Ok(guard.session)
-        }
-        #[cfg(not(windows))]
-        Err("Native backdrop requires Windows".into())
-    }).await
-}
-#[tauri::command]
-pub async fn sync_liquid_backdrop(window: WebviewWindow, session: u64, revision: u64, surfaces: Vec<BackdropSurface>) -> Result<(), String> {
-    validate_surfaces(&surfaces)?;
-    on_ui(window, move |window| {
-        let state = window.state::<LiquidBackdrop>();
-        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-        if session != guard.session || revision <= guard.revision { return Ok(()); }
-        let app = window.state::<AppHandleState>();
-        if !app.core.is_visible() || !matches!(app.core.get_state()?.settings.theme, AppTheme::Glass | AppTheme::Liquid) {
-            return Err("Backdrop requires a visible glass theme".into());
-        }
-        #[cfg(windows)]
-        guard.material.as_mut().ok_or("Backdrop session is not initialized")?.sync(&surfaces).map_err(|e| e.to_string())?;
-        guard.revision = revision;
-        Ok(())
-    }).await
-}
-#[tauri::command]
-pub async fn release_liquid_backdrop(window: WebviewWindow, session: u64, revision: u64) -> Result<(), String> {
-    on_ui(window, move |window| {
-        let state = window.state::<LiquidBackdrop>();
-        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-        if session != guard.session || revision <= guard.revision { return Ok(()); }
-        #[cfg(windows)]
-        if let Some(material) = &mut guard.material { material.sync(&[]).map_err(|e| e.to_string())?; }
-        guard.revision = revision;
-        state.1.reset()?;
-        Ok(())
-    }).await
-}
-
-fn valid_region(
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-    canvas_width: u32,
-    canvas_height: u32,
-) -> Result<bool, String> {
-    let (Some(right), Some(bottom)) = (x.checked_add(width), y.checked_add(height)) else {
-        return Err("Liquid capture region overflow".into());
-    };
-    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > MAX_CAPTURE_PIXELS {
-        return Err("Invalid Liquid capture dimensions".into());
-    }
-    Ok(right <= canvas_width && bottom <= canvas_height)
-}
-
-// Diagnostics and narrow foreground-contrast probes. Native material pixels are
-// composed by Windows and never sourced from this readback.
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub async fn capture_liquid_backdrop(window: WebviewWindow, state: State<'_, AppHandleState>,
-    x: u32, y: u32, width: u32, height: u32, surface: Option<u8>, generation: Option<u64>,
-) -> Result<tauri::ipc::Response, String> {
-    if !state.core.is_visible() || !matches!(state.core.get_state()?.settings.theme, AppTheme::Glass | AppTheme::Liquid) {
-        return Err("Desktop capture requires a live glass theme".into());
-    }
-    if surface.is_some_and(|s| s > 1) || (surface.is_some() && generation.is_none()) { return Err("Invalid Liquid surface generation".into()); }
-    let size = window.inner_size().map_err(|e| e.to_string())?;
-    if !valid_region(x, y, width, height, size.width, size.height)? { return Ok(tauri::ipc::Response::new(Vec::<u8>::new())); }
-    let pos = window.inner_position().map_err(|e| e.to_string())?;
-    let bytes = window.state::<LiquidBackdrop>().1.frame(FrameKey {
-        x: pos.x + x as i32, y: pos.y + y as i32, width, height, generation: generation.unwrap_or(0),
-    }, surface).await?;
-    Ok(tauri::ipc::Response::new(bytes))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{valid_region, validate_surfaces, BackdropSurface};
-    fn surface() -> BackdropSurface { BackdropSurface { slot: 0, x: -4., y: 0., width: 56., height: 376., edge: Some("right".into()), radius: 0., blur: 4. } }
-    #[test]
-    fn native_surfaces_accept_partial_edges_but_reject_invalid_or_duplicate_resources() {
-        assert!(validate_surfaces(&[surface()]).is_ok());
-        assert!(validate_surfaces(&[]).is_ok());
-        assert!(validate_surfaces(&[surface(), surface()]).is_err());
-        for mutate in [
-            |s: &mut BackdropSurface| s.x = f32::NAN,
-            |s: &mut BackdropSurface| s.width = 0.,
-            |s: &mut BackdropSurface| s.height = 1_048_576.,
-            |s: &mut BackdropSurface| s.blur = -1.,
-            |s: &mut BackdropSurface| s.radius = f32::INFINITY,
-            |s: &mut BackdropSurface| s.edge = None,
-            |s: &mut BackdropSurface| s.slot = 2,
-        ] { let mut invalid = surface(); mutate(&mut invalid); assert!(validate_surfaces(&[invalid]).is_err()); }
-        let mut detail = surface(); detail.slot = 1;
-        assert!(validate_surfaces(&[detail.clone()]).is_err());
-        detail.edge = None; detail.radius = 16.;
-        assert!(validate_surfaces(&[surface(), detail]).is_ok());
-    }
-
-    #[test]
-    fn bounds_reject_zero_overflow_and_unbounded_pixel_allocations() {
-        assert_eq!(valid_region(268, 372, 56, 376, 324, 1120), Ok(true));
-        assert_eq!(valid_region(300, 0, 56, 1, 324, 1120), Ok(false));
-        for (x, y, w, h) in [
-            (0, 0, 0, 1),
-            (u32::MAX, 0, 1, 1),
-            (0, 0, 2048, 2048),
-        ] {
-            assert!(valid_region(x, y, w, h, 324, 1120).is_err());
-        }
-    }
 }
