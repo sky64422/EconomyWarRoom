@@ -13,7 +13,7 @@ AppCore ── QuoteScheduler + RateLimitedQueue ── YahooProvider
   └─ atomic preference/watchlist persistence to existing JSON store
 
 domain/notch + reveal ── infrastructure/notch_window ── fixed transparent HWND
-Glass / Liquid ── bounded desktop capture ── serialized TS renderer (background only)
+Glass / Liquid -> Windows Composition; narrow Liquid contrast probes (250ms)
 ```
 
 ## Rust modules
@@ -29,7 +29,7 @@ Glass / Liquid ── bounded desktop capture ── serialized TS renderer (bac
 | `application/scheduler.rs`, `queue.rs`, `cache.rs` | Existing rate-limited quote/sparkline pipeline and cache |
 | `application/diagnostics.rs` | Existing bounded diagnostics and error throttling |
 | `infrastructure/notch_window.rs` | Native layout, pointer/input polling, drag session and monitor reconciliation |
-| `infrastructure/liquid_glass.rs`, `liquid_capture.rs` | Capture-affinity leases; dedicated worker with reusable GDI surfaces, raw RGBA cache and legacy BMP support |
+| `infrastructure/liquid_glass.rs`, `liquid_capture.rs` | Ordered material sessions; `native_material.rs` owns same-HWND backdrop visuals. Dedicated reusable GDI surfaces serve only narrow contrast probes and diagnostics |
 | `infrastructure/topmost.rs` | Reasserts the widget's topmost band without activating it |
 | `infrastructure/window_ctl.rs` | Show/hide, transparent edge; legacy geometry adapters retained |
 | `infrastructure/store.rs`, `yahoo/`, `updater.rs` | Existing JSON, market provider and signed updater |
@@ -49,7 +49,7 @@ The former content-hug observer is no longer mounted, and the native Resized cla
 | `ui/settings-panel.ts` | Three tabs, shared intrinsic height, appearance saves and instrument management |
 | `ui/general-settings.ts` | Existing refresh/autostart/updater/diagnostics/quit controls, embedded in General |
 | `ui/watchlist/index.ts`, `dnd.ts`, `search.ts`, `tint.ts` | Existing watchlist CRUD/selection/reorder/tint; management rows in Instruments |
-| `ui/liquid-glass.ts`, `liquid-loop.ts`, `liquid-frame.ts` | Glass lens / Liquid blur rendering, serialized capture, stale-frame disposal and explicit visibility |
+| `ui/liquid-glass.ts`, `liquid-contrast.ts`, `liquid-frame.ts` | Ordered native geometry, clear tint and 250ms serialized margin contrast probes |
 | `ui/stock-marks.ts`, `assets/marks/` | Bundled instrument icon registry and ticker fallback |
 | `styles/notch.css`, `notch-widget.css` | Adopted silhouette/material and market-specific cards/settings |
 
@@ -69,10 +69,10 @@ The app uses vanilla TS/CSS/SVG/canvas, with no new product package dependency.
 - At most six cells fit; native geometry reduces capacity for small work areas. All slots show instruments until overflow requires a final list cell. A one-slot notch shows the single instrument, or a list button when overflowing. Addition is available only in settings; an empty list keeps a right-clickable notch surface. All watchlist instruments stay in the scheduler.
 - Reserve a stable transparent canvas for details/settings. Changing selected card or tab does not move the HWND/notch origin. Only visible surfaces/bridge take pointer input.
 - Default click pin, optional hover detail, 180ms leave grace. Fold after 800ms outside unless held by detail/settings/drag/always-show. Custom keyboard handlers and global shortcuts are not installed.
-- **Fold:** 10×80 DIP edge target remains; quotes continue, Glass/Liquid capture stops.
-- **Explicit hide:** core visibility false; new quote polling and Glass/Liquid capture stop. `widget-visibility` explicitly informs the renderer because WebView2 does not reliably change `document.hidden` on hide.
-- **Show:** existing scheduler resumes; renderer capture can resume. **Quit** terminates the process.
-- Glass and Liquid capture visible rectangles only, has at most one normal renderer batch in flight, rejects hidden/Dark requests, discards old generations and restores display affinity on stop/theme change/reload/lease expiry. Capture bounds are pure domain rules inside the coverage gate.
+- **Fold:** 10×80 DIP edge target remains; quotes continue, Glass/Liquid materials and contrast probes stop.
+- **Explicit hide:** core visibility false; new quote polling and Glass/Liquid materials and contrast probes stop. `widget-visibility` explicitly informs the renderer because WebView2 does not reliably change `document.hidden` on hide.
+- **Show:** existing scheduler resumes; native materials and contrast probes can resume. **Quit** terminates the process.
+- Glass and Liquid use same-HWND compositor visuals, with ordered session/revision updates and no capture exclusion. Liquid contrast reads only empty three-pixel-wide margins, at most four cycles per second after completion, with separate rail/detail modes and hysteresis. Hidden/Dark requests are rejected; stale contrast results are discarded. Geometry and capture bounds remain validated.
 
 ## Persistence
 

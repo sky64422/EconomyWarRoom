@@ -959,6 +959,7 @@ dependencies = [
  "tokio",
  "uuid",
  "windows",
+ "windows-core 0.61.2",
  "wiremock",
 ]
 

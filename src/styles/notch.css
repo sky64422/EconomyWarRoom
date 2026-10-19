@@ -118,29 +118,43 @@
 }
 /* Lucian UX/UI 001 + 052 (MIT, Seokwoooo). */
 .notch-glass-rim, .notch-finish { display:none; }
-/* Liquid alone samples the desktop. Glass keeps its original painted finish. */
-.liquid-filter-defs { position: absolute; width: 0; height: 0; pointer-events: none; }
+/* Native backdrop sits behind the WebView; these layers retain material tint. */
 .liquid-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; isolation: isolate; }
-.liquid-layer canvas { display: block; width: 100%; height: 100%; }
 .liquid-layer::after {
   content: "";
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(145deg, rgba(230, 242, 253, .09), rgba(185, 209, 229, .025) 42%, rgba(4, 10, 18, .10)),
-    rgba(4, 8, 15, max(.50, calc(var(--panel-opacity) * .63)));
+    linear-gradient(145deg, rgba(255, 255, 255, .16), rgba(232, 245, 255, .025) 42%, rgba(255, 255, 255, .055)),
+    rgba(9, 15, 23, max(.05, calc(var(--panel-opacity) * .10)));
 }
 .notch .liquid-layer { clip-path: url(#notch-finish-clip); }
+.notch-shell[data-theme="liquid"] {
+  --foreground: rgba(255, 255, 255, max(.96, var(--fg-opacity)));
+  --muted-foreground: rgba(255, 255, 255, .82);
+  --subtle-foreground: rgba(255, 255, 255, .72);
+}
 .notch-shell[data-theme="liquid"] .notch-shape {
   fill: rgba(29, 39, 52, max(.55, calc(var(--panel-opacity) * .8)));
 }
 .notch-shell[data-theme="liquid"][data-liquid-status="ready"] .notch-shape { fill: none; z-index: 1; }
+.notch-liquid-volume { display: none; }
+.notch-shell[data-theme="liquid"] .notch-liquid-volume {
+  display: inline;
+  fill: none;
+  stroke: url(#notch-liquid-rim);
+  stroke-width: calc(12px * var(--notch-rim-scale, 1));
+  opacity: .32;
+  filter: blur(2px);
+  clip-path: url(#notch-finish-clip);
+  vector-effect: non-scaling-stroke;
+}
 .notch-shell[data-theme="liquid"] .notch-glass-rim {
   display: inline;
   fill: none;
   stroke: url(#notch-liquid-rim);
-  stroke-width: calc(2.4px * var(--notch-rim-scale, 1));
-  opacity: .75;
+  stroke-width: calc(4.4px * var(--notch-rim-scale, 1));
+  opacity: .9;
   clip-path: url(#notch-finish-clip);
   vector-effect: non-scaling-stroke;
 }
@@ -148,7 +162,7 @@
 .notch-shell[data-theme="liquid"] .notch-liquid-edge {
   display: inline;
   fill: none;
-  stroke: rgba(232, 241, 249, .45);
+  stroke: rgba(246, 251, 255, .62);
   stroke-width: calc(0.7px * var(--notch-rim-scale, 1));
   vector-effect: non-scaling-stroke;
 }
@@ -162,29 +176,77 @@
   isolation: isolate;
   background: rgba(32, 43, 56, max(.80, var(--panel-opacity)));
   border-width: calc(1px * var(--notch-scale, 1));
-  border-color: rgba(225, 239, 251, .16);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, .5);
+  border-color: rgba(244, 250, 255, .22);
+  box-shadow: 0 10px 24px -10px rgba(0, 0, 0, .32),
+    inset 0 1px 1px rgba(255, 255, 255, .65),
+    inset 2px 3px 7px -2px rgba(255, 255, 255, .30),
+    inset -1px -3px 6px -2px rgba(7, 19, 30, .30),
+    inset 4px 0 9px -3px rgba(97, 218, 234, .30),
+    inset -4px -1px 9px -3px rgba(232, 147, 201, .26),
+    inset 0 0 10px rgba(255, 255, 255, .08);
+}
+/* One translucent wash over the native backdrop, rather than stacked dark fills. */
+.notch-shell[data-theme="liquid"][data-liquid-status="ready"] .notch-detail {
+  background: transparent;
 }
 .notch-shell[data-theme="liquid"] .notch-detail::after {
   content: "";
   position: absolute;
   inset: 0;
-  padding: calc(0.5px * var(--notch-rim-scale, 1));
+  padding: calc(1.25px * var(--notch-rim-scale, 1));
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(135deg, rgba(180, 229, 238, .6), rgba(193, 180, 236, .35) 30%,
-    rgba(241, 190, 216, .25) 55%, rgba(242, 213, 170, .4) 78%, rgba(185, 229, 210, .3));
+  background: linear-gradient(135deg, rgba(255, 255, 255, .82), rgba(116, 232, 239, .52) 18%,
+    rgba(132, 179, 250, .38) 26%,
+    rgba(15, 33, 49, .25) 36%, rgba(255, 255, 255, .06) 52%,
+    rgba(237, 163, 210, .46) 70%, rgba(245, 251, 255, .58) 78%, rgba(255, 255, 255, .30));
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
 }
 .notch-detail > .liquid-layer { border-radius: inherit; z-index: -1; }
 .notch-detail > .liquid-layer::after {
-  background: linear-gradient(145deg, rgba(202, 226, 245, .10), transparent 55%),
-    rgba(5, 10, 18, max(.62, calc(var(--panel-opacity) * .78)));
+  background: radial-gradient(ellipse at 5% 0%, rgba(255, 255, 255, .13), transparent 58%),
+    linear-gradient(160deg, rgba(237, 248, 255, .045), transparent 40%, rgba(255, 255, 255, .025)),
+    rgba(9, 15, 23, max(.10, calc(var(--panel-opacity) * .18)));
 }
 .notch-shell[data-theme="liquid"] .detail-body {
-  background: rgba(5, 9, 15, .34);
-  box-shadow: 0 0 12px 12px rgba(5, 9, 15, .34);
+  background: transparent;
+  box-shadow: none;
+}
+.notch-shell[data-theme="liquid"] .detail-body,
+.notch-shell[data-theme="liquid"] .ring-pct {
+  text-shadow: 0 1px 3px rgba(9, 22, 34, .20);
+}
+/* Contrast belongs to the foreground, leaving the clear surface transparent. */
+.notch-shell[data-theme="liquid"] .ring-wrap {
+  filter: drop-shadow(0 1px 2px rgba(9, 22, 34, .25));
+}
+.notch-shell[data-theme="liquid"] [data-contrast="light"] {
+  --foreground: #172a36;
+  --card-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --muted-foreground: #40545f;
+  --subtle-foreground: #50636d;
+  --ok: #176b36;
+  --caution: #795900;
+  --warn: #965000;
+  --critical: #b52530;
+  --reset: #a63038;
+  --border: rgba(24, 44, 58, .16);
+  --border-soft: rgba(24, 44, 58, .12);
+  color: var(--foreground);
+}
+.notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.detail-body, .ring-pct) {
+  text-shadow: none;
+}
+.notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.ring-wrap) {
+  filter: none;
+}
+.notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.ring-wrap img) {
+  filter: brightness(0) opacity(.8) !important;
+}
+.notch-shell[data-theme="liquid"] [data-contrast="light"] .ring-track {
+  stroke: rgba(24, 44, 58, .20);
 }
 .notch-cells {
   position: absolute;

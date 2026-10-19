@@ -17,7 +17,7 @@
 - **Floating watchlist widget**, not a portfolio manager.
 - UI is a screen-edge notch: instrument icon + latest `Quote.display.primary.change`; click opens that instrument's existing sparkline and primary/secondary rows.
 - Rust owns placement, DPI and hit regions. Do not restore the former frontend content-hug resize loop.
-- Themes: Dark / Glass / Liquid. Glass and Liquid capture visible desktop regions; stop capture on explicit hide and fold, and restore capture affinity on exit/reload/theme change.
+- Themes: Dark / Glass / Liquid. Glass and Liquid use same-HWND Windows Composition backdrops, included in screenshots. Stop materials on explicit hide/fold; Liquid samples only narrow empty margins every 250ms after completion for foreground contrast.
 - Settings: `모양 / 종목 / 일반`, one measured height across tabs, including first opening after a short detail. Scroll the body in constrained work areas.
 - **Do not** add portfolio / P&L / broker / SQLite history without a new design.
 - **Hide ≠ quit**; hide must pause quote polling.

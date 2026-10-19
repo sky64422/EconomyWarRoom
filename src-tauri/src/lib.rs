@@ -186,6 +186,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
+            infrastructure::liquid_glass::begin_liquid_backdrop,
+            infrastructure::liquid_glass::sync_liquid_backdrop,
             infrastructure::liquid_glass::capture_liquid_backdrop,
             infrastructure::liquid_glass::release_liquid_backdrop,
             commands::get_notch_reveal,

@@ -10,3 +10,6 @@ pub use yahoo::YahooProvider;
 
 pub mod liquid_glass;
 pub mod liquid_capture;
+
+#[cfg(windows)]
+pub mod native_material;

@@ -85,28 +85,13 @@ with sync_playwright() as p:
     invoke('set_notch_preferences',{'hoverDetail':False,'alwaysShowNotch':True,'showAnimation':True})
     reset();pin(0)
     print('liquid',flush=True)
-    page.evaluate("""() => {
-      window.captureMetrics={calls:0,times:[],railTimes:[]};
-      for(const name of ['putImageData','drawImage']) {
-      const real=CanvasRenderingContext2D.prototype[name];
-      CanvasRenderingContext2D.prototype[name]=function(...args){
-        if(this.canvas.closest('.liquid-layer')){
-          const m=window.captureMetrics;m.calls++;m.times.push(performance.now());
-          if(this.canvas.closest('.notch'))m.railTimes.push(performance.now());
-        }
-        return real.apply(this,args);
-      };
-      }
-    }""")
     page.locator('.notch').dispatch_event('contextmenu')
     page.locator('#tab-btn-appearance').click();page.locator('[data-theme-option="liquid"]').click()
     page.wait_for_function('document.querySelector(".notch-shell").dataset.liquidStatus==="ready"',timeout=15000)
     page.locator('#settings-close').click();pin(2)
     page.screenshot(path=str(ROOT/'tmp/notch-native-liquid.png'),omit_background=True)
-    # Unchanged desktop pixels intentionally skip painting; wait for a ready native surface.
     page.wait_for_function('document.querySelector(".notch-shell").dataset.liquidStatus==="ready"')
-    capture=page.evaluate('window.captureMetrics')
-    rail_times=capture['railTimes'];measured_fps=(len(rail_times)-1)*1000/(rail_times[-1]-rail_times[0]) if len(rail_times)>1 else None
+    assert page.locator('.liquid-layer canvas').count()==0
     raw=page.evaluate("""async()=>{
       const r=document.querySelector('.notch-detail').getBoundingClientRect(),s=devicePixelRatio;
       const data=await window.__TAURI__.core.invoke('capture_liquid_backdrop',{x:Math.round(r.x*s),y:Math.round(r.y*s),width:Math.round(r.width*s),height:Math.round(r.height*s)});
@@ -123,6 +108,6 @@ with sync_playwright() as p:
     rejected=page.evaluate("""async()=>{try{await window.__TAURI__.core.invoke('capture_liquid_backdrop',{x:0,y:0,width:10,height:10});return false;}catch{return true;}}""")
     assert rejected
     assert not errors,errors
-    summary={'page_errors':errors,'native_matrix':matrices,'hover_focus_preserved':before==after,'transparent_click_through':inside!=outside,'fold_reveal':True,'liquid':{'paint_calls':capture['calls'],'measured_idle_rail_fps':measured_fps,'raw':raw,'dark_capture_rejected':rejected},'monitors':invoke('get_notch_monitors')}
+    summary={'page_errors':errors,'native_matrix':matrices,'hover_focus_preserved':before==after,'transparent_click_through':inside!=outside,'fold_reveal':True,'liquid':{'compositor_material':True,'raw':raw,'dark_capture_rejected':rejected},'monitors':invoke('get_notch_monitors')}
     (ROOT/'tmp/native-smoke-result.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(summary,ensure_ascii=True))

@@ -159,3 +159,34 @@
 .notch-error { margin:8px 0 0;font-size:11px;color:var(--warn);overflow-wrap:anywhere; }
 .reduce-animation *, .reduce-animation *::before,.reduce-animation *::after { animation:none !important;transition:none !important; }
 @media(prefers-reduced-motion:reduce) { .notch-shell *, .notch-shell *::before, .notch-shell *::after { animation:none !important;transition:none !important; } }
+
+/* Clear Liquid foreground follows each surface, preserving market color meaning. */
+.notch-shell[data-theme="liquid"] :is(.notch, .notch-detail) {
+  --text: rgba(255,255,255,.96);
+  --text-secondary: rgba(255,255,255,.82);
+  --text-tertiary: rgba(255,255,255,.72);
+  --foreground: var(--text);
+  --muted-foreground: var(--text-secondary);
+}
+.notch-shell[data-theme="liquid"] [data-contrast="light"] {
+  --text: #172a36; --text-secondary: #40545f; --text-tertiary: #50636d;
+  --up-rgb: 23,107,54; --down-rgb: 181,37,48;
+  --up: #176b36; --down: #b52530; --warn: #965000; --accent: #1260a8;
+  --foreground: var(--text); --muted-foreground: var(--text-secondary);
+  --sparkline-up: var(--up); --sparkline-down: var(--down);
+  --sparkline-neutral: var(--text-secondary); --sparkline-baseline: var(--text-secondary);
+  color-scheme: light;
+}
+.notch-shell[data-theme="liquid"] [data-contrast="light"] .settings-tab-btn.is-active {
+  color: var(--text);
+}
+.notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.stock-symbol-mark img,.management-mark img) {
+  filter: brightness(0) opacity(.8);
+}
+
+.notch-shell[data-theme="liquid"] :is(.ring-wrap img,.stock-symbol-mark img,.management-mark img) {
+  filter: brightness(0) invert(1);
+}
+.notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.ring-wrap img,.stock-symbol-mark img,.management-mark img) {
+  filter: brightness(0) opacity(.8);
+}

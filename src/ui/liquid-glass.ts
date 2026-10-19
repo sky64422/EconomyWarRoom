@@ -1,217 +1,174 @@
 import { invoke } from "@tauri-apps/api/core";
-import { createLiquidLoop } from "./liquid-loop.ts";
-import { decodeLiquidFrame, liquidWash } from "./liquid-frame.ts";
+import { mountLiquidContrast } from "./liquid-contrast.ts";
 
-// Capture -> separate optical background follows dynamic-island's approach:
-// https://github.com/molian313/dynamic-island. Independent renderer; no source copied.
-const NS = "http://www.w3.org/2000/svg";
-const MATERIALS = {
-  glass: {bezel:20,displacement:18,dispersion:[.985,1,1.015],blur:[4,10],saturation:1.04,brightness:1.02},
-  liquid: {bezel:28,displacement:0,dispersion:[.93,1,1.07],blur:[.55,8],saturation:1.1,brightness:1.04},
-};
-const IDLE_FRAME_MS = 1000 / 30;
-const DRAG_FRAME_MS = 1000 / 60;
-const REDUCED_FRAME_MS = 250;
-const SETTLING_FRAME_MS = 100;
-const SETTLING_AFTER_MS = 500;
-const STATIC_AFTER_MS = 2000;
-interface SurfaceLayer {
-  surface: HTMLElement; layer: HTMLDivElement; canvas: HTMLCanvasElement;
-  filter: SVGFilterElement; key: string; slot: number; generation: number; effect: string; scratch: HTMLCanvasElement | null;
+const MATERIAL_BLUR = { glass: [4, 10], liquid: [3, 10] } as const;
+const GEOMETRY_PROPERTY = /^(transform|translate|scale|width|height|left|right|top|bottom|inset|borderRadius|clipPath)/;
+interface NativeSurface {
+  slot: number; x: number; y: number; width: number; height: number;
+  edge: "left" | "right" | "top" | "bottom" | null; radius: number; blur: number;
 }
-interface CapturedFrame { entry: SurfaceLayer; pixels: Uint8ClampedArray; width: number; height: number; key: string; generation: number }
 
+/** The compositor owns live pixels; the web layer only synchronizes geometry and scrims. */
 export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: HTMLElement) {
-  let material = MATERIALS.glass;
-  let materialTheme: "glass" | "liquid" | null = null;
-  const defs = document.createElementNS(NS, "svg");
-  defs.classList.add("liquid-filter-defs");
-  defs.setAttribute("aria-hidden", "true");
-  defs.innerHTML = "<defs></defs>";
-  shell.append(defs);
-  const motion = matchMedia("(prefers-reduced-motion: reduce)");
-  const entries: SurfaceLayer[] = [rail, detail].map((surface, index) => {
+  const notchSurface = rail.querySelector<HTMLElement>(".notch-surface") ?? rail;
+  const contrast = mountLiquidContrast(rail, notchSurface, detail);
+  const entries = [rail, detail].map((surface, slot) => {
     const layer = document.createElement("div");
-    layer.className = "liquid-layer"; layer.setAttribute("aria-hidden", "true"); layer.hidden = true;
-    const canvas = document.createElement("canvas"); layer.append(canvas);
-    if (index === 0) surface.querySelector(".notch-finish")!.before(layer);
+    layer.className = "liquid-layer";
+    layer.setAttribute("aria-hidden", "true");
+    layer.hidden = true;
+    if (slot === 0) surface.querySelector(".notch-finish")!.before(layer);
     else surface.prepend(layer);
-    const filter = document.createElementNS(NS, "filter");
-    filter.id = `liquid-lens-${index}`;
-    filter.setAttribute("color-interpolation-filters", "sRGB");
-    filter.setAttribute("x", "0"); filter.setAttribute("y", "0");
-    filter.setAttribute("width", "100%"); filter.setAttribute("height", "100%");
-    filter.innerHTML = `<feImage result="map" preserveAspectRatio="none"/>
-      <feDisplacementMap in="SourceGraphic" in2="map" scale="${material.displacement * material.dispersion[0]}" xChannelSelector="R" yChannelSelector="G" result="r"/>
-      <feColorMatrix in="r" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="red"/>
-      <feDisplacementMap in="SourceGraphic" in2="map" scale="${material.displacement}" xChannelSelector="R" yChannelSelector="G" result="g"/>
-      <feColorMatrix in="g" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="green"/>
-      <feDisplacementMap in="SourceGraphic" in2="map" scale="${material.displacement * material.dispersion[2]}" xChannelSelector="R" yChannelSelector="G" result="b"/>
-      <feColorMatrix in="b" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="blue"/>
-      <feBlend in="red" in2="green" mode="screen" result="rg"/><feBlend in="rg" in2="blue" mode="screen"/>`;
-    defs.firstElementChild!.append(filter);
-    const effect = "";
-    canvas.style.filter = effect;
-    return {surface,layer,canvas,filter,key:"",slot:index,generation:0,effect,scratch:null};
+    return { surface, layer, slot };
   });
-  let enabled = false, destroyed = false, nativeVisible = true;
-  let lastChangedAt = performance.now(), lastVisible = false;
-  let lastDetailHidden = detail.hidden, lastDragging = false;
-  const clear = (releaseBuffers = false) => entries.forEach(entry => {
-    entry.layer.hidden = true; entry.generation++;
-    if (!releaseBuffers) return;
-    entry.key = "";
-    entry.canvas.width = entry.canvas.height = 0;
-    entry.canvas.style.filter = "";
-    entry.filter.querySelector("feImage")!.removeAttribute("href");
-    if (entry.scratch) { entry.scratch.width = entry.scratch.height = 0; entry.scratch = null; }
-  });
-  const loop = createLiquidLoop<CapturedFrame[]>({
-    request: cb => requestAnimationFrame(cb), cancel: id => cancelAnimationFrame(id),
-    interval: now => {
-      if (motion.matches) return REDUCED_FRAME_MS;
-      if (rail.classList.contains("is-dragging")) return DRAG_FRAME_MS;
-      const unchangedFor = now - lastChangedAt;
-      return unchangedFor >= STATIC_AFTER_MS ? REDUCED_FRAME_MS
-        : unchangedFor >= SETTLING_AFTER_MS ? SETTLING_FRAME_MS : IDLE_FRAME_MS;
-    },
-    capture, paint: (frames, now) => {
-      let painted = false;
-      frames.forEach(({entry,pixels,width,height,key,generation}) => {
-        if (entry.key !== key || entry.generation !== generation || entry.surface.hidden) return;
-        const ctx = entry.canvas.getContext("2d", {alpha:false})!;
-        const image = new ImageData(pixels,width,height);
-        if (materialTheme === "glass") entry.layer.style.setProperty("--liquid-wash",liquidWash(pixels).toFixed(3));
-        if (width === entry.canvas.width && height === entry.canvas.height) ctx.putImageData(image,0,0);
-        else {
-          const scratch = entry.scratch ?? (entry.scratch = document.createElement("canvas"));
-          if (scratch.width !== width || scratch.height !== height) { scratch.width=width; scratch.height=height; }
-          scratch.getContext("2d", {alpha:false})!.putImageData(image,0,0);
-          ctx.drawImage(scratch,0,0,entry.canvas.width,entry.canvas.height);
-        }
-        entry.layer.hidden = false;
-        painted = true;
-      });
-      if (painted) { lastChangedAt = now; shell.dataset.liquidStatus = "ready"; }
-    },
-    dispose: frames => { frames.length = 0; },
-    release: async () => { await invoke("release_liquid_backdrop"); },
-    fail: error => {
-      clear(true);
-      shell.dataset.liquidStatus = "unavailable";
-      console.error("Liquid backdrop:",error);
-    },
-  });
-  function sync() {
-    const visible = nativeVisible && enabled && !document.hidden && (!rail.classList.contains("is-folded") || !detail.hidden);
-    const dragging = rail.classList.contains("is-dragging");
-    if (visible && (!lastVisible || detail.hidden !== lastDetailHidden || dragging !== lastDragging)) {
-      lastChangedAt = performance.now(); loop.refresh();
-    }
-    lastVisible = visible; lastDetailHidden = detail.hidden; lastDragging = dragging;
-    if (!visible) clear(!enabled || !nativeVisible || document.hidden);
-    loop.setEnabled(visible);
-  }
-  const events = new AbortController();
-  document.addEventListener("visibilitychange",sync,{signal:events.signal});
-  const observer = new MutationObserver(records => {
-    // A hidden surface must not acknowledge pixels that its painter discarded.
-    for (const record of records) if (record.target === detail && record.attributeName === "hidden") entries[1].generation++;
-    sync();
-  });
-  observer.observe(rail,{attributes:true,attributeFilter:["class"]});
-  observer.observe(detail,{attributes:true,attributeFilter:["hidden"]});
+  let enabled = false, nativeVisible = true, destroyed = false, failed = false;
+  let session: number | null = null, revision = 0, busy = false, clearRequired = false;
+  let desired: NativeSurface[] = [], desiredKey = "[]", appliedKey = "[]", frame = 0;
 
-  function mapFor(entry: SurfaceLayer, width: number, height: number) {
-    entry.canvas.style.filter = entry.effect;
-    entry.canvas.width=width;entry.canvas.height=height;
-    // Liquid keeps the smoked surface and blur without allocating a lens map.
-    if (material.displacement === 0) return;
-    const contentScale = Number(getComputedStyle(entry.surface).getPropertyValue("--notch-scale")) || 1;
-    const bezel = material.bezel * contentScale;
-    entry.filter.querySelectorAll("feDisplacementMap").forEach((node, index) => {
-      const dispersion = material.dispersion[index];
-      node.setAttribute("scale", String(material.displacement * contentScale * dispersion));
-    });
-    const mask = document.createElement('canvas'); mask.width=width; mask.height=height;
-    const ctx = mask.getContext('2d', {willReadFrequently:true})!;
-    ctx.fillStyle='#fff';
-    if (entry.surface === rail) {
-      const path = rail.querySelector<SVGPathElement>('#notch-outline')!;
-      const m = path.transform.baseVal.consolidate()?.matrix;
-      if (m) ctx.setTransform(m.a,m.b,m.c,m.d,m.e,m.f);
-      ctx.fill(new Path2D(path.getAttribute('d')!)); ctx.resetTransform();
-    } else {ctx.beginPath(); ctx.roundRect(0,0,width,height,16 * contentScale); ctx.fill();}
-    const pixels=ctx.getImageData(0,0,width,height).data;
-    const dist=new Float32Array(width*height);
-    for(let y=0;y<height;y++)for(let x=0;x<width;x++) {
-      const i=y*width+x;
-      dist[i]=pixels[i*4+3]<128 ? 0 : Math.min(x+1,y+1,width-x,height-y,bezel+2);
-    }
-    for(let y=1;y<height;y++)for(let x=1;x<width;x++) {
-      const i=y*width+x;dist[i]=Math.min(dist[i],dist[i-1]+1,dist[i-width]+1,dist[i-width-1]+Math.SQRT2);
-    }
-    for(let y=height-2;y>=0;y--)for(let x=width-2;x>=0;x--) {
-      const i=y*width+x;dist[i]=Math.min(dist[i],dist[i+1]+1,dist[i+width]+1,dist[i+width+1]+Math.SQRT2);
-    }
-    const map=ctx.createImageData(width,height);
-    for(let y=0;y<height;y++)for(let x=0;x<width;x++) {
-      const i=y*width+x, d=dist[i];
-      const gx=(dist[y*width+Math.min(width-1,x+1)]-dist[y*width+Math.max(0,x-1)])/2;
-      const gy=(dist[Math.min(height-1,y+1)*width+x]-dist[Math.max(0,y-1)*width+x])/2;
-      const length=Math.hypot(gx,gy)||1;
-      const bend=d>0&&d<bezel ? (1-d/bezel)**2 : 0;
-      map.data[i*4]=128+gx/length*bend*116;
-      map.data[i*4+1]=128+gy/length*bend*116;
-      map.data[i*4+2]=128;map.data[i*4+3]=255;
-    }
-    ctx.putImageData(map,0,0);
-    entry.filter.querySelector('feImage')!.setAttribute('href',mask.toDataURL());
+  function hide() {
+    contrast.setActive(false);
+    for (const entry of entries) entry.layer.hidden = true;
+    delete shell.dataset.liquidStatus;
   }
 
-  async function capture(): Promise<CapturedFrame[]> {
-    const frames: CapturedFrame[] = [];
+  async function flush() {
+    if (busy || failed) return;
+    busy = true;
     try {
-      for (const entry of entries) {
-        if (entry.surface.hidden || (entry.surface === rail && rail.classList.contains("is-folded"))) continue;
-        const rect = entry.surface.getBoundingClientRect();
-        const width = Math.round(rect.width), height = Math.round(rect.height);
-        if (!width || !height) continue;
-        const ratio = devicePixelRatio;
-        const key = `${width}:${height}:${rail.dataset.edge}:${ratio}:${shell.style.getPropertyValue('--notch-scale')}`;
-        if (key !== entry.key) { mapFor(entry,width,height); entry.key=key; entry.generation++; }
-        const generation = entry.generation;
-        const x=Math.max(0,Math.round(rect.x*ratio)), y=Math.max(0,Math.round(rect.y*ratio));
-        const w=Math.min(Math.round(width*ratio),Math.round(innerWidth*ratio)-x);
-        const h=Math.min(Math.round(height*ratio),Math.round(innerHeight*ratio)-y);
-        // During a native canvas transition wait for a valid local rectangle.
-        if (w<=0 || h<=0) continue;
-        const data = await invoke<ArrayBuffer>("capture_liquid_backdrop",{x,y,width:w,height:h,surface:entry.slot,generation});
-        if (!data.byteLength) continue; // Unchanged pixels, or native geometry changed before DOM layout.
-        if (entry.key !== key || entry.generation !== generation) continue;
-        const pixels = decodeLiquidFrame(data,w,h);
-        frames.push({entry,pixels,width:w,height:h,key,generation});
+      while (clearRequired || desiredKey !== appliedKey) {
+        if (session === null) {
+          if (!desired.length && !clearRequired) break;
+          session = await invoke<number>("begin_liquid_backdrop");
+        }
+        if (clearRequired) {
+          clearRequired = false;
+          await invoke("release_liquid_backdrop", { session, revision: ++revision });
+          appliedKey = "[]";
+          continue;
+        }
+        const surfaces = desired, key = desiredKey;
+        if (!surfaces.length) {
+          await invoke("release_liquid_backdrop", { session, revision: ++revision });
+        } else {
+          await invoke("sync_liquid_backdrop", { session, revision: ++revision, surfaces });
+        }
+        appliedKey = key;
+        // Closing or changing geometry while IPC is pending invalidates its acknowledgement.
+        if (!destroyed && key === desiredKey && !clearRequired && surfaces.length) {
+          for (const entry of entries) entry.layer.hidden = !surfaces.some(s => s.slot === entry.slot);
+          shell.dataset.liquidStatus = "ready";
+          contrast.setActive(shell.dataset.theme === "liquid");
+        }
       }
-      return frames;
-    } catch(error) { frames.length = 0; throw error; }
+    } catch (error) {
+      failed = true;
+      hide();
+      shell.dataset.liquidStatus = "unavailable";
+      console.error("Liquid backdrop:", error);
+      if (session !== null) {
+        try {
+          await invoke("release_liquid_backdrop", { session, revision: ++revision });
+          appliedKey = "[]";
+        } catch (cleanupError) { console.error("Liquid backdrop cleanup:", cleanupError); }
+      }
+      clearRequired = false;
+    } finally {
+      busy = false;
+      if (!failed && (clearRequired || desiredKey !== appliedKey)) void flush();
+    }
   }
-  return {
-    setVisible(value: boolean) { nativeVisible = value; sync(); },
-    setEnabled(value: boolean) {
-      const nextTheme = shell.dataset.theme === "liquid" ? "liquid" : "glass";
-      if (destroyed || (enabled === value && materialTheme === nextTheme)) return;
-      if (materialTheme !== nextTheme) {
-        loop.setEnabled(false); clear(true);
-        materialTheme = nextTheme; material = MATERIALS[nextTheme];
-        for (const entry of entries) entry.effect = `${material.displacement === 0 ? "" : `url(#${entry.filter.id}) `}blur(${material.blur[entry.slot]}px) saturate(${material.saturation}) brightness(${material.brightness})`;
+
+  function request(surfaces: NativeSurface[]) {
+    const key = JSON.stringify(surfaces);
+    if (key === desiredKey) return;
+    desired = surfaces; desiredKey = key;
+    if (!surfaces.length) {
+      hide();
+      // Keep this barrier even if an immediate reopen coalesces to the previous geometry.
+      clearRequired ||= session !== null || busy;
+    } else {
+      for (const entry of entries) {
+        if (!surfaces.some(s => s.slot === entry.slot)) entry.layer.hidden = true;
       }
-      enabled=value;
-      delete shell.dataset.liquidStatus;
-      sync();
+    }
+    void flush();
+  }
+
+  function sync() {
+    const theme = shell.dataset.theme;
+    if (destroyed || !enabled || !nativeVisible || document.hidden || shell.hidden
+      || (theme !== "glass" && theme !== "liquid") || getComputedStyle(shell).display === "none") {
+      request([]); return;
+    }
+    const ratio = devicePixelRatio || 1;
+    const surfaces: NativeSurface[] = [];
+    for (const { surface, slot } of entries) {
+      if (surface.hidden || (slot === 0 && rail.classList.contains("is-folded"))) continue;
+      const style = getComputedStyle(surface);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+      const paintedSurface = slot === 0 ? notchSurface : surface;
+      const rect = paintedSurface.getBoundingClientRect();
+      const width = Math.round(rect.width * ratio), height = Math.round(rect.height * ratio);
+      if (width <= 0 || height <= 0) continue;
+      const edge = rail.dataset.edge;
+      const vertical = edge === "left" || edge === "right";
+      const depth = parseFloat(getComputedStyle(rail).getPropertyValue("--notch-depth"))
+        || (vertical ? paintedSurface.offsetWidth : paintedSurface.offsetHeight) || 0;
+      const length = (vertical ? paintedSurface.offsetHeight : paintedSurface.offsetWidth) || 0;
+      const notchRadius = length > 0 ? depth / 2 * (vertical ? rect.height : rect.width) / length * ratio : 0;
+      surfaces.push({ slot, x: Math.round(rect.x * ratio), y: Math.round(rect.y * ratio), width, height,
+        edge: slot === 0 && (edge === "left" || edge === "right" || edge === "top" || edge === "bottom") ? edge : null,
+        radius: slot === 0 ? notchRadius : (parseFloat(style.borderRadius) || 0) * ratio,
+        blur: MATERIAL_BLUR[theme][slot] * ratio });
+    }
+    request(surfaces);
+    contrast.setActive(theme === "liquid" && shell.dataset.liquidStatus === "ready");
+  }
+
+  function animatingGeometry() {
+    return shell.getAnimations({ subtree: true }).some(animation => {
+      if (animation.playState !== "running" || !(animation.effect instanceof KeyframeEffect)
+        || animation.effect.getTiming().iterations === Infinity) return false;
+      return animation.effect.getKeyframes().some(key => Object.keys(key).some(name => GEOMETRY_PROPERTY.test(name)));
+    });
+  }
+  function schedule() {
+    if (destroyed || frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0; sync();
+      if (animatingGeometry()) schedule();
+    });
+  }
+
+  const events = new AbortController();
+  document.addEventListener("visibilitychange", () => { sync(); schedule(); }, { signal: events.signal });
+  window.addEventListener("resize", schedule, { signal: events.signal });
+  for (const event of ["transitionrun", "transitionstart", "transitionend", "transitioncancel", "animationstart", "animationend", "animationcancel"]) {
+    shell.addEventListener(event, schedule, { signal: events.signal });
+  }
+  const observer = new MutationObserver(() => { sync(); schedule(); });
+  observer.observe(shell, { attributes: true, attributeFilter: ["data-theme", "style", "class", "hidden"] });
+  observer.observe(rail, { attributes: true, attributeFilter: ["class", "style", "data-edge"] });
+  observer.observe(detail, { attributes: true, attributeFilter: ["hidden", "class", "style"] });
+  const resize = new ResizeObserver(schedule);
+  resize.observe(rail); resize.observe(detail);
+  if (notchSurface !== rail) resize.observe(notchSurface);
+
+  return {
+    setVisible(value: boolean) { nativeVisible = value; sync(); schedule(); },
+    setEnabled(value: boolean) {
+      if (destroyed) return;
+      enabled = value;
+      if (failed && value) { failed = false; desiredKey = ""; }
+      sync(); schedule();
     },
     destroy() {
-      destroyed=true; loop.destroy(); observer.disconnect(); events.abort(); clear(true);
-      entries.forEach(entry=>entry.layer.remove()); defs.remove();
+      if (destroyed) return;
+      destroyed = true;
+      observer.disconnect(); resize.disconnect(); events.abort();
+      cancelAnimationFrame(frame); frame = 0;
+      request([]);
+      entries.forEach(entry => entry.layer.remove());
     },
   };
 }

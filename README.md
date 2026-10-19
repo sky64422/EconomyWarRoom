@@ -3,7 +3,7 @@
 A lightweight Windows **screen-edge watchlist widget** for US equities and crypto.
 Its notch shows each instrument's icon and the percentage associated with its latest price. Click an icon to open that instrument's existing **symbol · sparkline · price/change** card, including the primary and secondary price rows.
 
-Version **0.2.0** brings the TokenUsage-style edge notch, inward detail cards and settings, with Dark / Glass / Liquid materials and adaptive desktop capture.
+Version **0.2.0** brings the TokenUsage-style edge notch, inward detail cards and settings, with Dark / Glass / Liquid materials. The current Liquid update uses native compositor backdrops and adaptive foreground contrast.
 
 ## Controls
 
@@ -27,7 +27,7 @@ Up to six instrument cells fit along the notch. When needed, the final **⋯ / +
 
 Custom keyboard controls and the global visibility shortcut have been removed. Symbol typing and native text editing remain available; Enter does not add a symbol implicitly.
 
-**Fold ≠ hide ≠ quit.** Folding leaves a small edge target and continues quote polling. Explicit hide stops new quote polling; the process stays running. Both fold and hide stop Glass/Liquid background capture. The tray provides Show and Quit; application keyboard shortcuts are not installed.
+**Fold ≠ hide ≠ quit.** Folding leaves a small edge target and continues quote polling. Explicit hide stops new quote polling; the process stays running. Both fold and hide stop Glass/Liquid materials and contrast sampling. The tray provides Show and Quit; application keyboard shortcuts are not installed.
 
 ## Quote semantics
 
@@ -44,7 +44,7 @@ Detail and settings use the same **260 DIP** width and **16 DIP** padding as Tok
 
 The detail sparkline uses a 52 DIP chart area, a fixed 1.15px stroke, faint baseline/fill and a small last-sample marker. The marker stays at the last observed session time; a partially completed session is not stretched to the close. Empty/single-sample data does not fabricate a trend.
 
-Dark is the default. Glass uses a neutral smoked material with narrow highlights, matching the lock-screen reference. Liquid uses an undistorted desktop backdrop with blur and its colored reflected rim. Both sample an in-memory desktop capture and keep foreground text/icons sharp. Windows excludes either live-glass widget from screen capture/sharing to avoid recursive captures; unsupported capture uses a tint fallback. Theme exit, hide and renderer reload release that exclusion.
+Dark is the default. Glass retains a neutral smoked surface. Liquid uses clear compositor blur, subtle cyan/pink reflections, a fine convex rim, and adaptive foreground contrast. Both use Windows Composition behind the WebView and remain visible in screenshots. Liquid samples only three-pixel-wide empty margins, serialized every 250ms after completion; bright surfaces use dark text and stronger up/down/chart colors. Hide/fold stops materials and contrast probes. Unsupported native materials retain a readable tint fallback.
 
 Settings use **모양 / 종목 / 일반** with one intrinsic measured height across tabs, including the first opening after a short card. Normal contents fit without scrolling. There is no visible scrollbar or reserved scrollbar gutter, so header/tabs/body share the same center. Header/tabs stay fixed; exceptionally long lists remain wheel-scrollable inside screen bounds.
 

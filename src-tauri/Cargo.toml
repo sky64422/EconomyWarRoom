@@ -31,7 +31,18 @@ chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [target.'cfg(windows)'.dependencies]
+windows-core = "0.61"
 windows = { version = "0.61", features = [
+  "Graphics",
+  "Graphics_Effects",
+  "Win32_Graphics_Direct2D",
+  "Win32_Graphics_Direct2D_Common",
+  "Win32_System_WinRT_Graphics_Direct2D",
+  "System",
+  "UI_Composition",
+  "UI_Composition_Desktop",
+  "Win32_System_WinRT",
+  "Win32_System_WinRT_Composition",
   "Win32_Foundation",
   "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",

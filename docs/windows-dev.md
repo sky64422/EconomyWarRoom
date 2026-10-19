@@ -148,7 +148,7 @@ State JSON is under Tauri app data, roughly:
 - Opacity readability, Dark/Glass/Liquid; foreground remains sharp.
 - Transparent corners pass input through; hover never activates the window.
 - Fold keeps polling and leaves an edge tab; explicit hide pauses new polling.
-- Glass/Liquid capture stops on fold/hide; display affinity restores on theme change/reload/hide.
+- Glass/Liquid materials stop on fold/hide; screenshots include the widget (affinity 0). Liquid foreground contrast uses narrow serialized probes only.
 - Tray show/hide/quit, global shortcut, update progress/restart, diagnostics, release autostart.
 
 Recorded evidence and reproducible smoke commands: [testing.md](testing.md).

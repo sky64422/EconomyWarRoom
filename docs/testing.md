@@ -1,3 +1,21 @@
+## Clear Liquid material adoption (2026-10-19)
+
+Adapted from TokenUsage `db5ecbc`: same-HWND Windows Composition, clear prism tint,
+250ms serialized foreground probes, separate rail/detail contrast and market colors.
+`npm test` includes contrast hysteresis and pending-capture cancellation checks.
+Run `python scripts/liquid-cadence-smoke.py --port 1521` and
+`python scripts/liquid-renderer-smoke.py --port 1521` for geometry lifecycle checks.
+Run `python scripts/liquid-contrast-native-smoke.py` against preview CDP 9251 for
+blue/white/blue transitions on every monitor and screenshot inclusion (affinity 0).
+The native probe restores theme and placement. `notch-browser-smoke.py` checks
+unchanged quote/settings behavior; `notch-native-smoke.py` covers four edges and themes.
+Verified: 13 UI tests, 143 Rust unit tests, 4 integration, 9 risk, 28 notch and
+2 frame tests; production build; browser material lifecycle and market UI smokes;
+native four-edge settings heights (434 DIP), focus/click-through/fold, all themes,
+and six blue/white/blue checks across two monitors with capture affinity 0.
+
+Older capture-affinity/renderer evidence below describes the previous implementation.
+
 # Testing and coverage
 
 Updated: 2026-10-17. Tests cover the version 0.2.0 notch UI source.

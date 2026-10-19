@@ -25,7 +25,7 @@ Source inspected locally at `C:/dev/TokenUsage`, commit `251df6bfdceda1bf29f1696
 |---|---|
 | Concave edge notch, folding/reveal, four-edge docking | Rust geometry/native hit regions and TS shell; dynamic watchlist instead of fixed providers |
 | Stable transparent canvas and monitor/DPI scaling | 260 DIP details/settings, 16 DIP padding, 0.92–1 content scale; changing detail/tab does not move the window |
-| Dark / Glass / Liquid surfaces | Existing adapted reflection/capture/affinity lifecycle; foreground stays sharp |
+| Dark / Glass / Liquid surfaces | Same-HWND compositor material from TokenUsage db5ecbc, with clear prism reflections and adaptive foreground contrast |
 | Shared-height settings with fixed chrome | All tabs measured intrinsically; normal contents fit without scrolling; no scrollbar/gutter, with body wheel scrolling retained for long lists |
 | Icon tabs and sliding selection | 모양 / 종목 / 일반; source 37 DIP height, spring indicator, hover/press and panel fade |
 | Grouped rows, compact spring switches | Appearance/system controls share sizing and separators; existing settings persistence retained |
