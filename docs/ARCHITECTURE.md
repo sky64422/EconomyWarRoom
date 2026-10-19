@@ -1,6 +1,6 @@
 # Architecture
 
-Updated: 2026-10-19. Version 0.3.0 includes the TokenUsage UI adoption and adaptive Liquid materials.
+Updated: 2026-10-19. Version 0.3.1 includes the TokenUsage UI adoption, live desktop capture blur and adaptive Liquid materials.
 
 ```text
 Edge notch: instrument icon + primary change
@@ -13,7 +13,7 @@ AppCore ── QuoteScheduler + RateLimitedQueue ── YahooProvider
   └─ atomic preference/watchlist persistence to existing JSON store
 
 domain/notch + reveal ── infrastructure/notch_window ── fixed transparent HWND
-Glass / Liquid -> Windows Composition; narrow Liquid contrast probes (250ms)
+Glass / Liquid -> GDI desktop capture + WDA_EXCLUDEFROMCAPTURE lease + canvas blur; adaptive Liquid contrast
 ```
 
 ## Rust modules

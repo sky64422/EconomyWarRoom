@@ -2,7 +2,14 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Current release:** **v0.3.0** on GitHub Releases.
+**Current release:** **v0.3.1** on GitHub Releases.
+
+## 0.3.1 — 2026-10-19
+
+### Fixed
+
+- Restored live desktop capture and canvas blur rendering for Liquid and Glass backdrops on Windows unfocused overlay (`WS_EX_NOACTIVATE`), fixing the opaque dark gray silhouette.
+- Background capture uses `WDA_EXCLUDEFROMCAPTURE` leasing with 750ms automatic idle release.
 
 ## 0.3.0 — 2026-10-19
 
