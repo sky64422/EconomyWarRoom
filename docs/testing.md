@@ -18,7 +18,7 @@ Older capture-affinity/renderer evidence below describes the previous implementa
 
 # Testing and coverage
 
-Updated: 2026-10-17. Tests cover the version 0.2.0 notch UI source.
+Updated: 2026-10-19. Tests cover the version 0.3.0 notch UI source.
 
 ## Theme-switch geometry regression (2026-10-17)
 

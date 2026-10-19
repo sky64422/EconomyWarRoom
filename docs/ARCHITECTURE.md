@@ -1,6 +1,6 @@
 # Architecture
 
-Updated: 2026-10-17. Version 0.2.0 includes the TokenUsage UI adoption.
+Updated: 2026-10-19. Version 0.3.0 includes the TokenUsage UI adoption and adaptive Liquid materials.
 
 ```text
 Edge notch: instrument icon + primary change

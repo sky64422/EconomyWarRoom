@@ -2,9 +2,20 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Current release:** **v0.2.0** on GitHub Releases.
+**Current release:** **v0.3.0** on GitHub Releases.
 
-## 0.2.0 ? 2026-10-17
+## 0.3.0 — 2026-10-19
+
+### Added
+
+- Adaptive foreground contrast sampling for Liquid material: samples narrow 3px empty margins serialized every 250ms, dynamically switching text and market gain/loss colors between light and dark backgrounds.
+
+### Changed
+
+- Liquid material now uses native same-HWND Windows Composition backdrops with clear prism tint, remaining visible in screenshots and screen sharing.
+- Background materials and contrast probes cleanly halt on hide and fold.
+
+## 0.2.0 — 2026-10-17
 
 ### Added
 

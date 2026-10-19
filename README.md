@@ -3,7 +3,7 @@
 A lightweight Windows **screen-edge watchlist widget** for US equities and crypto.
 Its notch shows each instrument's icon and the percentage associated with its latest price. Click an icon to open that instrument's existing **symbol · sparkline · price/change** card, including the primary and secondary price rows.
 
-Version **0.2.0** brings the TokenUsage-style edge notch, inward detail cards and settings, with Dark / Glass / Liquid materials. The current Liquid update uses native compositor backdrops and adaptive foreground contrast.
+Version **0.3.0** brings the TokenUsage-style edge notch, inward detail cards and settings, with Dark / Glass / Liquid materials, native Windows Composition backdrops and adaptive foreground contrast.
 
 ## Controls
 
