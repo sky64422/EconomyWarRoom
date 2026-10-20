@@ -2,7 +2,13 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Current release:** **v0.3.1** on GitHub Releases.
+**Current release:** **v0.3.2** on GitHub Releases.
+
+## 0.3.2 — 2026-10-20
+
+### Fixed
+
+- Restored original brand colors for instrument marks in both the notch and instrument settings, removing monochrome brightness filters while maintaining adaptive contrast across themes.
 
 ## 0.3.1 — 2026-10-19
 

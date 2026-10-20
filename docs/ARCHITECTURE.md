@@ -1,6 +1,6 @@
 # Architecture
 
-Updated: 2026-10-19. Version 0.3.1 includes the TokenUsage UI adoption, live desktop capture blur and adaptive Liquid materials.
+Updated: 2026-10-20. Version 0.3.2 includes the TokenUsage UI adoption, live desktop capture blur and adaptive Liquid materials.
 
 ```text
 Edge notch: instrument icon + primary change
