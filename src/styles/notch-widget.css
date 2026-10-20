@@ -9,7 +9,7 @@
 .notch-cell.up { color:var(--up); }
 .notch-cell.down { color:var(--down); }
 .notch-cell:not(.up):not(.down) { color:var(--text); }
-.ring-wrap img { filter:none; }
+.ring-wrap img { filter:none; opacity:1; }
 .ring-wrap { color:var(--text); }
 .mark-fallback { position:absolute;inset:0;display:grid;place-items:center;font-size:max(10px,calc(11px * var(--notch-scale,1)));font-weight:700;color:var(--text); }
 .more-mark { display:grid;place-items:center;border:1px solid var(--border);border-radius:50%;font-size:26px;color:var(--text-secondary); }
@@ -180,13 +180,6 @@
 .notch-shell[data-theme="liquid"] [data-contrast="light"] .settings-tab-btn.is-active {
   color: var(--text);
 }
-.notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.stock-symbol-mark img,.management-mark img) {
-  filter: brightness(0) opacity(.8);
-}
-
-.notch-shell[data-theme="liquid"] :is(.ring-wrap img,.stock-symbol-mark img,.management-mark img) {
-  filter: brightness(0) invert(1);
-}
-.notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.ring-wrap img,.stock-symbol-mark img,.management-mark img) {
+.notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.ring-wrap img,.stock-symbol-mark img,.management-mark img)[data-symbol="AAPL"] {
   filter: brightness(0) opacity(.8);
 }

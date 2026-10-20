@@ -249,9 +249,6 @@
 .notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.ring-wrap) {
   filter: none;
 }
-.notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.ring-wrap img) {
-  filter: brightness(0) opacity(.8) !important;
-}
 .notch-shell[data-theme="liquid"] [data-contrast="light"] .ring-track {
   stroke: rgba(24, 44, 58, .20);
 }
@@ -317,12 +314,11 @@
   height: calc(20px * var(--notch-scale, 1));
   display: block;
   pointer-events: none;
-  filter: brightness(0) invert(1);
-  opacity: max(0.65, var(--fg-opacity));
+  filter: none;
+  opacity: 1;
   z-index: 1;
   transition:
     opacity 0.3s ease,
-    filter 0.3s ease,
     transform 0.3s ease;
 }
 .ring-meta {

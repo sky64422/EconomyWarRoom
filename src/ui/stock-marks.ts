@@ -10,5 +10,5 @@ import { escapeAttr, escapeHtml } from "./watchlist/format";
 const MARKS: Record<string,string> = {"AAPL": apple, "BTC-USD": bitcoin, "ETH-USD": ethereum, "NVDA": nvidia, "TSLA": tesla, "GOOG": google, "GOOGL": google, "META": meta, "NFLX": netflix};
 export function markMarkup(symbol: string): string {
  const source=MARKS[symbol];
- return source ? `<img src="${escapeAttr(source)}" alt="" draggable="false"/>` : `<span class="mark-fallback" aria-hidden="true">${escapeHtml(symbol.replace(/[-.].*$/,'').slice(0,3))}</span>`;
+ return source ? `<img src="${escapeAttr(source)}" alt="" draggable="false" data-symbol="${escapeAttr(symbol)}"/>` : `<span class="mark-fallback" aria-hidden="true">${escapeHtml(symbol.replace(/[-.].*$/,'').slice(0,3))}</span>`;
 }
