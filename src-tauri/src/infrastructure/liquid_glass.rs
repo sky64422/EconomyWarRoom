@@ -43,9 +43,8 @@ pub fn release_liquid_backdrop(window: WebviewWindow) -> Result<(), String> {
     if let Some(state) = window.try_state::<LiquidBackdrop>() {
         let mut guard = state.0.lock().map_err(|e| e.to_string())?;
         if guard.in_flight > 0 { guard.release_pending = true; return Ok(()); }
-        if let Some(lease) = &guard.lease {
+        if let Some(lease) = guard.lease.take() {
             set_affinity(lease.hwnd, lease.original)?;
-            guard.lease = None;
         }
         guard.release_pending = false;
     }
@@ -67,12 +66,25 @@ struct InFlight(WebviewWindow);
 impl Drop for InFlight {
     fn drop(&mut self) {
         let state = self.0.state::<LiquidBackdrop>();
-        let pending = match state.0.lock() {
-            Ok(mut guard) => { guard.in_flight = guard.in_flight.saturating_sub(1); guard.release_pending && guard.in_flight == 0 }
-            Err(error) => { eprintln!("Liquid completion: {error}"); false }
+        let lease_to_restore = match state.0.lock() {
+            Ok(mut guard) => {
+                guard.in_flight = guard.in_flight.saturating_sub(1);
+                if guard.in_flight == 0 {
+                    guard.release_pending = false;
+                    guard.lease.take()
+                } else {
+                    None
+                }
+            }
+            Err(error) => {
+                eprintln!("Liquid completion: {error}");
+                None
+            }
         };
-        if pending {
-            if let Err(error) = release_liquid_backdrop(self.0.clone()) { eprintln!("Liquid deferred release: {error}"); }
+        if let Some(lease) = lease_to_restore {
+            if let Err(error) = set_affinity(lease.hwnd, lease.original) {
+                eprintln!("Liquid affinity restore: {error}");
+            }
         }
     }
 }
@@ -114,7 +126,7 @@ fn watch_lease(window: WebviewWindow) {
         {
             continue;
         }
-        if let Some(lease) = &guard.lease {
+        if let Some(lease) = guard.lease.take() {
             if let Err(error) = set_affinity(lease.hwnd, lease.original) {
                 window
                     .state::<AppHandleState>()
@@ -124,7 +136,6 @@ fn watch_lease(window: WebviewWindow) {
                     continue;
                 }
             }
-            guard.lease = None;
         }
         guard.watching = false;
         break;
