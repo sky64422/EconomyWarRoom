@@ -170,7 +170,9 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
     const visible = nativeVisible && enabled && !document.hidden && (!rail.classList.contains("is-folded") || !detail.hidden);
     const dragging = rail.classList.contains("is-dragging");
     if (visible && (!lastVisible || detail.hidden !== lastDetailHidden || dragging !== lastDragging)) {
-      lastChangedAt = performance.now();
+      lastChangedAt = (lastDragging && !dragging)
+        ? performance.now() - STATIC_AFTER_MS
+        : performance.now();
       loop.refresh();
     }
     lastVisible = visible;
@@ -192,7 +194,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
   observer.observe(detail, { attributes: true, attributeFilter: ["hidden"] });
   window.addEventListener("pointerdown", () => {
     logCaptureEvent("POINTER", "window pointerdown");
-    lastChangedAt = performance.now();
+    lastChangedAt = performance.now() - STATIC_AFTER_MS;
     loop.refresh();
   }, { signal: events.signal });
   rail.addEventListener("pointerenter", () => {

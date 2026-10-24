@@ -40,22 +40,32 @@ SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE); // 0x11
   - 이 찰나의 순간에는 윈도우 포커스 전환이 일어나지 않아 웹뷰에 `blur` 이벤트가 도달하지 못함.
   - 따라서 호버 직후 0.5초 이내에 찍으면 0x11 상태여서 증발하고, 0.5초 이상 가만히 둔 후 찍으면 리스가 만료되어(0x00) 정상 찍히는 기현상이 발생함.
 
-### 결함 3: 노치를 잡고 위치 이동 후 놓은 뒤 캡처 시 사라짐 (The Settling Cache-Hit Trap)
+### 결함 3: 노치를 잡고 위치 이동 후 놓은 뒤 캡처 시 사라짐 (The Settling Cache-Hit Trap & Settling Loop)
 - **증상**: 노치를 끌어서 원하는 위치에 놓은(drop) 뒤 즉시 캡처를 하려고 하면 노치가 사라짐. 몇 초 뒤에 다시 찍으면 보임.
 - **원인**:
   - 드래그를 놓은 후 프론트엔드는 400ms 동안 잔여 흔들림/정착을 보정하기 위해 **Settling Loop**(33ms~100ms 주기)를 실행함.
   - 노치가 이미 정지했으므로 백그라운드 캡처 시 **직전 프레임과 픽셀이 100% 동일(Cache Hit)**하여 백엔드가 `Vec::new() (0 bytes)`를 반환함.
   - 프론트엔드는 0바이트 프레임이 오면 `frames` 배열에 넣지 않아 `painted = false`가 됨.
   - 기존 코드에서 친화도 해제(`release_liquid_backdrop`)가 `if (painted)` 내부에 존재하여, **0바이트 캐시 히트 프레임에서는 릴리즈 함수가 절대 호출되지 않음**.
-  - 동시에 Settling 루프가 33ms마다 새 캡처를 요청하여 백엔드 리스 만료 타이머(`renewed = Instant::now()`)를 계속 갱신함.
-  - **결과: 노치를 놓은 뒤 400ms 전체 시간 동안 0x11이 영구 고정되어 이 타이밍에 캡처하면 100% 증발함.**
+  - 동시에 Settling 루프가 400ms 동안 5~10회 새 캡처를 요청하여 백엔드 리스 및 `SetWindowDisplayAffinity(0x11)` 토글을 반복함.
+  - **결과: 노치를 놓은 뒤 400ms 시간 동안 0x11로 제외될 확률이 매우 높아 캡처 시 증발함.**
+- **해결책**:
+  1. 드래그 종료 시점(`lastDragging && !dragging`)에 정착 시간을 즉시 만료 처리(`lastChangedAt = performance.now() - STATIC_AFTER_MS`)하여 **단 1회의 정적 프레임만 캡처하고 즉시 딥 슬립(`interval = Infinity`)으로 전환**.
+  2. 0바이트 캐시 히트 프레임이라도 `!isDragging` 상태라면 무조건 `release_liquid_backdrop`을 즉시 호출하도록 안전망 구축.
 
 ### 결함 4: 캡처 화면에서 ESC 취소 키 먹통 (The Trapped Focus Bug)
-- **증상**: 노치를 드래그하려 했거나 클릭한 상태에서 캡처 도구를 실행하면, 캡처 화면에서 ESC를 눌러도 취소되지 않고 전체화면이 굳음.
+- **증상**: 노치를 드래그하려 했거나 클릭한 상태에서 캡처 도구를 실행하면, 캡처 화면에서 ESC를 눌러도 취소되지 않고 전체화면이 굳음 (진단 로그 확인 시 웹뷰로 ESC 키가 25회 연속 유입되어 삼켜짐).
 - **원인**:
-  - 드래그 추적을 위해 브라우저 DOM의 `element.setPointerCapture()` 및 Win32 `SetCapture`가 활성화됨.
-  - Windows OS는 **마우스 캡처를 독점하고 있는 창이 있으면 타 프로세스로의 포커스 전환(`SetForegroundWindow`)을 원천 차단**함.
-  - 캡처 도구의 전체화면 창이 포커스를 가져가지 못하고, 키보드 입력(ESC)이 우리 웹뷰로 유입되나 웹뷰에 ESC 핸들러가 없어 키가 삼켜짐.
+  - **포인터 캡처 독점**: 드래그 추적을 위해 브라우저 DOM의 `element.setPointerCapture()` 및 Win32 `SetCapture`가 활성화됨.
+  - **Windows OS 포커스 잠금 (Foreground Lockout)**: 항상 위(`WS_EX_TOPMOST`) 위젯이 포커스를 잡고 있으면 Windows OS의 Foreground Lockout 정책에 의해 백그라운드 캡처 도구(ShareX, Snipping Tool 등)가 포커스(`SetForegroundWindow`)를 뺏어가지 못함.
+  - **DOM `blur()`의 치명적 한계**: 프론트엔드 JavaScript에서 `document.activeElement?.blur()`를 호출하는 것은 **웹뷰 내부 DOM 엘리먼트의 포커스만 해제할 뿐, Windows OS 레벨의 HWND 포커스를 타 창으로 넘겨주지 못함**.
+  - 따라서 사용자가 물리 키보드로 누르는 `WM_KEYDOWN(VK_ESCAPE)`가 OS에 의해 모조리 우리 위젯 창으로 디스패치되고, 캡처 도구는 단 하나의 ESC도 받지 못해 오버레이를 닫지 못함.
+- **해결책 (Win32 Native Focus Surrender & Key Forwarding)**:
+  1. **`AllowSetForegroundWindow(0xFFFFFFFF)` (`ASFW_ANY`)**: 캡처 도구를 비롯한 시스템 내 어떤 프로세스라도 포커스를 가져갈 수 있도록 OS 권한 승인.
+  2. **`EnumWindows` Z-order 기반 하위 활성 창 탐색**: 우리 위젯 바로 아래 위치한 유효한 창(크기 50x50 초과, 타 프로세스)을 탐색.
+  3. **`SetForegroundWindow(target)`**: 탐색된 캡처 도구 또는 기존 작업 창으로 OS 포그라운드 강제 이양.
+  4. **`PostMessageW(target, WM_KEYDOWN/UP, VK_ESCAPE)`**: 웹뷰로 들어온 ESC 입력을 대상 창의 메시지 큐로 직접 포워딩하여 단 한 번의 ESC로 캡처 화면이 즉시 닫히도록 조치.
+  5. **드래그 완료 시 자동 양보**: 드래그가 정상 완료되거나 취소될 때 Rust 백엔드 `complete_drag`에서 `yield_focus(&main, false)`를 자동 호출하여 위젯이 불필요하게 OS 포그라운드를 점유하지 않도록 보장.
 
 ### 결함 5: 배경 탁해짐 및 잔상 겹침 (Hall-of-Mirrors Feedback Loop)
 - **증상**: 드래그 이동 중 캡처를 시도한 뒤부터 노치 배경이 점점 어두워지고 여러 겹이 겹쳐 보임.

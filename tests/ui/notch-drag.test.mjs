@@ -94,3 +94,50 @@ test('pointer capture release handles throwing elements gracefully without break
   assert.equal(drag.sessionId, null);
   assert.ok(invocations.some(i => i.cmd === 'release_liquid_backdrop'));
 });
+
+test('drag.cancel() invokes yield_notch_focus with forwardEscape: false', async () => {
+  invocations.length = 0;
+  const f = fixture();
+  f.start();
+  f.drag.cancel();
+  assert.ok(invocations.some(i => i.cmd === 'yield_notch_focus' && i.args?.forwardEscape === false));
+});
+
+test('mountNotchDrag Escape and PrintScreen keydown yield focus and forward Escape', async () => {
+  invocations.length = 0;
+  const windowListeners = [];
+  globalThis.window.addEventListener = (type, handler) => {
+    windowListeners.push({ type, handler });
+  };
+  const railListeners = [];
+  const rail = {
+    addEventListener: (type, handler) => { railListeners.push({ type, handler }); },
+    classList: { toggle: () => {}, remove: () => {}, add: () => {} },
+  };
+
+  mountNotchDrag(rail, () => null, {
+    begin: async () => {},
+    finish: async () => {},
+    onStart: () => {},
+    onNotice: () => {},
+    fail: () => {},
+  });
+
+  const keydown = windowListeners.find(l => l.type === 'keydown')?.handler;
+  assert.ok(keydown, 'keydown listener must be registered on window');
+
+  // Test Escape
+  keydown({ key: 'Escape' });
+  assert.ok(
+    invocations.some(i => i.cmd === 'yield_notch_focus' && i.args?.forwardEscape === true),
+    'Escape must invoke yield_notch_focus with forwardEscape: true'
+  );
+
+  // Test PrintScreen
+  invocations.length = 0;
+  keydown({ key: 'PrintScreen' });
+  assert.ok(
+    invocations.some(i => i.cmd === 'yield_notch_focus' && i.args?.forwardEscape === false),
+    'PrintScreen must invoke yield_notch_focus with forwardEscape: false'
+  );
+});

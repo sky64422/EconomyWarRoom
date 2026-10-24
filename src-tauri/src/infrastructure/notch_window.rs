@@ -10,7 +10,7 @@ use std::{
     sync::Mutex,
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 #[cfg(not(windows))]
 use tauri::{PhysicalPosition, PhysicalSize};
 
@@ -489,7 +489,8 @@ fn complete_drag(
         error = Some(error.map_or(e.clone(), |first| format!("{first}; {e}")));
     }
     if let Ok(main) = super::window_ctl::main_window(app) {
-        let _ = crate::infrastructure::liquid_glass::release_liquid_backdrop(main);
+        let _ = crate::infrastructure::liquid_glass::release_liquid_backdrop(main.clone());
+        let _ = yield_focus(&main, false);
     }
     app.emit(
         "notch-drag",
@@ -528,5 +529,120 @@ fn pump_drag(app: &AppHandle) -> Result<(), String> {
     if let Err(e) = update_drag(app, id) {
         return complete_drag(app, id, true, Some(e));
     }
+    Ok(())
+}
+
+#[cfg(windows)]
+pub fn yield_focus(window: &WebviewWindow, forward_escape: bool) -> Result<(), String> {
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        AllowSetForegroundWindow, EnumWindows, GetForegroundWindow, GetWindowRect,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW, SetForegroundWindow,
+        WM_KEYDOWN, WM_KEYUP,
+    };
+
+    let Ok(raw) = window.hwnd() else {
+        return Ok(());
+    };
+    let our_hwnd = HWND(raw.0 as _);
+
+    unsafe {
+        let _ = AllowSetForegroundWindow(0xFFFFFFFF);
+
+        struct Search {
+            our_hwnd: isize,
+            our_pid: u32,
+            target: Option<HWND>,
+        }
+
+        let mut our_pid = 0u32;
+        GetWindowThreadProcessId(our_hwnd, Some(&mut our_pid));
+
+        unsafe extern "system" fn enum_cb(h: HWND, l: LPARAM) -> BOOL {
+            let search = &mut *(l.0 as *mut Search);
+            if !IsWindowVisible(h).as_bool() || IsIconic(h).as_bool() {
+                return BOOL(1);
+            }
+            if h.0 as isize == search.our_hwnd {
+                return BOOL(1);
+            }
+            let mut win_pid = 0u32;
+            GetWindowThreadProcessId(h, Some(&mut win_pid));
+            if win_pid == search.our_pid {
+                return BOOL(1);
+            }
+            let mut rect = windows::Win32::Foundation::RECT::default();
+            let _ = GetWindowRect(h, &mut rect);
+            let w = rect.right - rect.left;
+            let h_size = rect.bottom - rect.top;
+            if w > 50 && h_size > 50 {
+                search.target = Some(h);
+                return BOOL(0);
+            }
+            BOOL(1)
+        }
+
+        let mut search = Search {
+            our_hwnd: our_hwnd.0 as isize,
+            our_pid,
+            target: None,
+        };
+
+        let _ = EnumWindows(Some(enum_cb), LPARAM(&mut search as *mut _ as isize));
+
+        let candidate = search.target.or_else(|| {
+            let fg = GetForegroundWindow();
+            if !fg.0.is_null() && fg.0 as isize != our_hwnd.0 as isize {
+                Some(fg)
+            } else {
+                None
+            }
+        });
+
+        if let Some(target) = candidate {
+            crate::infrastructure::capture_log::log_event(
+                "FOCUS",
+                &format!("yield_focus target=0x{:X} forward_escape={forward_escape}", target.0 as usize),
+            );
+            let _ = SetForegroundWindow(target);
+            if forward_escape {
+                let _ = PostMessageW(
+                    Some(target),
+                    WM_KEYDOWN,
+                    WPARAM(VK_ESCAPE.0 as usize),
+                    LPARAM(0x00010001),
+                );
+                let _ = PostMessageW(
+                    Some(target),
+                    WM_KEYUP,
+                    WPARAM(VK_ESCAPE.0 as usize),
+                    LPARAM(0xC0010001),
+                );
+            }
+        } else if forward_escape {
+            let fg = GetForegroundWindow();
+            if !fg.0.is_null() && fg.0 as isize != our_hwnd.0 as isize {
+                let _ = PostMessageW(
+                    Some(fg),
+                    WM_KEYDOWN,
+                    WPARAM(VK_ESCAPE.0 as usize),
+                    LPARAM(0x00010001),
+                );
+                let _ = PostMessageW(
+                    Some(fg),
+                    WM_KEYUP,
+                    WPARAM(VK_ESCAPE.0 as usize),
+                    LPARAM(0xC0010001),
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn yield_focus(_window: &WebviewWindow, _forward_escape: bool) -> Result<(), String> {
     Ok(())
 }

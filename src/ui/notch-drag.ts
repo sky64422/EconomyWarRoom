@@ -62,6 +62,7 @@ export function createNotchDrag(handlers: DragHandlers) {
       finish(true);
       sessionId = null;
       void invoke("release_liquid_backdrop");
+      void invoke("yield_notch_focus", { forwardEscape: false });
     },
     start(pointer: { id: number; x: number; y: number; capture: PointerCapture }): boolean {
       if (disposed || sessionId !== null) return false;
@@ -100,6 +101,9 @@ export function createNotchDrag(handlers: DragHandlers) {
       armed = false;
       paint();
       finish(cancel);
+      if (released) {
+        void invoke("yield_notch_focus", { forwardEscape: false });
+      }
     },
     finish,
     notice(event: DragNotice) {
@@ -155,6 +159,7 @@ export function mountNotchDrag(
     onNotice: event => {
       if (event.finished) {
         void invoke("release_liquid_backdrop");
+        void invoke("yield_notch_focus", { forwardEscape: false });
       }
       if (wasDragging && event.finished) {
         triggerSnapSlosh();
@@ -198,7 +203,8 @@ export function mountNotchDrag(
     if (e.key === "Escape" || e.key === "PrintScreen") {
       logCaptureEvent("KEY", `${e.key} pressed -> drag.cancel() & yield focus`);
       drag.cancel();
-      (document.activeElement as HTMLElement | null)?.blur();
+      (typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null)?.blur();
+      void invoke("yield_notch_focus", { forwardEscape: e.key === "Escape" });
     }
   }, { ...options, capture: true });
   rail.addEventListener("click", e => {

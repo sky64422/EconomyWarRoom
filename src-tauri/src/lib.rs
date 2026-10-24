@@ -199,6 +199,7 @@ pub fn run() {
             commands::set_notch_surface,
             commands::begin_notch_drag,
             commands::finish_notch_drag,
+            commands::yield_notch_focus,
             commands::set_theme,
             commands::set_notch_preferences,
             commands::add_symbol,
