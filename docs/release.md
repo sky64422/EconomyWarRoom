@@ -2,7 +2,21 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Current release:** **v0.3.2** on GitHub Releases.
+**Current release:** **v0.4.0** on GitHub Releases.
+
+## 0.4.0 — 2026-10-24
+
+### Added
+
+- Korean equity search & Hangul decomposition: searching in Korean (`ㅅㅏㅁㅅㅓㅇ` or `삼성`) seamlessly suggests and resolves domestic symbols (e.g. `005930.KS`) and Korean aliases for global assets.
+
+### Fixed
+
+- Preserved desktop capture and fixed screenshot exclusion (`Win + Shift + S`, Snipping Tool):
+  - Preserved GDI surfaces and frame cache across lease release instead of clearing on idle, preventing infinite 30 FPS polling loops.
+  - Settle-to-sleep: once the backdrop stabilizes, the loop transitions to sleep (`interval = Infinity`), restoring `SetWindowDisplayAffinity(hwnd, 0)` so the widget is 100% visible in screenshots.
+  - Immediate zero-latency interaction wake-up on pointer hover, movement, clicks, or dragging, plus an instant `blur` safety net.
+- Fixed notch bottom silhouette narrowing by constraining outline dimensions and using uniform border-box scaling.
 
 ## 0.3.2 — 2026-10-20
 
