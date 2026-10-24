@@ -205,6 +205,11 @@ export function mountNotchDrag(
       drag.cancel();
       (typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null)?.blur();
       void invoke("yield_notch_focus", { forwardEscape: e.key === "Escape" });
+    } else if (e.key === "Alt" || (e.altKey && e.key === "`")) {
+      logCaptureEvent("KEY", `${e.key} (Alt combo) pressed -> yield focus`);
+      void invoke("yield_notch_focus", { forwardEscape: false });
+    } else if (e.altKey || e.ctrlKey || e.metaKey) {
+      logCaptureEvent("KEY", `modifier keydown key=${e.key} alt=${e.altKey} ctrl=${e.ctrlKey}`);
     }
   }, { ...options, capture: true });
   rail.addEventListener("click", e => {

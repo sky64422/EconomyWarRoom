@@ -539,8 +539,8 @@ pub fn yield_focus(window: &WebviewWindow, forward_escape: bool) -> Result<(), S
     use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
     use windows::Win32::UI::WindowsAndMessaging::{
         AllowSetForegroundWindow, EnumWindows, GetForegroundWindow, GetWindowRect,
-        GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW, SetForegroundWindow,
-        WM_KEYDOWN, WM_KEYUP,
+        GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW,
+        SetForegroundWindow, WM_KEYDOWN, WM_KEYUP,
     };
 
     let Ok(raw) = window.hwnd() else {
@@ -602,10 +602,19 @@ pub fn yield_focus(window: &WebviewWindow, forward_escape: bool) -> Result<(), S
         });
 
         if let Some(target) = candidate {
-            crate::infrastructure::capture_log::log_event(
-                "FOCUS",
-                &format!("yield_focus target=0x{:X} forward_escape={forward_escape}", target.0 as usize),
+            let mut target_pid = 0u32;
+            GetWindowThreadProcessId(target, Some(&mut target_pid));
+            let mut title_buf = [0u16; 128];
+            let len = GetWindowTextW(target, &mut title_buf);
+            let title = String::from_utf16_lossy(&title_buf[..len as usize]);
+            let msg = format!(
+                "yield_focus target=0x{:X} pid={} title='{}' forward_escape={}",
+                target.0 as usize, target_pid, title, forward_escape
             );
+            crate::infrastructure::capture_log::log_event("FOCUS", &msg);
+            if let Some(state) = window.try_state::<AppHandleState>() {
+                state.core.note(crate::application::diagnostics::DiagLevel::Info, format!("[FOCUS] {msg}"));
+            }
             let _ = SetForegroundWindow(target);
             if forward_escape {
                 let _ = PostMessageW(
@@ -624,6 +633,19 @@ pub fn yield_focus(window: &WebviewWindow, forward_escape: bool) -> Result<(), S
         } else if forward_escape {
             let fg = GetForegroundWindow();
             if !fg.0.is_null() && fg.0 as isize != our_hwnd.0 as isize {
+                let mut fg_pid = 0u32;
+                GetWindowThreadProcessId(fg, Some(&mut fg_pid));
+                let mut title_buf = [0u16; 128];
+                let len = GetWindowTextW(fg, &mut title_buf);
+                let title = String::from_utf16_lossy(&title_buf[..len as usize]);
+                let msg = format!(
+                    "forward_escape fallback fg=0x{:X} pid={} title='{}'",
+                    fg.0 as usize, fg_pid, title
+                );
+                crate::infrastructure::capture_log::log_event("FOCUS", &msg);
+                if let Some(state) = window.try_state::<AppHandleState>() {
+                    state.core.note(crate::application::diagnostics::DiagLevel::Info, format!("[FOCUS] {msg}"));
+                }
                 let _ = PostMessageW(
                     Some(fg),
                     WM_KEYDOWN,
