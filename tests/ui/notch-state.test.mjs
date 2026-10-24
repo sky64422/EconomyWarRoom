@@ -40,3 +40,25 @@ test('pin, hover, settings and removal preserve selection intent', () => {
   assert.equal(s.settings, false); assert.equal(s.itemId, 'b');
   assert.equal(reduceNotchState(s, {type:'items', ids:['a']}).itemId, null);
 });
+
+test('update event toggles update view and clears settings and item selection', () => {
+  let s = initialNotchState();
+  s = reduceNotchState(s, { type: 'update' });
+  assert.equal(s.update, true);
+  assert.equal(s.settings, false);
+  assert.equal(s.itemId, null);
+  s = reduceNotchState(s, { type: 'update' });
+  assert.equal(s.update, false);
+
+  s = reduceNotchState(s, { type: 'update' });
+  assert.equal(s.update, true);
+  s = reduceNotchState(s, { type: 'pin', id: 'a' });
+  assert.equal(s.update, false);
+  assert.equal(s.itemId, 'a');
+
+  s = reduceNotchState(s, { type: 'update' });
+  assert.equal(s.update, true);
+  s = reduceNotchState(s, { type: 'settings' });
+  assert.equal(s.update, false);
+  assert.equal(s.settings, true);
+});

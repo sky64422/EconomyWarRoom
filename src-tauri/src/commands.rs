@@ -354,6 +354,11 @@ pub async fn check_for_updates(app: AppHandle) -> Result<bool, String> {
     crate::infrastructure::updater::check_and_install_update(&app).await
 }
 
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_pending_update(app: AppHandle) -> Option<crate::infrastructure::updater::UpdateInfo> {
+    crate::infrastructure::updater::get_pending_update_info(&app)
+}
+
 #[tauri::command]
 pub fn get_notch_reveal(app: AppHandle) -> Result<bool, String> {
     crate::infrastructure::notch_window::get_reveal(&app)

@@ -60,6 +60,7 @@ const flush = async () => {
 const invocations = [];
 let now = 1000;
 let frameCb = null;
+let customBackdropColor = null;
 
 globalThis.matchMedia = () => ({ matches: false });
 globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
@@ -73,7 +74,23 @@ globalThis.window = Object.assign(new EventTarget(), {
   __TAURI_INTERNALS__: {
     invoke: async (cmd, args) => {
       invocations.push({ cmd, args });
-      if (cmd === 'capture_liquid_backdrop') return new ArrayBuffer(0);
+      if (cmd === 'capture_liquid_backdrop') {
+        if (customBackdropColor !== null) {
+          const w = args.width, h = args.height;
+          const pixels = new Uint8Array(w * h * 4);
+          const color = customBackdropColor === 'white' ? 250 : 15;
+          pixels.fill(color);
+          for (let i = 3; i < pixels.length; i += 4) pixels[i] = 255;
+          const buf = new ArrayBuffer(12 + pixels.length);
+          const v = new DataView(buf);
+          new Uint8Array(buf).set([76, 81, 48, 49]); // "LQ01"
+          v.setUint32(4, w, true);
+          v.setUint32(8, h, true);
+          new Uint8Array(buf, 12).set(pixels);
+          return buf;
+        }
+        return new ArrayBuffer(0);
+      }
       return null;
     },
   },
@@ -166,5 +183,61 @@ test('pointer interactions trigger single-shot refresh while settled', async () 
   await flush();
   assert.equal(invocations.some(i => i.cmd === 'capture_liquid_backdrop'), true);
 
+  renderer.destroy();
+});
+
+test('Liquid theme contrast responds promptly when backdrop alternates between white and black at random intervals (short and long)', async () => {
+  invocations.length = 0;
+  const { renderer, rail } = fixture();
+  renderer.setEnabled(true);
+
+  // Alternating sequence of pseudo-random short intervals (30-150ms) and long intervals (1000-3000ms)
+  const sequence = [
+    { ms: 45, color: 'white' },
+    { ms: 1200, color: 'black' },
+    { ms: 60, color: 'white' },
+    { ms: 2500, color: 'black' },
+    { ms: 35, color: 'white' },
+    { ms: 90, color: 'black' },
+    { ms: 1800, color: 'white' },
+    { ms: 40, color: 'black' },
+    { ms: 3000, color: 'white' },
+    { ms: 75, color: 'black' },
+    { ms: 1500, color: 'white' },
+    { ms: 50, color: 'black' },
+  ];
+
+  for (const step of sequence) {
+    customBackdropColor = step.color;
+    // Wake up/refresh if settled
+    rail.dispatchEvent(new Event('pointerenter'));
+
+    // Advance 1 frame (~33.3ms)
+    now += 33.3;
+    frameCb?.(now);
+    await flush();
+
+    const expectedContrast = step.color === 'white' ? 'light' : 'dark';
+    assert.equal(
+      rail.dataset.contrast,
+      expectedContrast,
+      `Contrast must promptly become '${expectedContrast}' after switching to ${step.color} background (interval: ${step.ms}ms)`
+    );
+
+    // If interval has remaining duration, advance through it
+    const remaining = step.ms - 33.3;
+    if (remaining > 0) {
+      now += remaining;
+      frameCb?.(now);
+      await flush();
+      assert.equal(
+        rail.dataset.contrast,
+        expectedContrast,
+        `Contrast must remain '${expectedContrast}' throughout the ${step.ms}ms ${step.color} interval`
+      );
+    }
+  }
+
+  customBackdropColor = null;
   renderer.destroy();
 });

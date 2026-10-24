@@ -16,6 +16,7 @@ const REDUCED_FRAME_MS = 250;
 const SETTLING_FRAME_MS = 100;
 const SETTLING_AFTER_MS = 150;
 const STATIC_AFTER_MS = 400;
+const STATIC_HEARTBEAT_MS = 1000;
 
 interface SurfaceLayer {
   surface: HTMLElement;
@@ -109,7 +110,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
       if (rail.classList.contains("is-dragging")) return DRAG_FRAME_MS;
       const unchangedFor = now - lastChangedAt;
       return unchangedFor >= STATIC_AFTER_MS
-        ? Infinity
+        ? STATIC_HEARTBEAT_MS
         : unchangedFor >= SETTLING_AFTER_MS
           ? SETTLING_FRAME_MS
           : IDLE_FRAME_MS;
@@ -204,9 +205,17 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
     logCaptureEvent("FOCUS", "window blur");
     lastChangedAt = 0;
     void invoke("release_liquid_backdrop");
+    setTimeout(() => {
+      if (enabled && nativeVisible && !document.hidden) {
+        lastChangedAt = performance.now();
+        loop.refresh();
+      }
+    }, 800);
   }, { signal: events.signal });
   window.addEventListener("focus", () => {
     logCaptureEvent("FOCUS", "window focus");
+    lastChangedAt = performance.now();
+    loop.refresh();
   }, { signal: events.signal });
 
   function mapFor(entry: SurfaceLayer, width: number, height: number) {
@@ -314,6 +323,14 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
   }
 
   return {
+    relayout() {
+      entries.forEach(entry => {
+        entry.key = "";
+        entry.generation++;
+      });
+      lastChangedAt = performance.now();
+      loop.refresh();
+    },
     setVisible(value: boolean) {
       nativeVisible = value;
       sync();

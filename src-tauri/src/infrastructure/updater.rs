@@ -9,7 +9,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
-const UPDATE_CHECK_DELAY: Duration = Duration::from_secs(30);
+const UPDATE_CHECK_DELAY: Duration = Duration::from_millis(500);
 
 /// Payload for frontend badge / tooltip.
 #[derive(Debug, Clone, Serialize)]
@@ -60,6 +60,12 @@ impl PendingUpdateState {
     pub fn is_downloading(&self) -> bool {
         self.downloading.load(Ordering::SeqCst)
     }
+}
+
+pub fn get_pending_update_info(app: &AppHandle) -> Option<UpdateInfo> {
+    let pending = app.try_state::<PendingUpdateState>()?;
+    let guard = pending.ready.lock().ok()?;
+    guard.as_ref().map(|pkg| pkg.info.clone())
 }
 
 /// Release builds only: check, notify UI, download in background, then mark ready.

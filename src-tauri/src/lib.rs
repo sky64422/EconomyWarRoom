@@ -222,6 +222,7 @@ pub fn run() {
             commands::get_diagnostics,
             commands::search_symbols,
             commands::check_for_updates,
+            commands::get_pending_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

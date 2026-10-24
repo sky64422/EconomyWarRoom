@@ -23,3 +23,52 @@ test('contrast probes serialize and late results cannot repaint disabled surface
   t.mock.timers.tick(5000);assert.equal(calls,1);assert.equal(rail.dataset.contrast,undefined);
  } finally {controller.setActive(false);Object.assign(globalThis,old);}
 });
+
+
+test('Liquid contrast switches promptly without lag when background alternates between white and black across random intervals', () => {
+  // Deterministic pseudo-random sequence of short (30-150ms) and long (1000-3000ms) intervals
+  const pseudoRandomIntervals = [
+    { ms: 40, isWhite: true },
+    { ms: 1500, isWhite: false },
+    { ms: 60, isWhite: true },
+    { ms: 2200, isWhite: false },
+    { ms: 30, isWhite: true },
+    { ms: 80, isWhite: false },
+    { ms: 3000, isWhite: true },
+    { ms: 120, isWhite: false },
+    { ms: 1100, isWhite: true },
+    { ms: 50, isWhite: false },
+    { ms: 2500, isWhite: true },
+    { ms: 45, isWhite: false },
+    { ms: 1800, isWhite: true },
+    { ms: 90, isWhite: false },
+    { ms: 1300, isWhite: true },
+    { ms: 35, isWhite: false },
+  ];
+
+  let currentContrast = 'dark';
+  for (const { ms, isWhite } of pseudoRandomIntervals) {
+    const targetContrast = isWhite ? 'light' : 'dark';
+    const pixelVal = isWhite ? 245 : 15;
+    const frame = gray(pixelVal);
+
+    // Prompt response: The very first evaluation on frame change MUST match target
+    currentContrast = liquidContrast(frame, currentContrast);
+    assert.equal(
+      currentContrast,
+      targetContrast,
+      `Contrast must switch to '${targetContrast}' immediately on first frame of ${isWhite ? 'white' : 'black'} (interval ${ms}ms)`
+    );
+
+    // Throughout the interval (simulating 30fps frames = ~33ms step)
+    const frameCount = Math.max(1, Math.floor(ms / 33));
+    for (let f = 1; f < frameCount; f++) {
+      currentContrast = liquidContrast(frame, currentContrast);
+      assert.equal(
+        currentContrast,
+        targetContrast,
+        `Contrast must remain '${targetContrast}' on frame ${f} of ${isWhite ? 'white' : 'black'} (interval ${ms}ms)`
+      );
+    }
+  }
+});
