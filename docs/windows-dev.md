@@ -171,7 +171,7 @@ Native hardware tests and Rust geometry tests are separate evidence.
 | npm scripts fail on `cd` | Use PowerShell 7+ or run `cargo` commands inside `src-tauri` manually |
 | CRLF noise in git | `git config core.autocrlf true` is common on Windows; avoid reformatting whole tree |
 | Slow first `tauri dev` | Normal — compiles all Rust deps once |
-| Widget vanishes during screenshot / `Win+Shift+S` | Liquid desktop capture held `WDA_EXCLUDEFROMCAPTURE` permanently. Fixed by bounding lease to 80ms, releasing affinity on settle (2s), and dropping affinity on window `blur`. See [docs/liquid-capture.md](liquid-capture.md). |
+| Widget vanishes during screenshot / `Win+Shift+S` | Liquid desktop capture held `WDA_EXCLUDEFROMCAPTURE` permanently. Fixed by bounding lease to 80ms, releasing affinity on settle (2s), and dropping affinity on window `blur`. |
 | `npm.ps1` / execution policy blocked | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` (or call `npm.cmd`) |
 | `rustc` / `cargo` not found after install | Open a **new** terminal so PATH picks up `%USERPROFILE%\.cargo\bin` |
 | `link.exe` not on PATH | Expected; cargo finds MSVC via Build Tools registry — install **Desktop development with C++** if link fails during build |
