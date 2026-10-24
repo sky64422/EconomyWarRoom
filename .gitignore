@@ -34,3 +34,5 @@ tmp-*.png
 .tmp-ui*.png
 
 .tmp-eval*.png
+
+.opencode/

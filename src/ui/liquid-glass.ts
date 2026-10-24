@@ -108,7 +108,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
       if (rail.classList.contains("is-dragging")) return DRAG_FRAME_MS;
       const unchangedFor = now - lastChangedAt;
       return unchangedFor >= STATIC_AFTER_MS
-        ? REDUCED_FRAME_MS
+        ? Infinity
         : unchangedFor >= SETTLING_AFTER_MS
           ? SETTLING_FRAME_MS
           : IDLE_FRAME_MS;
@@ -145,6 +145,8 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
       if (painted) {
         lastChangedAt = now;
         shell.dataset.liquidStatus = "ready";
+      } else if (now - lastChangedAt >= STATIC_AFTER_MS) {
+        void invoke("release_liquid_backdrop");
       }
     },
     dispose: frames => {
@@ -184,6 +186,10 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
   });
   observer.observe(rail, { attributes: true, attributeFilter: ["class"] });
   observer.observe(detail, { attributes: true, attributeFilter: ["hidden"] });
+  window.addEventListener("pointerdown", () => { lastChangedAt = performance.now(); loop.refresh(); }, { signal: events.signal });
+  rail.addEventListener("pointerenter", () => { lastChangedAt = performance.now(); loop.refresh(); }, { signal: events.signal });
+  rail.addEventListener("pointermove", () => { lastChangedAt = performance.now(); loop.refresh(); }, { signal: events.signal });
+  window.addEventListener("blur", () => { void invoke("release_liquid_backdrop"); }, { signal: events.signal });
 
   function mapFor(entry: SurfaceLayer, width: number, height: number) {
     entry.canvas.style.filter = entry.effect;
@@ -317,6 +323,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
       clear(true);
       entries.forEach(entry => entry.layer.remove());
       defs.remove();
+      void invoke("destroy_liquid_backdrop");
     },
   };
 }

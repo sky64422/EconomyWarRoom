@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 use tauri::{Manager, State, WebviewWindow};
 
 use crate::domain::notch::valid_region;
-const CAPTURE_LEASE: Duration = Duration::from_millis(750);
-const LEASE_CHECK: Duration = Duration::from_millis(250);
+const CAPTURE_LEASE: Duration = Duration::from_millis(80);
+const LEASE_CHECK: Duration = Duration::from_millis(20);
 
 #[derive(Default)]
 pub struct LiquidBackdrop(Mutex<BackdropState>, CaptureWorker);
@@ -48,6 +48,14 @@ pub fn release_liquid_backdrop(window: WebviewWindow) -> Result<(), String> {
             guard.lease = None;
         }
         guard.release_pending = false;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn destroy_liquid_backdrop(window: WebviewWindow) -> Result<(), String> {
+    release_liquid_backdrop(window.clone())?;
+    if let Some(state) = window.try_state::<LiquidBackdrop>() {
         state.1.reset()?;
     }
     Ok(())
@@ -118,7 +126,6 @@ fn watch_lease(window: WebviewWindow) {
             }
             guard.lease = None;
         }
-        if let Err(error) = state.1.reset() { eprintln!("Liquid reset: {error}"); }
         guard.watching = false;
         break;
     });
@@ -208,4 +215,27 @@ pub async fn begin_liquid_backdrop() -> Result<u64, String> {
 #[tauri::command]
 pub async fn sync_liquid_backdrop(_session: u64, _revision: u64, _surfaces: Vec<BackdropSurface>) -> Result<(), String> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::valid_region;
+    #[test]
+    fn bounds_reject_zero_overflow_and_unbounded_pixel_allocations() {
+        assert_eq!(valid_region(268, 372, 56, 376, 324, 1120), Ok(true));
+        assert_eq!(valid_region(300, 0, 56, 1, 324, 1120), Ok(false));
+        for (x, y, w, h) in [
+            (0, 0, 0, 1),
+            (u32::MAX, 0, 1, 1),
+            (0, 0, 2048, 2048),
+        ] {
+            assert!(valid_region(x, y, w, h, 324, 1120).is_err());
+        }
+    }
+
+    #[test]
+    fn capture_lease_duration_is_bounded_to_prevent_screenshot_exclusion() {
+        assert!(super::CAPTURE_LEASE <= std::time::Duration::from_millis(100));
+        assert!(super::LEASE_CHECK < super::CAPTURE_LEASE);
+    }
 }
