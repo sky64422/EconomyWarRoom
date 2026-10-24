@@ -43,6 +43,15 @@ export function createNotchDrag(handlers: DragHandlers) {
   return {
     get sessionId() { return sessionId; },
     get dragging() { return dragging; },
+    cancel() {
+      if (sessionId === null && pressed === null) return;
+      armed = dragging = false;
+      pressed = null;
+      releaseCapture();
+      paint();
+      finish(true);
+      sessionId = null;
+    },
     start(pointer: { id: number; x: number; y: number; capture: PointerCapture }): boolean {
       if (disposed || sessionId !== null) return false;
       const id = ++nextId;
@@ -156,6 +165,7 @@ export function mountNotchDrag(
   rail.addEventListener("pointerup", e => drag.end(e.pointerId, false, true), options);
   rail.addEventListener("pointercancel", e => drag.end(e.pointerId, true), options);
   rail.addEventListener("lostpointercapture", e => drag.end(e.pointerId, e.buttons !== 0), options);
+  window.addEventListener("blur", () => drag.cancel(), options);
   rail.addEventListener("click", e => {
     if (drag.consumeClick(e.detail)) {
       e.preventDefault();
@@ -165,6 +175,7 @@ export function mountNotchDrag(
   return {
     get sessionId() { return drag.sessionId; },
     get dragging() { return drag.dragging; },
+    cancel: drag.cancel,
     finish: drag.finish,
     notice: drag.notice,
     destroy() {

@@ -187,7 +187,15 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
   observer.observe(detail, { attributes: true, attributeFilter: ["hidden"] });
   window.addEventListener("pointerdown", () => { lastChangedAt = performance.now(); loop.refresh(); }, { signal: events.signal });
   rail.addEventListener("pointerenter", () => { lastChangedAt = performance.now(); loop.refresh(); }, { signal: events.signal });
-  window.addEventListener("blur", () => { void invoke("release_liquid_backdrop"); }, { signal: events.signal });
+  window.addEventListener("blur", () => {
+    lastChangedAt = 0;
+    void invoke("release_liquid_backdrop");
+    loop.refresh();
+  }, { signal: events.signal });
+  window.addEventListener("focus", () => {
+    lastChangedAt = performance.now();
+    loop.refresh();
+  }, { signal: events.signal });
 
   function mapFor(entry: SurfaceLayer, width: number, height: number) {
     entry.canvas.style.filter = entry.effect;

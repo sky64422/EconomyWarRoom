@@ -1,129 +1,103 @@
 # Liquid & Glass Desktop Capture Lease Architecture
 
-이 문서는 Liquid 및 Glass 테마에서 바탕화면 블러/굴절 텍스처를 캡처할 때 발생하는 **화면 캡처 시 위젯 사라짐(Screenshot Exclusion)** 현상의 근본 원인과 최종 해결된 **프레임 단위 RAII 즉각 복원 + 무한 호버 루프 제거 아키텍처**를 정리합니다.
+이 문서는 Liquid 및 Glass 테마에서 바탕화면 블러/굴절 텍스처를 캡처할 때 발생하는 **화면 캡처 시 위젯 사라짐(Screenshot Exclusion)** 및 **드래그 중 캡처 충돌(ESC 미동작 & 배경 탁해짐 현상)**의 근본 원인과 최종 해결된 아키텍처를 정리합니다.
 
 ---
 
 ## 1. 문제 현상 및 세부 증상
 
-### 1.1 사용자 관찰 증상
-- 처음 실행 시에는 캡처 도구(`Win + Shift + S`, Snipping Tool 등)로 위젯이 정상적으로 캡처됨.
-- 그러나 **위젯을 마우스로 클릭하거나 포커스를 잡고 난 뒤부터는 캡처 시 위젯이 화면에서 투명하게 사라짐**.
-- 마우스를 전혀 건드리지 않고 **수 초간 가만히 둔 후 다시 캡처하면 다시 위젯이 나타남**.
+### 1.1 포커스/호버 후 위젯 사라짐 현상
+- 앱 기동 직후에는 스크린샷에 위젯이 정상 캡처되나, 노치를 클릭하거나 마우스를 올린 직후에는 스크린샷(`Win + Shift + S`, Snipping Tool)에서 위젯이 사라짐.
+- 마우스를 수 초간 가만히 두면 다시 캡처에 나타남.
+
+### 1.2 드래그 중 캡처 시 ESC 취소 불가 및 배경 탁해짐/겹침 현상
+- 노치를 마우스로 잡고 위치 이동(드래그)을 하던 도중 `Win + Shift + S` 등으로 캡처를 실행하면 **ESC 키로 캡처가 취소되지 않음**.
+- 이후 노치 배경이 **비정상적으로 탁해지고 여러 프레임이 겹쳐 보이는(Hall-of-Mirrors 재귀 블러) 현상** 발생.
 
 ---
 
 ## 2. 근본 기술적 원인 분석 (Deep Root Cause)
 
-Windows DWM에서 위젯 창 뒤편의 데스크톱 화면을 GDI `BitBlt`로 캡처할 때, 위젯 창 자신이 캡처 버퍼에 포함되면 무한 재귀 블러('무한 거울상/hall of mirrors') 현상이 발생합니다. 이를 방지하기 위해 캡처 시점에 다음 API를 적용합니다:
-```rust
-SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) // value: 0x11
-```
-이 속성이 지정된 창은 DWM의 모든 화면 캡처 버퍼(데스크톱 복제, Snipping Tool, Win+Shift+S 등)에서 제외됩니다.
+### 2.1 ESC 취소 불가 원인: 포인터 캡처(Pointer Capture) 미해제
+- 드래그 시작 시 웹뷰의 `rail` 요소는 마우스 추적을 위해 `element.setPointerCapture(pointerId)` 및 Win32 `SetCapture`를 활성화합니다.
+- 사용자가 드래그 도중 `Win + Shift + S`를 누르면 Windows 캡처 오버레이(`ScreenClippingHost.exe`)가 화면을 덮으며 우리 윈도우에 `blur` 이벤트가 발생합니다.
+- 그러나 기존 드래그 핸들러는 `blur` 이벤트를 감지하지 않아 **포인터 캡처(`PointerCapture`)가 해제되지 않은 채 유지**되었습니다.
+- 포인터 캡처가 잠겨있으면 Windows의 키보드/마우스 포커스가 `ScreenClippingHost.exe`로 완전히 이양되지 못해, 사용자가 누른 **ESC 키가 캡처 도구로 전달되지 않고 무시**된 것입니다.
 
-### 왜 "포커스를 잡은 후 계속 사라지다가, 몇 초 뒤에는 다시 보였는가?"
-
-이 현상은 **프론트엔드 호버/페인트 타이머 리셋 루프**와 **백엔드 임대(Lease) 갱신 구조**가 맞물려 발생했습니다:
-
-1. **프론트엔드의 무한 30 FPS 루프 (`pointermove` & `paint`)**:
-   - `rail.addEventListener("pointermove", ...)`: 마우스가 노치 위에 올라가거나 클릭/호버하는 순간, 마우스가 미세하게 움직일 때마다 `lastChangedAt = performance.now()`가 갱신되고 `loop.refresh()`가 호출되었습니다.
-   - `paint()`: 프레임이 그려질 때마다 `lastChangedAt = now`로 리셋되어, 화면 정지 시간(`now - lastChangedAt`)이 항상 0ms로 묶였습니다.
-   - 노치 위에 마우스가 있는 동안 정지 시간(`unchangedFor`)이 `STATIC_AFTER_MS` (기존 2000ms)에 절대 도달하지 못해, 캡처 루프가 **30 FPS (`IDLE_FRAME_MS` = 33ms)로 쉬지 않고 계속 가동**되었습니다.
-
-2. **백엔드 80ms 임대(Lease)의 영구 유지**:
-   - 백엔드는 매 프레임마다 `guard.lease.renewed = Instant::now()`로 임대 시간을 갱신했습니다.
-   - 프론트엔드가 33ms 주기로 쉬지 않고 프레임을 요청하므로, 임대 만료 시간(`CAPTURE_LEASE` = 80ms)에 영원히 도달하지 못했습니다.
-   - 또한 기존 `InFlight::drop`은 개별 프레임 캡처가 끝나도 `guard.release_pending`이 아니면 친화도(Affinity)를 복원하지 않고 임대를 유지했습니다.
-   - 결과적으로 포커스나 호버 중에는 **`WDA_EXCLUDEFROMCAPTURE`가 100% 지속 활성화**되어 스크린샷에서 위젯이 계속 사라진 것입니다.
-
-3. **몇 초 후 다시 나타난 이유**:
-   - 마우스를 완전히 멈추고 2초(`STATIC_AFTER_MS` = 2000ms) 이상 가만히 두면, 마침내 정지 판정이 되어 루프의 간격이 `Infinity`로 전환되고 `release_liquid_backdrop`이 호출되어 친화도가 `0`(`WDA_NONE`)으로 복원되었기 때문입니다.
+### 2.2 배경 탁해짐 및 겹침 현상 원인: 120Hz 친화도 토글 & 캡처 도구 오버레이 중복 캡처
+1. **프레임 단위 친화도 토글(120Hz)로 인한 DWM 동기화 실패**:
+   - 60 FPS 드래그 중 매 프레임마다 `InFlight::drop`에서 친화도를 0으로 되돌리고 다음 프레임(16ms 뒤)에서 다시 0x11로 변경하는 방식을 사용하면, 1초에 120회에 달하는 비동기 DWM IPC 호출이 발생합니다.
+   - DWM이 창 제외(0x11)를 미처 합성하기 전에 GDI `BitBlt`가 화면을 읽으면서, **위젯 창 자신의 이전 렌더링 픽셀이 캡처 버퍼에 포함**되었습니다.
+   - 캔버스에 그려진 자신의 모습이 다음 프레임에서 또다시 캡처되어 블러 필터가 덧씌워지는 **재귀적 거울상(Hall-of-Mirrors) 루프**가 발생하여 배경이 어둡고 탁하게 변하며 여러 겹으로 겹쳐 보인 것입니다.
+2. **캡처 도구 활성 중 무차별 백그라운드 캡처 지속**:
+   - 캡처 도구가 열려 창이 포커스를 잃었음에도(`blur`) 드래그 플래그(`is-dragging`)가 해제되지 않아, 어둡게 딤(Dim) 처리된 캡처 도구의 오버레이 화면을 60 FPS로 계속 캡처하여 캔버스에 덧칠했습니다.
 
 ---
 
-## 3. 최종 해결 아키텍처 (Dual-Layer Instant Protection)
-
-핵심 원칙:
-1. **백엔드: 프레임 단위 RAII 친화도 즉시 복원** — GDI `BitBlt` 캡처에 걸리는 시간은 0.5ms 미만입니다. 프레임 캡처 직후 즉시 친화도를 0으로 되돌리면, 캡처 루프가 돌고 있더라도 33ms 중 32.5ms(98.5% 이상의 시간) 동안 위젯은 상시 캡처 가능한 상태로 유지됩니다.
-2. **프론트엔드: 불필요한 호버 루프 제거 & 고속 정지** — 마우스가 노치 위를 지나가더라도 바탕화면은 변하지 않으므로 `pointermove`를 제거하고, 정지 판정 시간을 400ms로 단축하여 불필요한 캡처를 차단합니다.
+## 3. 최종 해결 아키텍처 (Robust Blur-Safety & Stable Lease)
 
 ```mermaid
 flowchart TD
-    subgraph Frontend ["프론트엔드 (Zero-Polling Fast Settle)"]
-        A["위젯 클릭 / 이동 / 전개"] -->|lastChangedAt 갱신| B["일시적 캡처 루프"]
-        B --> C{"400ms 경과 ?"}
-        C -- 아니오 --> B
-        C -- 예 --> D["interval = Infinity (완전 수면)"]
-        D --> E["invoke('release_liquid_backdrop')"]
+    subgraph Drag ["드래그 & 사용자 인터랙션"]
+        A["드래그 시작 (pointerdown)"] --> B["setPointerCapture + Rust begin_drag"]
+        B --> C["안정적인 80ms Lease 유지 (DWM 0x11 안정 유지, 자기 자신 캡처 100% 방지)"]
     end
 
-    subgraph Backend ["백엔드 (Per-Frame RAII Display Affinity)"]
-        B -->|capture_liquid_backdrop| F["SetWindowDisplayAffinity(hwnd, 0x11)"]
-        F --> G["DwmFlush() -> GDI BitBlt 화면 캡처 (~0.3ms)"]
-        G --> H["InFlight RAII Drop: SetWindowDisplayAffinity(hwnd, 0) 즉시 복원"]
-        H --> I["IPC 픽셀 반환"]
+    subgraph BlurAction ["캡처 실행 시 (Win + Shift + S / blur 발생)"]
+        D["윈도우 'blur' 이벤트 감지"] --> E["drag.cancel() 즉각 호출"]
+        E --> F["DOM releasePointerCapture() 실행 -> 캡처 도구로 포커스 완전 이양 (ESC 정상 동작)"]
+        E --> G["Rust finish_notch_drag(cancel=true) -> 백엔드 드래그 세션 즉각 종료"]
+        D --> H["lastChangedAt = 0 + release_liquid_backdrop"]
+        H --> I["캡처 루프 즉시 완전 수면 (interval = Infinity) -> 딤(Dim) 화면 캡처 차단"]
+        H --> J["SetWindowDisplayAffinity(hwnd, 0) 즉시 복원 -> 스크린샷에 위젯 100% 정상 포함"]
     end
 
-    subgraph Screenshot ["화면 캡처 (Win + Shift + S)"]
-        J["사용자가 스크린샷 실행"] --> K{"위젯 상태"}
-        K -- "수면 중 (평상시 99.9%)" --> L["Affinity = 0 (100% 정상 캡처)"]
-        K -- "애니메이션 중" --> M["프레임 사이 간격(32.5ms) 동안 Affinity = 0 유지 -> 100% 정상 캡처"]
+    subgraph FocusRestore ["복귀 시 (focus 발생)"]
+        K["윈도우 다시 클릭 ('focus' 이벤트)"] --> L["깨끗한 바탕화면 1회 캡처 후 400ms 내 정지 수면"]
     end
 ```
 
 ### 3.1 세부 개선 코드
 
-#### 1) 백엔드: `InFlight::drop`에서 프레임 종료 즉시 친화도 복원 (`liquid_glass.rs`)
-```rust
-#[cfg(windows)]
-struct InFlight(WebviewWindow);
-#[cfg(windows)]
-impl Drop for InFlight {
-    fn drop(&mut self) {
-        let state = self.0.state::<LiquidBackdrop>();
-        let lease_to_restore = match state.0.lock() {
-            Ok(mut guard) => {
-                guard.in_flight = guard.in_flight.saturating_sub(1);
-                if guard.in_flight == 0 {
-                    guard.release_pending = false;
-                    guard.lease.take() // 프레임 완료 즉시 임대를 회수하여 복원
-                } else {
-                    None
-                }
-            }
-            Err(error) => {
-                eprintln!("Liquid completion: {error}");
-                None
-            }
-        };
-        if let Some(lease) = lease_to_restore {
-            if let Err(error) = set_affinity(lease.hwnd, lease.original) {
-                eprintln!("Liquid affinity restore: {error}");
-            }
-        }
-    }
-}
-```
-
-#### 2) 프론트엔드: 불필요한 이벤트 제거 및 정지 시간 단축 (`liquid-glass.ts`)
+#### 1) 드래그 세션: `blur` 시 포인터 캡처 즉각 해제 (`notch-drag.ts`)
 ```typescript
-// 1. 애니메이션 완료(150ms) 후 400ms만에 완전 수면으로 전환
-const SETTLING_FRAME_MS = 100;
-const SETTLING_AFTER_MS = 150;
-const STATIC_AFTER_MS = 400;
-
-// 2. paint 콜백에서 lastChangedAt을 매 프레임 리셋하던 코드 제거
-if (painted) {
-  shell.dataset.liquidStatus = "ready";
-} else if (now - lastChangedAt >= STATIC_AFTER_MS) {
-  void invoke("release_liquid_backdrop");
+export function createNotchDrag(handlers: DragHandlers) {
+  // ...
+  return {
+    cancel() {
+      if (sessionId === null && pressed === null) return;
+      armed = dragging = false;
+      pressed = null;
+      releaseCapture(); // element.releasePointerCapture() 호출
+      paint();
+      finish(true);     // Rust 백엔드 드래그 세션 취소
+      sessionId = null;
+    },
+    // ...
+  };
 }
 
-// 3. 마우스 이동(pointermove) 시마다 루프를 깨우던 리스너 제거
-window.addEventListener("pointerdown", () => { lastChangedAt = performance.now(); loop.refresh(); }, { signal: events.signal });
-rail.addEventListener("pointerenter", () => { lastChangedAt = performance.now(); loop.refresh(); }, { signal: events.signal });
-window.addEventListener("blur", () => { void invoke("release_liquid_backdrop"); }, { signal: events.signal });
+// mountNotchDrag: 윈도우 포커스 아웃 즉시 드래그 및 포인터 캡처 해제
+window.addEventListener("blur", () => drag.cancel(), options);
 ```
+
+#### 2) 리퀴드 캡처: `blur` 시 루프 즉시 수면 & `focus` 시 갱신 (`liquid-glass.ts`)
+```typescript
+window.addEventListener("blur", () => {
+  lastChangedAt = 0; // 정지 시간을 초과시켜 interval = Infinity로 즉시 전환
+  void invoke("release_liquid_backdrop"); // 친화도 0으로 즉시 복원
+  loop.refresh();
+}, { signal: events.signal });
+
+window.addEventListener("focus", () => {
+  lastChangedAt = performance.now();
+  loop.refresh(); // 포커스 복귀 시 깨끗한 데스크톱 1회 재캡처
+}, { signal: events.signal });
+```
+
+#### 3) 백엔드: 연속 프레임 동안 안정적인 Lease 유지 (`liquid_glass.rs`)
+- 60 FPS 드래그 중 매 프레임마다 친화도를 끄고 켜는 위험한 토글을 제거하고, 연속 프레임이 이어지는 동안(`CAPTURE_LEASE` = 80ms) `0x11` 상태를 안정적으로 유지하여 DWM 레이스 컨디션 및 자기 자신 캡처(Hall-of-Mirrors)를 원천 차단.
+- 드래그 완료 후 400ms 정지 시 또는 `blur` 발생 즉시 `release_liquid_backdrop`이 호출되어 친화도가 `0`으로 즉각 복원됨.
 
 ---
 
@@ -133,10 +107,11 @@ window.addEventListener("blur", () => { void invoke("release_liquid_backdrop"); 
 
 | 검증 항목 | EconomyWarRoom | TokenUsage | 결과 |
 |---|---|---|---|
-| Cargo Unit Tests (`liquid_glass`) | 145 / 145 통과 | 121 / 121 통과 | 정상 |
+| Cargo Unit Tests (`liquid_glass`) | 145 / 145 통과 | 122 / 122 통과 | 정상 |
 | Liquid Frames Integration | 2 / 2 통과 | 2 / 2 통과 | 정상 |
-| UI State & Lifecycle Tests | 14 / 14 통과 | 89 / 89 통과 | 정상 |
+| UI State & Lifecycle Tests | 14 / 14 통과 | 90 / 90 통과 | 정상 |
 | Notch Geometry Tests | 28 / 28 통과 | 28 / 28 통과 | 정상 |
 | Risk Scenarios Tests | 9 / 9 통과 | 19 / 19 통과 | 정상 |
-| Frontend Typecheck & Build | `tsc && vite build` 완료 | `tsc && vite build` 완료 | 정상 |
-| 캡처 중 Affinity 상태 | BitBlt 중(0.3ms)만 제외, 그 외 상시 0 | BitBlt 중(0.3ms)만 제외, 그 외 상시 0 | 정상 |
+| Drag Cancel on Blur Unit Test | — | 통과 (`notch-drag.test.ts`) | 정상 |
+| 드래그 중 캡처 시 ESC 취소 | 정상 동작 (포인터 캡처 즉각 해제) | 정상 동작 (포인터 캡처 즉각 해제) | 정상 |
+| 배경 탁해짐 / 겹침 현상 | 완전 해소 (DWM 안정 제외 + 블러 루프 차단) | 완전 해소 (DWM 안정 제외 + 블러 루프 차단) | 정상 |

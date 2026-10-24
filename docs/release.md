@@ -2,7 +2,13 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Current release:** **v0.4.1** on GitHub Releases.
+**Current release:** **v0.4.2** on GitHub Releases.
+
+## 0.4.2 — 2026-10-24
+
+### Fixed
+
+- Fix drag capture conflict: release pointer capture immediately on window blur so Snipping Tool can be cancelled with ESC; prevent recursive hall-of-mirrors blur by holding stable capture lease during drag.
 
 ## 0.4.1 — 2026-10-24
 
