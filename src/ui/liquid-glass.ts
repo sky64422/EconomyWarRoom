@@ -194,24 +194,19 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
   observer.observe(detail, { attributes: true, attributeFilter: ["hidden"] });
   window.addEventListener("pointerdown", () => {
     logCaptureEvent("POINTER", "window pointerdown");
-    lastChangedAt = performance.now() - STATIC_AFTER_MS;
     loop.refresh();
   }, { signal: events.signal });
   rail.addEventListener("pointerenter", () => {
     logCaptureEvent("POINTER", "rail pointerenter");
-    lastChangedAt = performance.now() - STATIC_AFTER_MS;
     loop.refresh();
   }, { signal: events.signal });
   window.addEventListener("blur", () => {
     logCaptureEvent("FOCUS", "window blur");
     lastChangedAt = 0;
     void invoke("release_liquid_backdrop");
-    loop.refresh();
   }, { signal: events.signal });
   window.addEventListener("focus", () => {
     logCaptureEvent("FOCUS", "window focus");
-    lastChangedAt = performance.now() - STATIC_AFTER_MS;
-    loop.refresh();
   }, { signal: events.signal });
 
   function mapFor(entry: SurfaceLayer, width: number, height: number) {

@@ -74,6 +74,24 @@ SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE); // 0x11
   - `SetWindowDisplayAffinity`는 DWM과의 비동기 IPC 통신이므로 초당 120회 토글을 DWM이 실시간으로 따라오지 못함.
   - 창 제외가 미처 적용되지 않은 프레임에서 `BitBlt`가 자기 자신을 캡처하고, 다음 프레임에서 블러된 자기 자신을 다시 캡처하여 재블러하는 **무한 거울 피드백 루프**가 발생함.
 
+### 결함 6: 캡처 도구 실행 시 포커스 상실(`blur`) 이벤트가 캡처를 재촉발하여 증발 (The Blur-Triggered Exclusion Trap)
+- **증상**: 노치를 드래그하여 옮긴 후, 가만히 둔 상태에서 캡처 도구 단축키(`Alt + \``, `Win + Shift + S`)를 누르면 노치가 감쪽같이 사라짐.
+- **원인**:
+  - 캡처 도구 오버레이가 뜨면서 위젯 창이 포커스를 잃고 웹뷰에 `blur` 이벤트가 발생함.
+  - `blur` 이벤트 핸들러에서 상태 초기화 후 `loop.refresh()`를 무심코 호출함.
+  - `loop.refresh()`가 즉시 `tick()` -> `capture_liquid_backdrop` -> `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)` (0x11)을 실행함.
+  - 캡처 도구가 화면을 복사하는 약 20ms 동안 노치가 `0x11` 상태가 되어 스크린샷에서 제외(투명화)됨.
+- **해결책**:
+  - `blur` 핸들러는 **반드시 `release_liquid_backdrop()`만 호출하고, 절대로 `loop.refresh()`를 호출하지 않아야 함**.
+
+### 결함 7: 다중 플로팅 위젯 간 `yield_focus` 포커스 핑퐁 (Companion Widget Focus Ping-Pong)
+- **증상**: 플로팅 위젯이 여러 개 켜져 있는 환경(`EconomyWarRoom` + `TokenUsage`)에서 ESC를 누르거나 포커스를 양보할 때 캡처 도구나 실제 작업 창이 아닌 동료 위젯으로 포커스가 튀어 탈출이 안 됨.
+- **원인**:
+  - Win32 `yield_focus`의 `EnumWindows`가 Z-order 상 바로 아래에 위치한 또 다른 플로팅 위젯의 HWND를 찾아 포커스를 넘김.
+  - 동료 위젯이 포커스를 받았다가 다시 잃으면서 상호 간 포커스 핑퐁 및 불필요한 이벤트가 유발됨.
+- **해결책**:
+  - `EnumWindows` 및 포그라운드 fallback에서 창 제목(`GetWindowTextW`)을 검사하여 알려진 동료 플로팅 위젯의 창(`Token Usage`, `Economy War Room` 등)을 제외(스킵)하고 실제 사용자 작업 창이나 캡처 도구 HWND로만 포커스를 전달함.
+
 ---
 
 ## 3. 완벽한 해결 아키텍처: Zero-Exclusion & Graceful Surrender
@@ -182,6 +200,8 @@ let bytes = capture_desktop_pixels(...);
 | **TC-CAP-04** | **ESC 키 입력 즉시 포커스 양보** | 드래그 중 Escape 키 입력 시 | 포인터 캡처 즉각 해제 (`releasePointerCapture`), `drag.cancel()` 실행, 활성 요소 `blur()`, 백드롭 릴리즈 호출 |
 | **TC-CAP-05** | **윈도우 Blur / 포커스 상실** | 캡처 단축키 등으로 윈도우 포커스 상실 시 (`blur`, `onFocusChanged(false)`) | 진행 중 드래그 즉시 취소, 정착 타이머 리셋(`lastChangedAt = 0`), 백드롭 즉시 릴리즈 |
 | **TC-CAP-06** | **포인터 캡처 예외 방어** | 타 프로세스 창 활성화 등으로 `releasePointerCapture` 호출 시 DOMException 발생 상황 | 예외가 catch되어 후속 `finish(true)` 및 `release_liquid_backdrop` 호출이 차단되지 않음 |
+| **TC-CAP-07** | **Blur 시 캡처 루프 불발 보장** | `blur` 이벤트 발생 시 캡처 루프 재실행 여부 검증 | `release_liquid_backdrop`만 호출되고 `capture_liquid_backdrop`은 절대 호출되지 않음 (0x11 진입 방지) |
+| **TC-CAP-08** | **다중 위젯 포커스 전달 대상 검증** | `yield_focus` 실행 시 대상 HWND가 동료 위젯인지 검증 | `Token Usage` / `Economy War Room` 등 동료 위젯 창을 건너뛰고 실제 하위 애플리케이션으로 포커스 이양 |
 
 ---
 

@@ -578,6 +578,17 @@ pub fn yield_focus(window: &WebviewWindow, forward_escape: bool) -> Result<(), S
             let w = rect.right - rect.left;
             let h_size = rect.bottom - rect.top;
             if w > 50 && h_size > 50 {
+                let mut title_buf = [0u16; 128];
+                let len = GetWindowTextW(h, &mut title_buf);
+                let title = String::from_utf16_lossy(&title_buf[..len as usize]);
+                let title_lower = title.to_lowercase();
+                if title_lower.contains("token usage")
+                    || title_lower.contains("tokenusage")
+                    || title_lower.contains("economy war room")
+                    || title_lower.contains("economywarroom")
+                {
+                    return BOOL(1);
+                }
                 search.target = Some(h);
                 return BOOL(0);
             }
@@ -595,7 +606,19 @@ pub fn yield_focus(window: &WebviewWindow, forward_escape: bool) -> Result<(), S
         let candidate = search.target.or_else(|| {
             let fg = GetForegroundWindow();
             if !fg.0.is_null() && fg.0 as isize != our_hwnd.0 as isize {
-                Some(fg)
+                let mut title_buf = [0u16; 128];
+                let len = GetWindowTextW(fg, &mut title_buf);
+                let title = String::from_utf16_lossy(&title_buf[..len as usize]);
+                let title_lower = title.to_lowercase();
+                if title_lower.contains("token usage")
+                    || title_lower.contains("tokenusage")
+                    || title_lower.contains("economy war room")
+                    || title_lower.contains("economywarroom")
+                {
+                    None
+                } else {
+                    Some(fg)
+                }
             } else {
                 None
             }
