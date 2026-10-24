@@ -159,3 +159,23 @@ test("window blur releases backdrop and strictly DOES NOT schedule capture (TC-C
   assert.equal(invocations.some(i => i.cmd === "capture_liquid_backdrop"), false);
 });
 ```
+
+---
+
+## 6. TokenUsage 실제 코드 참조 위치 (Code Map)
+
+회사 내 다른 프로젝트에서 TokenUsage 코드를 직접 열람하여 벤치마킹할 수 있는 핵심 파일 및 심볼 위치입니다:
+
+| 영역 | 파일 경로 | 라인 / 심볼 | 핵심 구현 내용 |
+|:---|:---|:---|:---|
+| **Front: Blur 처리** | `src/ui/liquid-glass.ts` | [L203-L207](file:///C:/dev/TokenUsage/src/ui/liquid-glass.ts#L203-L207) (`blur`) | `blur` 시 `loop.refresh()`를 절대 호출하지 않고 `release_liquid_backdrop`만 호출 |
+| **Front: 캐시 히트 방어** | `src/ui/liquid-glass.ts` | [L149-L154](file:///C:/dev/TokenUsage/src/ui/liquid-glass.ts#L149-L154) (`paint`) | `!is-dragging`일 때 0바이트 동일 픽셀(`painted: false`)이어도 무조건 릴리즈 |
+| **Front: 정착 단발 전환** | `src/ui/liquid-glass.ts` | [L173-L176](file:///C:/dev/TokenUsage/src/ui/liquid-glass.ts#L173-L176) (`sync`) | 드래그 종료 시 `lastChangedAt`을 만료시켜 단 1회 갱신 후 즉각 슬립 전환 |
+| **Front: 키 입력 양보** | `src/ui/notch-drag.ts` | [L202-L214](file:///C:/dev/TokenUsage/src/ui/notch-drag.ts#L202-L214) (`keydown`) | Escape / PrintScreen 시 포인터 캡처 해제 후 `yield_notch_focus` 호출 |
+| **Front: 드롭 후 포커스** | `src/ui/notch-drag.ts` | [L160-L163](file:///C:/dev/TokenUsage/src/ui/notch-drag.ts#L160-L163) (`onNotice`) | 드래그 종료 노티스 수신 즉시 백드롭 해제 및 하위 창으로 포커스 인계 |
+| **Back: 정적 즉시 릴리즈** | `src-tauri/src/infrastructure/liquid_glass.rs` | [L252-L255](file:///C:/dev/TokenUsage/src-tauri/src/infrastructure/liquid_glass.rs#L252-L255) (`capture`) | 정적 캡처 완료 즉시 백엔드 내부에서 `release_liquid_backdrop` 동기 호출 |
+| **Back: 드래그 종료 해제** | `src-tauri/src/infrastructure/notch_window.rs` | [L489-L492](file:///C:/dev/TokenUsage/src-tauri/src/infrastructure/notch_window.rs#L489-L492) (`complete_drag`) | 네이티브 드래그 종료 핸들러에서 리스 파기 및 `yield_focus` 실행 |
+| **Back: 동료 위젯 필터** | `src-tauri/src/infrastructure/notch_window.rs` | [L533-L540](file:///C:/dev/TokenUsage/src-tauri/src/infrastructure/notch_window.rs#L533-L540) (`is_companion_widget_title`) | `yield_focus` 시 플로팅 위젯 창 제목을 스킵하여 포커스 핑퐁 차단 |
+| **Test: Blur TC-CAP-07** | `src/ui/liquid-glass.test.ts` | [L227-L235](file:///C:/dev/TokenUsage/src/ui/liquid-glass.test.ts#L227-L235) | `blur` 이벤트 시 친화도 반납 & 캡처 미호출 보장 자동화 테스트 |
+| **Test: 필터 TC-CAP-08** | `src-tauri/src/infrastructure/notch_window.rs` | [L740-L756](file:///C:/dev/TokenUsage/src-tauri/src/infrastructure/notch_window.rs#L740-L756) | 동료 위젯 제목 검사 및 일반 작업 창 통과 검증 단위 테스트 |
+
