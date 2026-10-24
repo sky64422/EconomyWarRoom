@@ -195,8 +195,8 @@ export function mountNotchDrag(
     drag.cancel();
   }, options);
   window.addEventListener("keydown", e => {
-    if (e.key === "Escape") {
-      logCaptureEvent("KEY", "Escape pressed -> drag.cancel() & yield focus");
+    if (e.key === "Escape" || e.key === "PrintScreen") {
+      logCaptureEvent("KEY", `${e.key} pressed -> drag.cancel() & yield focus`);
       drag.cancel();
       (document.activeElement as HTMLElement | null)?.blur();
     }
