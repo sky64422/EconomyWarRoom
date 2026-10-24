@@ -30,3 +30,28 @@ test('surface serializes geometry and suppresses stale painted layouts',async()=
  pending[0].resolve({name:'old'});await flush();assert.equal(painted.length,0);
  pending[1].resolve({name:'new'});await surface.settled();assert.deepEqual(painted,[{name:'new'}]);surface.destroy();
 });
+test('idle loop with interval Infinity pauses animation frames and wakes up on refresh', async () => {
+  let requests = 0, tick = null;
+  let currentInterval = Infinity;
+  const loop = createLiquidLoop({
+    request: cb => { requests++; tick = cb; return requests; },
+    cancel: () => {},
+    interval: () => currentInterval,
+    capture: async () => 'frame',
+    paint: () => {},
+    dispose: () => {},
+    release: async () => {},
+    fail: () => {},
+  });
+  loop.setEnabled(true);
+  assert.equal(requests, 1);
+  tick(0);
+  await flush();
+  // While interval is Infinity, schedule() must not queue further frames
+  assert.equal(requests, 1);
+
+  // Calling refresh() must wake up and request next frame
+  loop.refresh();
+  assert.equal(requests, 2);
+  loop.destroy();
+});

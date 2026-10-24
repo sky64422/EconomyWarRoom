@@ -115,7 +115,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
           : IDLE_FRAME_MS;
     },
     capture,
-    paint: (frames, _now) => {
+    paint: (frames, now) => {
       let painted = false;
       frames.forEach(({ entry, pixels, width, height, key, generation }) => {
         if (entry.key !== key || entry.generation !== generation || entry.surface.hidden) return;
@@ -148,6 +148,9 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
       }
       if (!rail.classList.contains("is-dragging")) {
         void invoke("release_liquid_backdrop");
+        if (!painted && now - lastChangedAt >= SETTLING_AFTER_MS) {
+          lastChangedAt = 0;
+        }
       }
     },
     dispose: frames => {
@@ -194,7 +197,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
   }, { signal: events.signal });
   rail.addEventListener("pointerenter", () => {
     logCaptureEvent("POINTER", "rail pointerenter");
-    lastChangedAt = performance.now();
+    lastChangedAt = performance.now() - STATIC_AFTER_MS;
     loop.refresh();
   }, { signal: events.signal });
   window.addEventListener("blur", () => {
@@ -205,7 +208,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
   }, { signal: events.signal });
   window.addEventListener("focus", () => {
     logCaptureEvent("FOCUS", "window focus");
-    lastChangedAt = performance.now();
+    lastChangedAt = performance.now() - STATIC_AFTER_MS;
     loop.refresh();
   }, { signal: events.signal });
 

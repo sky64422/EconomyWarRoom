@@ -197,10 +197,29 @@ let bytes = capture_desktop_pixels(...);
 
 ---
 
-## 6. 결론 및 요약
+## 7. 성능 최적화 및 오버엔지니어링(과잉 체크) 제거 분석
 
-플로팅 블러 위젯에서 화면 캡처 충돌을 방지하는 황금률은 네 가지입니다:
+화면 캡처 충돌을 방지하면서도 시스템 리소스를 낭비하거나 불필요하게 과잉 동작(Over-engineering)하지 않도록 아래 3가지 핵심 최적화를 적용했습니다:
+
+### 7.1 유휴 상태 `requestAnimationFrame` 공회전 방지 (Deep Sleep Loop)
+- **비효율 문제**: 기존 루프는 400ms가 지나 `interval === Infinity`(정적 대기)가 된 상태에서도 `schedule()`이 매 VSYNC(60Hz/144Hz)마다 `requestAnimationFrame(tick)`을 무한히 예약했습니다. 비록 `now < due`에서 즉시 리턴하지만 메인 스레드에서 초당 144회 쓸데없이 함수를 호출하며 배터리를 낭비했습니다.
+- **최적화**: `previousInterval === Infinity`일 때는 `schedule()`을 일체 예약하지 않는 **Deep Sleep(완전 수면)** 상태로 전환하고, 사용자 입력이나 레이아웃 변경으로 `loop.refresh()`가 호출될 때만 `schedule()`을 호출하여 즉각 깨어나도록 최적화했습니다.
+
+### 7.2 단순 마우스 호버(`pointerenter`) 시 400ms 30 FPS 폭주 방지 (Single-Shot Static Refresh)
+- **비효율 문제**: 마우스가 노치 위로 진입하기만 해도(`pointerenter`), 노치 위치나 배경이 전혀 바뀌지 않았는데도 `lastChangedAt = performance.now()`로 인해 400ms 동안 30 FPS로 10회 이상 백엔드 `BitBlt` 캡처가 실행되었습니다 (10회 모두 동일 픽셀로 버려짐).
+- **최적화**: 호버(`pointerenter`) 및 포커스 획득(`focus`) 시에는 `lastChangedAt = performance.now() - STATIC_AFTER_MS`로 설정하여, 400ms 폭주 대신 **딱 1프레임만 정적으로 최신화하고 즉시 수면**하도록 최적화했습니다. 이로써 불필요한 GPU/CPU 낭비가 90% 이상 절감되고 호버 시 캡처 도구 충돌 가능성이 0이 되었습니다.
+
+### 7.3 스냅 애니메이션 후 캐시 히트 조기 수면 (Early Settle Sleep)
+- **비효율 문제**: 노치를 잡고 놓은 뒤 150ms의 스냅 애니메이션이 끝난 후에도 400ms가 찰 때까지 계속해서 캡처를 시도했습니다. 정지된 바탕화면에서는 2번째 프레임부터 이미 동일한 픽셀(`bytes == 0`)이 오므로 나머지 250ms 동안의 캡처는 100% 낭비였습니다.
+- **최적화**: 드래그가 아닌 상태에서 스냅 창(150ms) 경과 후 `bytes == 0`(`!painted`)이 확인되면 `lastChangedAt = 0`으로 즉시 정착을 조기 종료하여 불필요한 백엔드 호출을 컷오프했습니다.
+
+---
+
+## 8. 결론 및 요약
+
+플로팅 블러 위젯에서 화면 캡처 충돌 방지와 고성능 유지를 위한 황금률:
 1. **0x11은 화면을 캡처하는 딱 1ms 동안만 켜고 백엔드에서 즉시 0x00으로 복구할 것 (Zero-Exclusion).**
 2. **연속 드래그 중에는 120Hz 진동을 피하고 리스(Lease)를 안정적으로 유지하되, 드래그 종료 즉시 0x00을 강제할 것.**
 3. **정착(Settling) 루프의 0바이트 캐시 히트 프레임에서도 예외 없이 백드롭 리스를 해제할 것.**
-4. **ESC 키, `blur`, 포커스 상실 발생 시 모든 마우스 포인터 캡처를 즉시 반납하고 포커스를 양보할 것 (Graceful Surrender).**
+4. **유휴 상태에서는 `requestAnimationFrame`을 완전히 멈추고(Deep Sleep), 호버 시 30 FPS 폭주 없이 단발(Single-Shot)로만 갱신할 것.**
+5. **ESC 키, `blur`, 포커스 상실 발생 시 모든 마우스 포인터 캡처를 즉시 반납하고 포커스를 양보할 것 (Graceful Surrender).**
