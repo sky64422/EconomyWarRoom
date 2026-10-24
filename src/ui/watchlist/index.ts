@@ -322,7 +322,7 @@ export function mountWatchlist(
           if(opts?.management){
             const name=item.display_name && item.display_name!==item.symbol ? item.display_name : ASSET_LABELS[item.asset_kind];
             return `<div class="watchlist-row management-row${tintClass}${selectedClass}" role="listitem" tabindex="0" data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}" data-tint="${tint}" aria-label="${escapeAttr(item.symbol)}, ${escapeAttr(name)}">
-              <span class="management-mark">${markMarkup(item.symbol)}${tint!=='none' ? `<span class="tint-swatch tint-${tint} management-tint" aria-hidden="true"></span>` : ''}</span>
+              <span class="management-mark">${markMarkup(item.symbol, item.display_name)}${tint!=='none' ? `<span class="tint-swatch tint-${tint} management-tint" aria-hidden="true"></span>` : ''}</span>
               <span class="management-info"><span class="row-symbol">${escapeHtml(item.symbol)}</span><span class="management-name">${escapeHtml(name)}</span>${removeErrors.has(item.id) ? '<span class="management-remove-error" role="status">제거 실패 · 다시 시도해 주세요</span>' : ''}</span>
               <button type="button" class="management-remove" aria-label="${escapeAttr(item.symbol)} 관심종목에서 제거" ${removing.has(item.id) ? 'disabled aria-busy="true"' : ''}><svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5.5h13M8 3.5h4m-7 2 1 11h8l1-11M8.5 8.5v5m3-5v5"/></svg></button></div>`;
           }
@@ -522,72 +522,85 @@ export function mountWatchlist(
 
   function renderFooter(keepFocus = false): void {
     if (adding) {
-      const caret = keepFocus
-        ? (footerEl.querySelector("#add-symbol-input") as HTMLInputElement | null)
-            ?.selectionStart ?? addQuery.length
-        : addQuery.length;
-      footerEl.innerHTML = `
-        <div class="add-wrap">
-          <div role="search" class="${opts?.management ? 'management-search' : 'add-card add-card--active watchlist-card'}" id="add-form" aria-busy="${addPending}">
-            ${opts?.management ? '<svg class="management-search-icon" viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5"/><path d="m12 12 4 4"/></svg>' : ''}
-            <input type="text" id="add-symbol-input" class="${opts?.management ? 'management-search-input' : 'add-card-input'}" placeholder="종목명 또는 티커 검색" maxlength="32" spellcheck="false" value="${escapeAttr(addQuery)}" aria-label="종목 검색" role="combobox" aria-expanded="${suggestions.length>0}" aria-autocomplete="list" aria-controls="add-suggest" ${addPending ? 'disabled' : ''}/>
-            <button type="button" class="${opts?.management ? 'management-search-submit' : 'add-card-btn primary'}" aria-label="종목 추가" ${addPending ? 'disabled' : ''}>${opts?.management ? '<svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>' : '추가'}</button>
-            ${opts?.management ? '' : '<button type="button" class="add-card-btn" id="add-cancel">취소</button>'}
+      let form = footerEl.querySelector<HTMLElement>("#add-form");
+      let input = footerEl.querySelector<HTMLInputElement>("#add-symbol-input");
+      if (!form || !input) {
+        footerEl.innerHTML = `
+          <div class="add-wrap">
+            <div role="search" class="${opts?.management ? 'management-search' : 'add-card add-card--active watchlist-card'}" id="add-form" aria-busy="${addPending}">
+              ${opts?.management ? '<svg class="management-search-icon" viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5"/><path d="m12 12 4 4"/></svg>' : ''}
+              <input type="text" id="add-symbol-input" class="${opts?.management ? 'management-search-input' : 'add-card-input'}" placeholder="종목명 또는 티커 검색" maxlength="32" spellcheck="false" value="${escapeAttr(addQuery)}" aria-label="종목 검색" role="combobox" aria-expanded="${suggestions.length>0}" aria-autocomplete="list" aria-controls="add-suggest" ${addPending ? 'disabled' : ''}/>
+              <button type="button" class="${opts?.management ? 'management-search-submit' : 'add-card-btn primary'}" aria-label="종목 추가" ${addPending ? 'disabled' : ''}>${opts?.management ? '<svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>' : '추가'}</button>
+              ${opts?.management ? '' : '<button type="button" class="add-card-btn" id="add-cancel">취소</button>'}
+            </div>
           </div>
-          ${
-            suggestions.length > 0
-              ? `<ul class="add-suggest" id="add-suggest" role="listbox">
-            ${suggestions
-              .map(
-                (s, i) => `
-              <li role="option" id="add-option-${i}" class="add-suggest-item" data-suggest-idx="${i}" data-symbol="${escapeAttr(s.symbol)}" data-kind="${escapeAttr(s.asset_kind)}">
-                ${opts?.management ? `<span class="management-result-mark">${markMarkup(s.symbol)}</span><span class="management-result-info">` : ''}
-                <span class="suggest-symbol">${escapeHtml(s.symbol)}</span>
-                <span class="suggest-meta">${escapeHtml(s.name ?? s.exchange ?? s.asset_kind)}</span>
-                ${opts?.management ? '</span><span class="management-result-add" aria-hidden="true">+</span>' : ''}
-              </li>`,
-              )
-              .join("")}
-          </ul>`
-              : addQuery.trim()
-                ? `<div class="add-suggest-empty">${opts?.management ? '종목 코드를 입력해 바로 추가할 수 있어요.' : 'No matches'}</div>`
-                : ""
-          }
-          ${addError ? `<div class="add-error" role="status">${escapeHtml(addError)}</div>` : ""}
-        </div>
-      `;
-      const form = footerEl.querySelector("#add-form") as HTMLElement;
-      const input = footerEl.querySelector("#add-symbol-input") as HTMLInputElement;
-      const cancel = footerEl.querySelector<HTMLButtonElement>("#add-cancel");
-      input.focus();
-      try {
-        input.setSelectionRange(caret, caret);
-      } catch {
-        /* ignore */
+        `;
+        form = footerEl.querySelector<HTMLElement>("#add-form")!;
+        input = footerEl.querySelector<HTMLInputElement>("#add-symbol-input")!;
+        const cancel = footerEl.querySelector<HTMLButtonElement>("#add-cancel");
+        form.querySelector("button")!.addEventListener("click", () => void onAdd(input!.value));
+        input.addEventListener("input", () => {
+          addError = null;
+          scheduleSearch(input!.value);
+        });
+        cancel?.addEventListener("click", () => {
+          if(addPending)return;
+          ++searchSeq;
+          adding = false;
+          addError = null;
+          addQuery = "";
+          suggestions = [];
+
+          if (searchTimer) clearTimeout(searchTimer);
+          renderFooter();
+        });
+        input.focus();
+      } else {
+        form.setAttribute("aria-busy", String(addPending));
+        if (input.value !== addQuery) {
+          input.value = addQuery;
+        }
+        input.setAttribute("aria-expanded", String(suggestions.length > 0));
+        input.disabled = addPending;
+        form.querySelectorAll<HTMLButtonElement>("button").forEach((btn) => {
+          btn.disabled = addPending;
+        });
+        if (keepFocus && !addPending && document.activeElement !== input) {
+          input.focus();
+        }
       }
-      form.querySelector("button")!.addEventListener("click", () => void onAdd(input.value));
-      input.addEventListener("input", () => {
-        addError = null;
-        scheduleSearch(input.value);
-      });
+      while (form.nextSibling) {
+        form.nextSibling.remove();
+      }
+      const feedbackMarkup = `${
+        suggestions.length > 0
+          ? `<ul class="add-suggest" id="add-suggest" role="listbox">
+        ${suggestions
+          .map(
+            (s, i) => `
+          <li role="option" id="add-option-${i}" class="add-suggest-item" data-suggest-idx="${i}" data-symbol="${escapeAttr(s.symbol)}" data-kind="${escapeAttr(s.asset_kind)}">
+            ${opts?.management ? `<span class="management-result-mark">${markMarkup(s.symbol, s.name)}</span><span class="management-result-info">` : ''}
+            <span class="suggest-symbol">${escapeHtml(s.symbol)}</span>
+            <span class="suggest-meta">${escapeHtml(s.name ?? s.exchange ?? s.asset_kind)}</span>
+            ${opts?.management ? '</span><span class="management-result-add" aria-hidden="true">+</span>' : ''}
+          </li>`,
+          )
+          .join("")}
+      </ul>`
+          : addQuery.trim()
+            ? `<div class="add-suggest-empty">${opts?.management ? '종목 코드를 입력해 바로 추가할 수 있어요.' : 'No matches'}</div>`
+            : ""
+      }${addError ? `<div class="add-error" role="status">${escapeHtml(addError)}</div>` : ""}`;
+      if (feedbackMarkup) {
+        form.insertAdjacentHTML("afterend", feedbackMarkup);
+      }
       footerEl.querySelectorAll<HTMLElement>("[data-suggest-idx]").forEach((el) => {
         el.addEventListener("mousedown", (e) => {
           e.preventDefault();
           const idx = Number(el.dataset.suggestIdx);
           const s = suggestions[idx];
-          if (s) void onAdd(s.symbol, s.asset_kind);
+          if (s) void onAdd(s.symbol, s.asset_kind, s.name);
         });
-      });
-      cancel?.addEventListener("click", () => {
-        if(addPending)return;
-        ++searchSeq;
-        adding = false;
-        addError = null;
-        addQuery = "";
-        suggestions = [];
-
-        if (searchTimer) clearTimeout(searchTimer);
-        renderFooter();
       });
     } else {
       footerEl.innerHTML = `
@@ -612,20 +625,48 @@ export function mountWatchlist(
     }
   }
 
-  async function onAdd(raw: string, kind?: AssetKind): Promise<void> {
+  async function onAdd(raw: string, kind?: AssetKind, displayName?: string | null): Promise<void> {
     if(addPending)return;
-    const symbol = raw.trim().toUpperCase();
-    if (!symbol) {
+    const trimmed = raw.trim();
+    if (!trimmed) {
       addError = opts?.management ? "종목 코드를 입력해 주세요." : "Enter a symbol";
       renderFooter(true);
       return;
     }
-    const asset_kind = kind ?? guessAssetKind(symbol);
     addPending=true;
     ++searchSeq;if(searchTimer)clearTimeout(searchTimer);
     renderFooter(true);
     try {
-      await invoke("add_symbol", { symbol, asset_kind });
+      let symbol = trimmed.toUpperCase();
+      let asset_kind = kind;
+      let display_name: string | null | undefined = displayName;
+      if (asset_kind === undefined && /[^\x00-\x7F]/.test(trimmed)) {
+        let match = suggestions[0] ?? localSuggestions(trimmed, ownedSymbols())[0];
+        if (!match) {
+          const remote = await invoke<SymbolSuggestion[]>("search_symbols", {
+            query: trimmed,
+            limit: 1,
+          }).catch(() => []);
+          match = remote?.[0];
+        }
+        if (!match) {
+          addError = opts?.management ? "일치하는 종목을 찾을 수 없습니다." : "No matching symbol";
+          return;
+        }
+        symbol = match.symbol.toUpperCase();
+        asset_kind = match.asset_kind;
+        display_name = match.name;
+      } else {
+        asset_kind = asset_kind ?? guessAssetKind(symbol);
+        display_name =
+          display_name ??
+          suggestions.find((s) => s.symbol.toUpperCase() === symbol)?.name ??
+          localSuggestions(symbol, [])[0]?.name;
+      }
+      await invoke(
+        "add_symbol",
+        display_name ? { symbol, asset_kind, display_name } : { symbol, asset_kind },
+      );
       adding = opts?.management ?? false;
       addError = null;
       addQuery = "";

@@ -43,11 +43,15 @@ pub async fn add_symbol(
     state: State<'_, AppHandleState>,
     symbol: String,
     asset_kind: AssetKind,
+    display_name: Option<String>,
 ) -> Result<WatchlistItem, String> {
     let item = map_note(
         &state,
         "add_symbol",
-        state.core.add_symbol(symbol, asset_kind).await,
+        state
+            .core
+            .add_symbol_with_name(symbol, asset_kind, display_name)
+            .await,
     )?;
     emit_watchlist(&app, &state).await?;
     Ok(item)

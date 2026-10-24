@@ -18,7 +18,7 @@ fn quote_type_to_kind(qt: &str) -> AssetKind {
 
 /// Parse Yahoo `/v1/finance/search` JSON into suggestions (quotes only).
 pub fn parse_search_results(json: &Value, query: &str, limit: usize) -> Vec<SymbolSuggestion> {
-    let q = query.trim().to_ascii_uppercase();
+    let q = query.trim().to_uppercase();
     let Some(quotes) = json.get("quotes").and_then(|v| v.as_array()) else {
         return vec![];
     };
@@ -39,7 +39,7 @@ pub fn parse_search_results(json: &Value, query: &str, limit: usize) -> Vec<Symb
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
         if !q.is_empty() {
-            let name_u = name.as_deref().unwrap_or("").to_ascii_uppercase();
+            let name_u = name.as_deref().unwrap_or("").to_uppercase();
             if !symbol.contains(&q) && !name_u.contains(&q) {
                 continue;
             }
@@ -57,6 +57,80 @@ pub fn parse_search_results(json: &Value, query: &str, limit: usize) -> Vec<Symb
             symbol,
             name,
             asset_kind: quote_type_to_kind(qt),
+            exchange,
+        });
+        if out.len() >= limit {
+            break;
+        }
+    }
+    out
+}
+
+/// Parse Naver stock autocomplete (`/ac?q=...&target=stock`) into Yahoo-compatible suggestions.
+pub fn parse_naver_search_results(json: &Value, limit: usize) -> Vec<SymbolSuggestion> {
+    let Some(items) = json.get("items").and_then(|v| v.as_array()) else {
+        return vec![];
+    };
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for item in items {
+        let Some(code) = item.get("code").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let code = code.trim();
+        if code.is_empty() {
+            continue;
+        }
+        let type_code = item
+            .get("typeCode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_uppercase();
+        let nation_code = item
+            .get("nationCode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_uppercase();
+        let reuters_code = item
+            .get("reutersCode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_uppercase();
+
+        let (symbol, exchange) = match (nation_code.as_str(), type_code.as_str()) {
+            ("KOR", "KOSPI") => (format!("{}.KS", code.to_ascii_uppercase()), Some("KOSPI".to_string())),
+            ("KOR", "KOSDAQ") => (format!("{}.KQ", code.to_ascii_uppercase()), Some("KOSDAQ".to_string())),
+            ("USA", "NASDAQ" | "NYSE" | "AMEX") => (
+                code.to_ascii_uppercase().replace('.', "-"),
+                Some(type_code),
+            ),
+            _ if reuters_code.ends_with(".KS") || reuters_code.ends_with(".KQ") => {
+                let exch = if reuters_code.ends_with(".KS") {
+                    "KOSPI"
+                } else {
+                    "KOSDAQ"
+                };
+                (reuters_code, Some(exch.to_string()))
+            }
+            _ => continue,
+        };
+
+        if !seen.insert(symbol.clone()) {
+            continue;
+        }
+        let name = item
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        out.push(SymbolSuggestion {
+            symbol,
+            name,
+            asset_kind: AssetKind::Equity,
             exchange,
         });
         if out.len() >= limit {
@@ -1404,5 +1478,70 @@ mod tests {
         enrich_quote_prior_from_daily(&mut q, &daily);
         assert!((q.prior_close.unwrap() - 327.51).abs() < 1e-6);
         assert!((q.previous_day_change_percent.unwrap() - 3.80).abs() < 0.02);
+    }
+
+    #[test]
+    fn parse_naver_search_results_maps_kospi_kosdaq_and_usa() {
+        let payload = serde_json::json!({
+            "query": "삼성",
+            "items": [
+                {
+                    "code": "005930",
+                    "name": "삼성전자",
+                    "typeCode": "KOSPI",
+                    "nationCode": "KOR",
+                    "reutersCode": "005930.KS"
+                },
+                {
+                    "code": "086520",
+                    "name": "에코프로",
+                    "typeCode": "KOSDAQ",
+                    "nationCode": "KOR",
+                    "reutersCode": "086520.KQ"
+                },
+                {
+                    "code": "PLTR",
+                    "name": "팔란티어 테크놀로지스",
+                    "typeCode": "NASDAQ",
+                    "nationCode": "USA",
+                    "reutersCode": "PLTR.O"
+                },
+                {
+                    "code": "005930",
+                    "name": "삼성전자 중복",
+                    "typeCode": "KOSPI",
+                    "nationCode": "KOR"
+                },
+                {
+                    "code": "999999",
+                    "name": "코넥스종목",
+                    "typeCode": "KONEX",
+                    "nationCode": "KOR"
+                },
+                {
+                    "code": "000660",
+                    "name": "SK하이닉스",
+                    "typeCode": "UNKNOWN",
+                    "nationCode": "KOR",
+                    "reutersCode": "000660.KS"
+                }
+            ]
+        });
+        let hits = parse_naver_search_results(&payload, 8);
+        assert_eq!(hits.len(), 4);
+        assert_eq!(hits[0].symbol, "005930.KS");
+        assert_eq!(hits[0].name.as_deref(), Some("삼성전자"));
+        assert_eq!(hits[0].exchange.as_deref(), Some("KOSPI"));
+        assert_eq!(hits[1].symbol, "086520.KQ");
+        assert_eq!(hits[1].name.as_deref(), Some("에코프로"));
+        assert_eq!(hits[1].exchange.as_deref(), Some("KOSDAQ"));
+        assert_eq!(hits[2].symbol, "PLTR");
+        assert_eq!(hits[2].name.as_deref(), Some("팔란티어 테크놀로지스"));
+        assert_eq!(hits[2].exchange.as_deref(), Some("NASDAQ"));
+        assert_eq!(hits[3].symbol, "000660.KS");
+
+        let capped = parse_naver_search_results(&payload, 2);
+        assert_eq!(capped.len(), 2);
+        assert!(parse_naver_search_results(&serde_json::json!({}), 8).is_empty());
     }
 }

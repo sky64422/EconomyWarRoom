@@ -138,8 +138,20 @@ impl AppCore {
         symbol: String,
         asset_kind: AssetKind,
     ) -> Result<WatchlistItem, String> {
+        self.add_symbol_with_name(symbol, asset_kind, None).await
+    }
+
+    pub async fn add_symbol_with_name(
+        &self,
+        symbol: String,
+        asset_kind: AssetKind,
+        display_name: Option<String>,
+    ) -> Result<WatchlistItem, String> {
+        let display_name = display_name
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         let item = self.with_persisted_mut(|persisted| {
-            watchlist::add_item(&mut persisted.watchlist, &symbol, asset_kind, None)
+            watchlist::add_item(&mut persisted.watchlist, &symbol, asset_kind, display_name)
         })?;
         self.sync_scheduler_watchlist().await?;
         {
@@ -603,6 +615,14 @@ mod tests {
             .unwrap();
         assert_eq!(msft.symbol, "MSFT");
         assert_eq!(core.watchlist_snapshot().await.unwrap().len(), 3);
+
+        let samsung = core
+            .add_symbol_with_name("005930.ks".into(), AssetKind::Equity, Some("삼성전자".into()))
+            .await
+            .unwrap();
+        assert_eq!(samsung.symbol, "005930.KS");
+        assert_eq!(samsung.display_name.as_deref(), Some("삼성전자"));
+        core.remove_symbol(&samsung.id).await.unwrap();
 
         // duplicate risk
         assert!(core

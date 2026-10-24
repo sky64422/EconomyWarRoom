@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initialNotchState, reduceNotchState, selectCells, primaryPercent } from '../../src/ui/notch-state.ts';
+import { localSuggestions } from '../../src/ui/watchlist/search.ts';
+
+test('localSuggestions matches Korean domestic equities and Korean aliases of global symbols', () => {
+  const kr = localSuggestions('삼성', []);
+  assert.ok(kr.some((s) => s.symbol === '005930.KS' && s.name === '삼성전자'));
+  const us = localSuggestions('테슬라', []);
+  assert.ok(us.some((s) => s.symbol === 'TSLA'));
+  const crypto = localSuggestions('비트코인', []);
+  assert.ok(crypto.some((s) => s.symbol === 'BTC-USD'));
+});
 
 test('notch uses latest primary percent, preserves zero and missing', () => {
   assert.equal(primaryPercent({ display: { primary: { change: 1.24 }, secondary: { change: -0.36 } } }), 1.24);

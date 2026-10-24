@@ -1,6 +1,6 @@
 use super::parse::{
-    closes_near, enrich_quote_prior_from_daily, parse_quote_from_chart, parse_search_results,
-    parse_sparkline_from_chart,
+    closes_near, enrich_quote_prior_from_daily, parse_naver_search_results, parse_quote_from_chart,
+    parse_search_results, parse_sparkline_from_chart,
 };
 use crate::domain::constants::RefreshPolicy;
 use crate::domain::types::{AssetKind, Quote, Sparkline, SymbolSuggestion};
@@ -14,6 +14,7 @@ use tokio::task::JoinSet;
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const DEFAULT_BASE: &str = "https://query1.finance.yahoo.com";
+const DEFAULT_KR_SEARCH_BASE: &str = "https://ac.stock.naver.com";
 
 /// Cached prior-close enrichment so we avoid a second daily chart call every tick.
 /// Keyed by symbol; `previous_close` must still match or the session has rolled.
@@ -29,16 +30,25 @@ type PriorCache = Arc<Mutex<HashMap<String, CachedPrior>>>;
 pub struct YahooProvider {
     client: reqwest::Client,
     base_url: String,
+    kr_search_url: String,
     prior_cache: PriorCache,
 }
 
 impl YahooProvider {
     pub fn new() -> Result<Self, String> {
-        Self::with_base_url(DEFAULT_BASE)
+        Self::with_urls(DEFAULT_BASE, DEFAULT_KR_SEARCH_BASE)
     }
 
     /// Construct with a custom base URL (used by tests with a mock HTTP server).
     pub fn with_base_url(base_url: impl Into<String>) -> Result<Self, String> {
+        let base = base_url.into();
+        Self::with_urls(base.clone(), base)
+    }
+
+    fn with_urls(
+        base_url: impl Into<String>,
+        kr_search_url: impl Into<String>,
+    ) -> Result<Self, String> {
         let client = reqwest::Client::builder()
             .user_agent(UA)
             .timeout(Duration::from_secs(15))
@@ -47,6 +57,7 @@ impl YahooProvider {
         Ok(Self {
             client,
             base_url: base_url.into().trim_end_matches('/').to_string(),
+            kr_search_url: kr_search_url.into().trim_end_matches('/').to_string(),
             prior_cache: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -149,7 +160,7 @@ impl YahooProvider {
         }
     }
 
-    /// Yahoo symbol lookup (`/v1/finance/search`) — used for add-flow autocomplete.
+    /// Yahoo symbol lookup (`/v1/finance/search`) with Naver autocomplete fallback for Korean queries.
     pub async fn search_symbols(
         &self,
         query: &str,
@@ -160,6 +171,24 @@ impl YahooProvider {
             return Ok(vec![]);
         }
         let limit = limit.clamp(1, 20);
+        if !q.is_ascii() {
+            let url = format!("{}/ac", self.kr_search_url);
+            let resp = self
+                .client
+                .get(&url)
+                .query(&[("q", q), ("target", "stock")])
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            if resp.status().as_u16() == 429 {
+                return Err("rate_limited".into());
+            }
+            if !resp.status().is_success() {
+                return Err(format!("http {}", resp.status()));
+            }
+            let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+            return Ok(parse_naver_search_results(&json, limit));
+        }
         let url = format!("{}/v1/finance/search", self.base_url);
         let resp = self
             .client
@@ -472,6 +501,32 @@ mod tests {
         let hits = provider.search_symbols("AAP", 8).await.unwrap();
         assert!(!hits.is_empty());
         assert!(hits.iter().any(|h| h.symbol == "AAPL"));
+    }
+
+    #[tokio::test]
+    async fn search_symbols_korean_uses_naver_autocomplete() {
+        let server = MockServer::start().await;
+        let body = r#"{
+          "query": "삼성",
+          "items": [
+            { "code": "005930", "name": "삼성전자", "typeCode": "KOSPI", "nationCode": "KOR", "reutersCode": "005930.KS" },
+            { "code": "PLTR", "name": "팔란티어 테크놀로지스", "typeCode": "NASDAQ", "nationCode": "USA", "reutersCode": "PLTR.O" }
+          ]
+        }"#;
+        Mock::given(method("GET"))
+            .and(path("/ac"))
+            .and(query_param("q", "삼성"))
+            .and(query_param("target", "stock"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let provider = YahooProvider::with_base_url(server.uri()).unwrap();
+        let hits = provider.search_symbols("삼성", 8).await.unwrap();
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].symbol, "005930.KS");
+        assert_eq!(hits[0].name.as_deref(), Some("삼성전자"));
+        assert_eq!(hits[1].symbol, "PLTR");
     }
 
     #[tokio::test]
