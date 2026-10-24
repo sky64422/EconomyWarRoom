@@ -115,7 +115,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
           : IDLE_FRAME_MS;
     },
     capture,
-    paint: (frames, now) => {
+    paint: (frames, _now) => {
       let painted = false;
       frames.forEach(({ entry, pixels, width, height, key, generation }) => {
         if (entry.key !== key || entry.generation !== generation || entry.surface.hidden) return;
@@ -145,10 +145,8 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
 
       if (painted) {
         shell.dataset.liquidStatus = "ready";
-        if (!rail.classList.contains("is-dragging")) {
-          void invoke("release_liquid_backdrop");
-        }
-      } else if (now - lastChangedAt >= STATIC_AFTER_MS) {
+      }
+      if (!rail.classList.contains("is-dragging")) {
         void invoke("release_liquid_backdrop");
       }
     },
@@ -299,8 +297,9 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
         const h = Math.min(Math.round(height * ratio), Math.round(innerHeight * ratio) - y);
         if (w <= 0 || h <= 0) continue;
 
+        const dragging = rail.classList.contains("is-dragging");
         const data = await invoke<ArrayBuffer>("capture_liquid_backdrop", {
-          x, y, width: w, height: h, surface: entry.slot, generation,
+          x, y, width: w, height: h, surface: entry.slot, generation, dragging,
         });
         if (!data.byteLength) continue;
         if (entry.key !== key || entry.generation !== generation) continue;

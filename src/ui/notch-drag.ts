@@ -1,5 +1,6 @@
-import type { NotchLayout, NotchPlacement } from "./types";
-import { logCaptureEvent } from "./capture-log";
+import type { NotchLayout, NotchPlacement } from "./types.ts";
+import { logCaptureEvent } from "./capture-log.ts";
+import { invoke } from "@tauri-apps/api/core";
 
 export interface DragNotice {
   id: number;
@@ -34,9 +35,13 @@ export function createNotchDrag(handlers: DragHandlers) {
   function releaseCapture() {
     const previous = captured;
     captured = null;
-    if (previous?.element.hasPointerCapture(previous.id)) {
-      logCaptureEvent("POINTER", `releasePointerCapture id=${previous.id}`);
-      previous.element.releasePointerCapture(previous.id);
+    try {
+      if (previous?.element.hasPointerCapture(previous.id)) {
+        logCaptureEvent("POINTER", `releasePointerCapture id=${previous.id}`);
+        previous.element.releasePointerCapture(previous.id);
+      }
+    } catch (e) {
+      logCaptureEvent("POINTER", `releasePointerCapture error: ${e}`);
     }
   }
   function finish(cancel: boolean) {
@@ -56,6 +61,7 @@ export function createNotchDrag(handlers: DragHandlers) {
       paint();
       finish(true);
       sessionId = null;
+      void invoke("release_liquid_backdrop");
     },
     start(pointer: { id: number; x: number; y: number; capture: PointerCapture }): boolean {
       if (disposed || sessionId !== null) return false;
@@ -147,6 +153,9 @@ export function mountNotchDrag(
   const drag = createNotchDrag({
     ...handlers,
     onNotice: event => {
+      if (event.finished) {
+        void invoke("release_liquid_backdrop");
+      }
       if (wasDragging && event.finished) {
         triggerSnapSlosh();
         wasDragging = false;

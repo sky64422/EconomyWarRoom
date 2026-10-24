@@ -488,6 +488,9 @@ fn complete_drag(
     if let Err(e) = apply(app, None) {
         error = Some(error.map_or(e.clone(), |first| format!("{first}; {e}")));
     }
+    if let Ok(main) = super::window_ctl::main_window(app) {
+        let _ = crate::infrastructure::liquid_glass::release_liquid_backdrop(main);
+    }
     app.emit(
         "notch-drag",
         DragNotice {

@@ -19,3 +19,16 @@ fn invalid_frame_lengths_and_dimensions_are_rejected_before_allocation() {
  assert!(c.frame(FrameKey{width:0,..key()},&[]).is_err());
  assert!(c.frame(FrameKey{width:u32::MAX,height:u32::MAX,..key()},&[]).is_err());
 }
+#[test]
+fn settling_identical_frame_cache_hit_returns_empty_bytes_to_trigger_release() {
+    let mut cache = FrameCache::default();
+    let pixels = [30, 40, 50, 0, 60, 70, 80, 0];
+    let k = key();
+    let first = cache.frame(k, &pixels).unwrap();
+    assert!(!first.is_empty(), "First frame should produce bytes");
+
+    // Settling frame where desktop hasn't changed produces 0 bytes (cache hit).
+    // The Rust capture command and frontend release loop ensure this does not keep exclusion affinity.
+    let settling = cache.frame(k, &pixels).unwrap();
+    assert!(settling.is_empty(), "Cache hit must return empty bytes");
+}
