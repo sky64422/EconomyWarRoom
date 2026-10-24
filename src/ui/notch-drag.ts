@@ -1,4 +1,5 @@
 import type { NotchLayout, NotchPlacement } from "./types";
+import { logCaptureEvent } from "./capture-log";
 
 export interface DragNotice {
   id: number;
@@ -33,7 +34,10 @@ export function createNotchDrag(handlers: DragHandlers) {
   function releaseCapture() {
     const previous = captured;
     captured = null;
-    if (previous?.element.hasPointerCapture(previous.id)) previous.element.releasePointerCapture(previous.id);
+    if (previous?.element.hasPointerCapture(previous.id)) {
+      logCaptureEvent("POINTER", `releasePointerCapture id=${previous.id}`);
+      previous.element.releasePointerCapture(previous.id);
+    }
   }
   function finish(cancel: boolean) {
     const id = sessionId;
@@ -45,6 +49,7 @@ export function createNotchDrag(handlers: DragHandlers) {
     get dragging() { return dragging; },
     cancel() {
       if (sessionId === null && pressed === null) return;
+      logCaptureEvent("DRAG", `cancel() called (sessionId=${sessionId}, pressed=${pressed})`);
       armed = dragging = false;
       pressed = null;
       releaseCapture();
@@ -61,6 +66,7 @@ export function createNotchDrag(handlers: DragHandlers) {
       start = { x: pointer.x, y: pointer.y };
       handlers.onStart();
       captured = { element: pointer.capture, id: pointer.id };
+      logCaptureEvent("DRAG", `start() sessionId=${id} pointerId=${pointer.id} acquired setPointerCapture`);
       captured.element.setPointerCapture(pointer.id);
       chain = chain.then(() => handlers.begin(id)).catch(error => {
         if (sessionId === id) {
@@ -156,16 +162,36 @@ export function mountNotchDrag(
   const options = { signal: events.signal };
   rail.addEventListener("pointerdown", e => {
     if (e.button !== 0 || !getLayout()) return;
+    logCaptureEvent("POINTER", `pointerdown id=${e.pointerId} button=${e.button}`);
     drag.start({ id: e.pointerId, x: e.screenX, y: e.screenY, capture: e.target as Element });
   }, options);
   rail.addEventListener("pointermove", e => {
     const layout = getLayout();
     if (layout) drag.move(e.pointerId, e.screenX, e.screenY, layout.metrics.drag_threshold);
   }, options);
-  rail.addEventListener("pointerup", e => drag.end(e.pointerId, false, true), options);
-  rail.addEventListener("pointercancel", e => drag.end(e.pointerId, true), options);
-  rail.addEventListener("lostpointercapture", e => drag.end(e.pointerId, e.buttons !== 0), options);
-  window.addEventListener("blur", () => drag.cancel(), options);
+  rail.addEventListener("pointerup", e => {
+    logCaptureEvent("POINTER", `pointerup id=${e.pointerId}`);
+    drag.end(e.pointerId, false, true);
+  }, options);
+  rail.addEventListener("pointercancel", e => {
+    logCaptureEvent("POINTER", `pointercancel id=${e.pointerId} -> cancel drag`);
+    drag.cancel();
+  }, options);
+  rail.addEventListener("lostpointercapture", e => {
+    logCaptureEvent("POINTER", `lostpointercapture id=${e.pointerId} buttons=${e.buttons} -> cancel drag`);
+    drag.cancel();
+  }, options);
+  window.addEventListener("blur", () => {
+    logCaptureEvent("FOCUS", "window blur -> drag.cancel()");
+    drag.cancel();
+  }, options);
+  window.addEventListener("keydown", e => {
+    if (e.key === "Escape") {
+      logCaptureEvent("KEY", "Escape pressed -> drag.cancel() & yield focus");
+      drag.cancel();
+      (document.activeElement as HTMLElement | null)?.blur();
+    }
+  }, { ...options, capture: true });
   rail.addEventListener("click", e => {
     if (drag.consumeClick(e.detail)) {
       e.preventDefault();
@@ -180,8 +206,6 @@ export function mountNotchDrag(
     notice: drag.notice,
     destroy() {
       events.abort();
-      if (snapTimer) clearTimeout(snapTimer);
-      rail.classList.remove("is-snapped");
       drag.destroy();
     },
   };

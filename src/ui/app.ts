@@ -10,6 +10,7 @@ import { mountStockDetail } from "./stock-detail";
 import { mountLiquidGlass } from "./liquid-glass";
 import { applyPanelOpacity } from "./opacity";
 import { initialNotchState, reduceNotchState, CLOSE_DELAY_MS, MAX_CELLS } from "./notch-state";
+import { logCaptureEvent } from "./capture-log";
 import type { NotchEvent } from "./notch-state";
 import type { DragNotice } from "./notch-drag";
 import type { AppSettings, PersistedState, Quote, Sparkline, NotchLayout } from "./types";
@@ -149,7 +150,12 @@ export async function mountApp(root: HTMLElement): Promise<void> {
     subscribe<number>('opacity-updated',opacity=>{persisted.settings.opacity=opacity;appearance(persisted.settings);}),
   ]);
   unlisteners.push(await getCurrentWindow().onFocusChanged(({payload})=>{
-    if(!payload && drag.sessionId===null){(document.activeElement as HTMLElement|null)?.blur();leave();}
+    logCaptureEvent('FOCUS', `onFocusChanged payload=${payload}`);
+    if(!payload){
+      drag.cancel();
+      (document.activeElement as HTMLElement|null)?.blur();
+      leave();
+    }
   }));
   const initialRevealRevision=revealRevision;
   const [initialQuotes,initialSparks,revealed]=await Promise.all([invoke<Quote[]>('get_quotes'),invoke<Sparkline[]>('get_sparklines'),invoke<boolean>('get_notch_reveal')]);

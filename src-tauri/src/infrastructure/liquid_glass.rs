@@ -39,12 +39,27 @@ pub fn reset_on_load(view: &tauri::Webview) {
 }
 
 #[tauri::command]
+pub fn log_capture_event(
+    state: State<'_, AppHandleState>,
+    tag: String,
+    message: String,
+) -> Result<(), String> {
+    crate::infrastructure::capture_log::log_event(&tag, &message);
+    state.core.note(DiagLevel::Info, format!("[{tag}] {message}"));
+    Ok(())
+}
+
+#[tauri::command]
 pub fn release_liquid_backdrop(window: WebviewWindow) -> Result<(), String> {
     if let Some(state) = window.try_state::<LiquidBackdrop>() {
         let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-        if guard.in_flight > 0 { guard.release_pending = true; return Ok(()); }
+        if guard.in_flight > 0 {
+            guard.release_pending = true;
+            crate::infrastructure::capture_log::log_event("RELEASE", "release_liquid_backdrop queued (in_flight > 0)");
+            return Ok(());
+        }
         if let Some(lease) = guard.lease.take() {
-            set_affinity(lease.hwnd, lease.original)?;
+            set_affinity(lease.hwnd, lease.original, "release_backdrop")?;
         }
         guard.release_pending = false;
     }
@@ -85,16 +100,20 @@ impl Drop for InFlight {
 }
 
 #[cfg(windows)]
-fn set_affinity(hwnd: usize, value: u32) -> Result<(), String> {
+fn set_affinity(hwnd: usize, value: u32, reason: &str) -> Result<(), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
         SetWindowDisplayAffinity, WINDOW_DISPLAY_AFFINITY,
     };
+    crate::infrastructure::capture_log::log_event(
+        "AFFINITY",
+        &format!("SetWindowDisplayAffinity(0x{value:02X}) reason={reason} hwnd=0x{hwnd:X}"),
+    );
     unsafe { SetWindowDisplayAffinity(HWND(hwnd as *mut _), WINDOW_DISPLAY_AFFINITY(value)) }
         .map_err(|e| format!("Liquid capture exclusion: {e}"))
 }
 #[cfg(not(windows))]
-fn set_affinity(_: usize, _: u32) -> Result<(), String> {
+fn set_affinity(_: usize, _: u32, _: &str) -> Result<(), String> {
     Ok(())
 }
 
@@ -122,7 +141,7 @@ fn watch_lease(window: WebviewWindow) {
             continue;
         }
         if let Some(lease) = guard.lease.take() {
-            if let Err(error) = set_affinity(lease.hwnd, lease.original) {
+            if let Err(error) = set_affinity(lease.hwnd, lease.original, "lease_expired") {
                 window
                     .state::<AppHandleState>()
                     .core
@@ -171,7 +190,7 @@ pub async fn capture_liquid_backdrop(
         {
         let mut guard = backdrop.0.lock().map_err(|e| e.to_string())?;
         if guard.lease.is_none() {
-            set_affinity(hwnd.0 as usize, WDA_EXCLUDEFROMCAPTURE.0)
+            set_affinity(hwnd.0 as usize, WDA_EXCLUDEFROMCAPTURE.0, "capture_start")
                 .inspect_err(|e| state.core.note(DiagLevel::Warn, e.clone()))?;
             guard.lease = Some(Lease {
                 hwnd: hwnd.0 as usize,
@@ -189,12 +208,17 @@ pub async fn capture_liquid_backdrop(
         guard.lease.as_mut().unwrap().renewed = Instant::now();
         guard.in_flight += 1;
         }
+        let capture_start = Instant::now();
         let _flight = InFlight(window.clone());
         let bytes = backdrop.1.frame(FrameKey {
             x: pos.x + x as i32, y: pos.y + y as i32, width, height,
             generation: generation.unwrap_or(0),
         }, surface).await
             .inspect_err(|e| state.core.note(DiagLevel::Warn, e.clone()))?;
+        crate::infrastructure::capture_log::log_event(
+            "BACKDROP",
+            &format!("frame captured in {:?} (bytes={})", capture_start.elapsed(), bytes.len()),
+        );
         Ok(tauri::ipc::Response::new(bytes))
     }
     #[cfg(not(windows))]

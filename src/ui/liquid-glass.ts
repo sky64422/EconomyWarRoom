@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createLiquidLoop } from "./liquid-loop.ts";
 import { decodeLiquidFrame, liquidWash } from "./liquid-frame.ts";
 import { liquidContrast } from "./liquid-contrast.ts";
+import { logCaptureEvent } from "./capture-log.ts";
 
 const NS = "http://www.w3.org/2000/svg";
 const MATERIALS = {
@@ -144,6 +145,9 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
 
       if (painted) {
         shell.dataset.liquidStatus = "ready";
+        if (!rail.classList.contains("is-dragging")) {
+          void invoke("release_liquid_backdrop");
+        }
       } else if (now - lastChangedAt >= STATIC_AFTER_MS) {
         void invoke("release_liquid_backdrop");
       }
@@ -185,14 +189,24 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
   });
   observer.observe(rail, { attributes: true, attributeFilter: ["class"] });
   observer.observe(detail, { attributes: true, attributeFilter: ["hidden"] });
-  window.addEventListener("pointerdown", () => { lastChangedAt = performance.now(); loop.refresh(); }, { signal: events.signal });
-  rail.addEventListener("pointerenter", () => { lastChangedAt = performance.now(); loop.refresh(); }, { signal: events.signal });
+  window.addEventListener("pointerdown", () => {
+    logCaptureEvent("POINTER", "window pointerdown");
+    lastChangedAt = performance.now();
+    loop.refresh();
+  }, { signal: events.signal });
+  rail.addEventListener("pointerenter", () => {
+    logCaptureEvent("POINTER", "rail pointerenter");
+    lastChangedAt = performance.now();
+    loop.refresh();
+  }, { signal: events.signal });
   window.addEventListener("blur", () => {
+    logCaptureEvent("FOCUS", "window blur");
     lastChangedAt = 0;
     void invoke("release_liquid_backdrop");
     loop.refresh();
   }, { signal: events.signal });
   window.addEventListener("focus", () => {
+    logCaptureEvent("FOCUS", "window focus");
     lastChangedAt = performance.now();
     loop.refresh();
   }, { signal: events.signal });

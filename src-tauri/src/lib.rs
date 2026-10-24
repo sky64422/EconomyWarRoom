@@ -191,6 +191,7 @@ pub fn run() {
             infrastructure::liquid_glass::capture_liquid_backdrop,
             infrastructure::liquid_glass::release_liquid_backdrop,
             infrastructure::liquid_glass::destroy_liquid_backdrop,
+            infrastructure::liquid_glass::log_capture_event,
             commands::get_notch_reveal,
             commands::set_notch_focus,
             commands::get_notch_monitors,
