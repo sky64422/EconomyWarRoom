@@ -2,7 +2,13 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Current release:** **v0.4.0** on GitHub Releases.
+**Current release:** **v0.4.1** on GitHub Releases.
+
+## 0.4.1 — 2026-10-24
+
+### Fixed
+
+- Liquid/Glass capture disappearance fix: restored per-frame RAII display affinity, eliminated continuous pointermove hover loop, and reduced settling timeout so widgets remain fully capturable during mouse interaction.
 
 ## 0.4.0 — 2026-10-24
 
