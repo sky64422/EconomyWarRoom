@@ -8,7 +8,8 @@ import meta from "../assets/marks/meta.svg";
 import netflix from "../assets/marks/netflix.svg";
 import { escapeAttr, escapeHtml } from "./watchlist/format";
 const MARKS: Record<string,string> = {"AAPL": apple, "BTC-USD": bitcoin, "ETH-USD": ethereum, "NVDA": nvidia, "TSLA": tesla, "GOOG": google, "GOOGL": google, "META": meta, "NFLX": netflix};
-export function markMarkup(symbol: string): string {
+export function markMarkup(symbol: string, displayName?: string | null): string {
  const source=MARKS[symbol];
- return source ? `<img src="${escapeAttr(source)}" alt="" draggable="false" data-symbol="${escapeAttr(symbol)}"/>` : `<span class="mark-fallback" aria-hidden="true">${escapeHtml(symbol.replace(/[-.].*$/,'').slice(0,3))}</span>`;
+ const fallback=displayName && /^\d/.test(symbol) ? displayName.trim().slice(0,2) : symbol.replace(/[-.].*$/,'').slice(0,3);
+ return source ? `<img src="${escapeAttr(source)}" alt="" draggable="false" data-symbol="${escapeAttr(symbol)}"/>` : `<span class="mark-fallback" aria-hidden="true">${escapeHtml(fallback)}</span>`;
 }

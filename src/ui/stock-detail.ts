@@ -15,7 +15,8 @@ export function mountStockDetail(root: HTMLElement) {
       if (currentId !== item.id) {
         currentId=item.id;
         lastSpark="";
-        root.innerHTML = `<div class="watchlist-row stock-quote" data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}" aria-label="${escapeAttr(item.display_name || item.symbol)}, ${escapeAttr(item.symbol)}"><span class="row-symbol stock-identity"><span class="stock-symbol-mark">${markMarkup(item.symbol)}</span><strong>${escapeHtml(item.symbol)}</strong></span><div class="row-market">${metricsMarkup(item.symbol, rows)}<div class="row-sparkline-wrap"><svg class="row-sparkline" viewBox="0 0 ${SPARK_WIDTH} ${SPARK_HEIGHT}" preserveAspectRatio="none" aria-label="가격 스파크라인"></svg></div></div></div>`;
+        const title = item.display_name && /^\d/.test(item.symbol) ? item.display_name : item.symbol;
+        root.innerHTML = `<div class="watchlist-row stock-quote" data-id="${escapeAttr(item.id)}" data-symbol="${escapeAttr(item.symbol)}" aria-label="${escapeAttr(item.display_name || item.symbol)}, ${escapeAttr(item.symbol)}"><span class="row-symbol stock-identity"><span class="stock-symbol-mark">${markMarkup(item.symbol, item.display_name)}</span><strong>${escapeHtml(title)}</strong></span><div class="row-market">${metricsMarkup(item.symbol, rows)}<div class="row-sparkline-wrap"><svg class="row-sparkline" viewBox="0 0 ${SPARK_WIDTH} ${SPARK_HEIGHT}" preserveAspectRatio="none" aria-label="가격 스파크라인"></svg></div></div></div>`;
       }
       const row=root.querySelector<HTMLElement>(".stock-quote")!;
       const className=`watchlist-row stock-quote${item.card_tint && item.card_tint!=='none' ? ' tint-'+item.card_tint : ''}`;

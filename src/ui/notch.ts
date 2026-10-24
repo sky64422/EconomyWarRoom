@@ -8,31 +8,28 @@ export function mountNotch(root: HTMLElement, callbacks: {hover: (id: string) =>
     <div class="notch-surface">
       <svg class="notch-shape" aria-hidden="true">
         <path id="notch-outline"/>
+        <path id="notch-rim" fill="none"/>
         <defs>
           <clipPath id="notch-finish-clip"><use href="#notch-outline"/></clipPath>
-          <linearGradient id="notch-glass-rim" x1="0" y1="0" x2="1" y2="1">
+          <linearGradient id="notch-glass-rim" x1="0" y1="0" x2="0" y2="1">
             <stop stop-color="#eef6ff" stop-opacity=".9"/>
-            <stop offset=".18" stop-color="#f9fcff" stop-opacity=".22"/>
-            <stop offset=".36" stop-color="#212a33" stop-opacity=".55"/>
-            <stop offset=".48" stop-color="#f4f8ff" stop-opacity=".88"/>
-            <stop offset=".61" stop-color="#8393a2" stop-opacity=".28"/>
-            <stop offset=".79" stop-color="#eff8ff" stop-opacity=".72"/>
-            <stop offset="1" stop-color="#d2e3eb" stop-opacity=".5"/>
+            <stop offset=".24" stop-color="#dfefff" stop-opacity=".68"/>
+            <stop offset=".5" stop-color="#f4f8ff" stop-opacity=".76"/>
+            <stop offset=".76" stop-color="#dfefff" stop-opacity=".68"/>
+            <stop offset="1" stop-color="#eef6ff" stop-opacity=".86"/>
           </linearGradient>
-          <linearGradient id="notch-liquid-rim" x1="0" y1="0" x2="1" y2="1">
+          <linearGradient id="notch-liquid-rim" x1="0" y1="0" x2="0" y2="1">
             <stop stop-color="#ffffff" stop-opacity=".9"/>
-            <stop offset=".18" stop-color="#74e8ef" stop-opacity=".62"/>
-            <stop offset=".26" stop-color="#84b3fa" stop-opacity=".44"/>
-            <stop offset=".36" stop-color="#0f2131" stop-opacity=".35"/>
-            <stop offset=".52" stop-color="#ffffff" stop-opacity=".12"/>
-            <stop offset=".70" stop-color="#eda3d2" stop-opacity=".52"/>
-            <stop offset=".78" stop-color="#f5fbff" stop-opacity=".68"/>
-            <stop offset="1" stop-color="#ffffff" stop-opacity=".5"/>
+            <stop offset=".2" stop-color="#74e8ef" stop-opacity=".64"/>
+            <stop offset=".42" stop-color="#84b3fa" stop-opacity=".56"/>
+            <stop offset=".62" stop-color="#74e8ef" stop-opacity=".6"/>
+            <stop offset=".82" stop-color="#eda3d2" stop-opacity=".58"/>
+            <stop offset="1" stop-color="#f5fbff" stop-opacity=".84"/>
           </linearGradient>
         </defs>
-        <use class="notch-liquid-volume" href="#notch-outline"/>
-        <use class="notch-glass-rim" href="#notch-outline"/>
-        <use class="notch-liquid-edge" href="#notch-outline"/>
+        <use class="notch-liquid-volume" href="#notch-rim"/>
+        <use class="notch-glass-rim" href="#notch-rim"/>
+        <use class="notch-liquid-edge" href="#notch-rim"/>
       </svg>
       <div class="notch-finish" aria-hidden="true"></div>
       <div class="notch-cells"></div>
@@ -67,21 +64,21 @@ export function mountNotch(root: HTMLElement, callbacks: {hover: (id: string) =>
       "viewBox",
       `0 0 ${vertical ? DEPTH : length} ${vertical ? length : DEPTH}`,
     );
-    const path = svg.querySelector("path")!;
-    path.setAttribute(
-      "d",
-      `M${DEPTH} 0 A${SHOULDER} ${SHOULDER} 0 0 1 ${INNER} ${SHOULDER} A${INNER} ${INNER} 0 0 0 0 ${SHOULDER + INNER} L0 ${length - SHOULDER - INNER} A${INNER} ${INNER} 0 0 0 ${INNER} ${length - SHOULDER} A${SHOULDER} ${SHOULDER} 0 0 1 ${DEPTH} ${length} Z`,
-    );
-    path.setAttribute(
-      "transform",
+    const openD = `M${DEPTH} 0 A${SHOULDER} ${SHOULDER} 0 0 1 ${INNER} ${SHOULDER} A${INNER} ${INNER} 0 0 0 0 ${SHOULDER + INNER} L0 ${length - SHOULDER - INNER} A${INNER} ${INNER} 0 0 0 ${INNER} ${length - SHOULDER} A${SHOULDER} ${SHOULDER} 0 0 1 ${DEPTH} ${length}`;
+    const transform =
       layout.edge === "left"
         ? `translate(${DEPTH} 0) scale(-1 1)`
         : layout.edge === "bottom"
           ? "matrix(0 1 1 0 0 0)"
           : layout.edge === "top"
             ? `matrix(0 -1 1 0 0 ${DEPTH})`
-            : "",
-    );
+            : "";
+    const path = svg.querySelector<SVGPathElement>("#notch-outline")!;
+    path.setAttribute("d", `${openD} Z`);
+    path.setAttribute("transform", transform);
+    const rim = svg.querySelector<SVGPathElement>("#notch-rim")!;
+    rim.setAttribute("d", openD);
+    rim.setAttribute("transform", transform);
   }
   return {
     reveal(open: boolean) { root.classList.toggle("is-folded", !open); cells.inert = !open; root.setAttribute("aria-expanded", String(open)); },
@@ -89,13 +86,13 @@ export function mountNotch(root: HTMLElement, callbacks: {hover: (id: string) =>
       const selected = selectCells(items.map(i => i.id), capacity);
       const visible = items.filter(i => selected.ids.includes(i.id));
       const showMore=selected.overflow>0;
-      const key = JSON.stringify([visible.map(i => [i.id, i.symbol]), selected.overflow, showMore]);
+      const key = JSON.stringify([visible.map(i => [i.id, i.symbol, i.display_name]), selected.overflow, showMore]);
       if (lastItems !== key) {
         const focusedId = (document.activeElement as HTMLElement)?.dataset.id;
         lastItems = key; buttons.clear(); cells.replaceChildren();
         for (const item of visible) {
           const b = document.createElement("button"); b.type = "button"; b.className = "notch-cell"; b.dataset.id = item.id;
-          b.innerHTML = `<span class="ring-wrap"><svg viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/></svg>${markMarkup(item.symbol)}</span><span class="ring-meta"><span class="ring-pct">—</span></span>`;
+          b.innerHTML = `<span class="ring-wrap"><svg viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-track" cx="22" cy="22" r="19"/></svg>${markMarkup(item.symbol, item.display_name)}</span><span class="ring-meta"><span class="ring-pct">—</span></span>`;
           b.addEventListener("pointerenter", () => callbacks.hover(item.id));
           b.addEventListener("click", () => callbacks.pin(item.id));
           const slot=document.createElement('div');slot.className='notch-item';
