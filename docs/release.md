@@ -2,7 +2,18 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Current release:** **v0.4.2** on GitHub Releases.
+**Current release:** **v0.4.9** on GitHub Releases.
+
+## 0.4.9 — 2026-10-25
+
+### Added
+
+- In-notch twin sparkle update indicator with Quiet Luxury detail card, fast startup check (500ms), and session dismissal persistence.
+- Liquid theme contrast responsiveness test case validating prompt adaptation over alternating white/black backdrops across random short and long intervals.
+
+### Fixed
+
+- Preserved desktop capture recovery on window focus/blur with 1000ms static heartbeat and 800ms recovery timer.
 
 ## 0.4.2 — 2026-10-24
 
