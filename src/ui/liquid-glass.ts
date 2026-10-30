@@ -17,6 +17,8 @@ const SETTLING_FRAME_MS = 100;
 const SETTLING_AFTER_MS = 150;
 const STATIC_AFTER_MS = 400;
 const STATIC_HEARTBEAT_MS = 1000;
+const LIQUID_BLUR_PX = [14, 24] as const;
+const BLUR_EDGE_PADDING_FACTOR = 3;
 
 interface SurfaceLayer {
   surface: HTMLElement;
@@ -24,10 +26,12 @@ interface SurfaceLayer {
   canvas: HTMLCanvasElement;
   filter: SVGFilterElement;
   key: string;
+  mappedKey: string;
   slot: number;
   generation: number;
   effect: string;
   scratch: HTMLCanvasElement | null;
+  padding: number;
 }
 
 interface CapturedFrame {
@@ -35,6 +39,8 @@ interface CapturedFrame {
   pixels: Uint8ClampedArray;
   width: number;
   height: number;
+  logicalWidth: number;
+  logicalHeight: number;
   key: string;
   generation: number;
 }
@@ -80,7 +86,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
 
     const effect = "";
     canvas.style.filter = effect;
-    return { surface, layer, canvas, filter, key: "", slot: index, generation: 0, effect, scratch: null };
+    return { surface, layer, canvas, filter, key: "", mappedKey: "", slot: index, generation: 0, effect, scratch: null, padding: 0 };
   });
 
   let enabled = false, destroyed = false, nativeVisible = true;
@@ -93,6 +99,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
     delete entry.surface.dataset.contrast;
     if (!releaseBuffers) return;
     entry.key = "";
+    entry.mappedKey = "";
     entry.canvas.width = entry.canvas.height = 0;
     entry.canvas.style.filter = "";
     entry.filter.querySelector("feImage")?.removeAttribute("href");
@@ -118,8 +125,12 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
     capture,
     paint: (frames, now) => {
       let painted = false;
-      frames.forEach(({ entry, pixels, width, height, key, generation }) => {
+      frames.forEach(({ entry, pixels, width, height, logicalWidth, logicalHeight, key, generation }) => {
         if (entry.key !== key || entry.generation !== generation || entry.surface.hidden) return;
+        if (entry.mappedKey !== key) {
+          mapFor(entry, logicalWidth, logicalHeight);
+          entry.mappedKey = key;
+        }
         const ctx = entry.canvas.getContext("2d", { alpha: false })!;
         const image = new ImageData(pixels, width, height);
 
@@ -129,7 +140,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
           entry.surface.dataset.contrast = liquidContrast(pixels, entry.surface.dataset.contrast);
         }
 
-        if (width === entry.canvas.width && height === entry.canvas.height) {
+        if (!entry.padding && width === entry.canvas.width && height === entry.canvas.height) {
           ctx.putImageData(image, 0, 0);
         } else {
           const scratch = entry.scratch ?? (entry.scratch = document.createElement("canvas"));
@@ -138,7 +149,20 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
             scratch.height = height;
           }
           scratch.getContext("2d", { alpha: false })!.putImageData(image, 0, 0);
-          ctx.drawImage(scratch, 0, 0, entry.canvas.width, entry.canvas.height);
+          const pad = entry.padding;
+          const w = entry.canvas.width - pad * 2, h = entry.canvas.height - pad * 2;
+          ctx.drawImage(scratch, 0, 0, width, height, pad, pad, w, h);
+          if (pad) {
+            // Duplicate edge pixels so the blur cannot mix with transparency.
+            ctx.drawImage(scratch, 0, 0, 1, height, 0, pad, pad, h);
+            ctx.drawImage(scratch, width - 1, 0, 1, height, pad + w, pad, pad, h);
+            ctx.drawImage(scratch, 0, 0, width, 1, pad, 0, w, pad);
+            ctx.drawImage(scratch, 0, height - 1, width, 1, pad, pad + h, w, pad);
+            ctx.drawImage(scratch, 0, 0, 1, 1, 0, 0, pad, pad);
+            ctx.drawImage(scratch, width - 1, 0, 1, 1, pad + w, 0, pad, pad);
+            ctx.drawImage(scratch, 0, height - 1, 1, 1, 0, pad + h, pad, pad);
+            ctx.drawImage(scratch, width - 1, height - 1, 1, 1, pad + w, pad + h, pad, pad);
+          }
         }
         entry.layer.hidden = false;
         painted = true;
@@ -220,8 +244,14 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
 
   function mapFor(entry: SurfaceLayer, width: number, height: number) {
     entry.canvas.style.filter = entry.effect;
-    entry.canvas.width = width;
-    entry.canvas.height = height;
+    const pad = materialTheme === "liquid" ? LIQUID_BLUR_PX[entry.slot] * BLUR_EDGE_PADDING_FACTOR : 0;
+    entry.padding = pad;
+    entry.canvas.width = width + pad * 2;
+    entry.canvas.height = height + pad * 2;
+    entry.canvas.style.position = pad ? "absolute" : "";
+    entry.canvas.style.left = entry.canvas.style.top = pad ? `-${pad}px` : "";
+    entry.canvas.style.width = pad ? `calc(100% + ${pad * 2}px)` : "";
+    entry.canvas.style.height = pad ? `calc(100% + ${pad * 2}px)` : "";
 
     if (material.displacement === 0) return;
     const contentScale = Number(getComputedStyle(entry.surface).getPropertyValue("--notch-scale")) || 1;
@@ -290,12 +320,12 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
       for (const entry of entries) {
         if (entry.surface.hidden || (entry.surface === rail && rail.classList.contains("is-folded"))) continue;
         const rect = entry.surface.getBoundingClientRect();
-        const width = Math.round(rect.width), height = Math.round(rect.height);
+        const width = Math.round(entry.surface.offsetWidth || rect.width);
+        const height = Math.round(entry.surface.offsetHeight || rect.height);
         if (!width || !height) continue;
         const ratio = devicePixelRatio || 1;
         const key = `${width}:${height}:${rail.dataset.edge}:${ratio}:${shell.style.getPropertyValue("--notch-scale")}`;
         if (key !== entry.key) {
-          mapFor(entry, width, height);
           entry.key = key;
           entry.generation++;
         }
@@ -313,7 +343,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
         if (!data.byteLength) continue;
         if (entry.key !== key || entry.generation !== generation) continue;
         const pixels = decodeLiquidFrame(data, w, h);
-        frames.push({ entry, pixels, width: w, height: h, key, generation });
+        frames.push({ entry, pixels, width: w, height: h, logicalWidth: width, logicalHeight: height, key, generation });
       }
       return frames;
     } catch (error) {
@@ -345,7 +375,7 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
         material = MATERIALS[nextTheme];
         for (const entry of entries) {
           const blur = nextTheme === "liquid"
-            ? `calc(var(--liquid-opacity, .88) * ${entry.slot === 0 ? 14 : 24}px)`
+            ? `calc(var(--liquid-opacity, .88) * ${LIQUID_BLUR_PX[entry.slot]}px)`
             : `${material.blur[entry.slot]}px`;
           entry.effect = `${material.displacement === 0 ? "" : `url(#${entry.filter.id}) `}blur(${blur}) saturate(${material.saturation}) brightness(${material.brightness})`;
         }

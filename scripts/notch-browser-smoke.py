@@ -85,6 +85,17 @@ with sync_playwright() as p:
     ring_colors=[page.locator('.notch-cell[data-id="'+item_id+'"]').evaluate('el=>getComputedStyle(el.querySelector(".ring-track")).stroke') for item_id in ['item-0','item-2']]
     assert ring_colors[0]==ring_colors[1],ring_colors
     page.locator('.notch').click(button='right')
+    # Bright Liquid backdrops need readable labels on both appearance and general tabs.
+    page.evaluate('''()=>{document.querySelector('.notch-shell').dataset.theme='liquid';
+      document.querySelector('.notch-detail').dataset.contrast='light'}''')
+    for selector in ['.settings-heading strong', '.settings-label', '.settings-toggle-title', '#appearance-opacity-value', '#tab-btn-symbols']:
+        color=page.locator(selector).first.evaluate('e=>getComputedStyle(e).color')
+        assert int(color.split('(')[1].split(',')[0]) < 100,(selector,color)
+    page.locator('#tab-btn-general').click()
+    color=page.locator('.settings-debug').evaluate('e=>getComputedStyle(e).color')
+    assert int(color.split('(')[1].split(',')[0]) < 100,('.settings-debug',color)
+    page.evaluate('''()=>{document.querySelector('.notch-shell').dataset.theme='dark';
+      delete document.querySelector('.notch-detail').dataset.contrast}''')
     page.locator('#tab-btn-symbols').click()
     expect(page.locator('#tab-panel-symbols input').first).to_be_visible()
     expect(page.locator('.management-mark')).to_have_count(3)

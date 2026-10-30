@@ -180,6 +180,9 @@
 .notch-shell[data-theme="liquid"] [data-contrast="light"] .settings-tab-btn.is-active {
   color: var(--text);
 }
+.notch-shell[data-theme="liquid"] [data-contrast="light"] .settings-root .settings-action-row .settings-debug:not([data-feedback="error"]):not([data-feedback="done"]) {
+  color: var(--text);
+}
 .notch-shell[data-theme="liquid"] [data-contrast="light"] :is(.ring-wrap img,.stock-symbol-mark img,.management-mark img)[data-symbol="AAPL"] {
   filter: brightness(0) opacity(.8);
 }

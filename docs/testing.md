@@ -1,6 +1,23 @@
-## Clear Liquid material adoption (2026-10-19)
+## Liquid opacity, edges and drag release
 
-Adapted from TokenUsage `db5ecbc`: same-HWND Windows Composition, clear prism tint,
+With Vite on port 1521, run `python -X utf8 scripts/liquid-edge-smoke.py`.
+The synthetic browser fixture checks the rail and detail center and four edges
+at 0%, 50% and 100%, verifies that the captured background is not darkened by
+an added wash, and holds a resized detail capture to ensure the previous frame
+remains visible. Set `EWR_TEST_URL` for a different local Vite URL. The script
+requires the existing Python Playwright, Pillow and Edge dependencies.
+
+`npm test` checks the 0/50/70/100% Liquid strength mapping and the normal
+pointer-up/lost-capture sequence, including cancellation while still pressed.
+`notch-browser-smoke.py` checks bright-backdrop settings text and market behavior.
+Browser fixtures do not replace an isolated Windows preview for native capture,
+physical drag and screenshot behavior.
+
+## Historical clear Liquid material adoption (2026-10-19)
+
+The following describes an earlier implementation and its historical evidence.
+The current product uses desktop capture and a canvas renderer as stated in
+`AGENTS.md`. Adapted from TokenUsage `db5ecbc`: same-HWND Windows Composition, clear prism tint,
 250ms serialized foreground probes, separate rail/detail contrast and market colors.
 `npm test` includes contrast hysteresis and pending-capture cancellation checks.
 Run `python scripts/liquid-cadence-smoke.py --port 1521` and

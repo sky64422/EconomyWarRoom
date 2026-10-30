@@ -131,9 +131,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, .16), rgba(232, 245, 255, .025) 42%, rgba(255, 255, 255, .055)),
-    rgba(9, 15, 23, calc(.03 + var(--liquid-opacity, .88) * .22));
+  background: linear-gradient(145deg, rgba(255, 255, 255, .16), rgba(232, 245, 255, .025) 42%, rgba(255, 255, 255, .055));
 }
 .notch .liquid-layer { clip-path: url(#notch-finish-clip); }
 .notch-shell[data-theme="liquid"] {
@@ -213,8 +211,7 @@
 .notch-detail > .liquid-layer { border-radius: inherit; z-index: -1; }
 .notch-detail > .liquid-layer::after {
   background: radial-gradient(ellipse at 5% 0%, rgba(255, 255, 255, .13), transparent 58%),
-    linear-gradient(160deg, rgba(237, 248, 255, .045), transparent 40%, rgba(255, 255, 255, .025)),
-    rgba(9, 15, 23, calc(.06 + var(--liquid-opacity, .88) * .19));
+    linear-gradient(160deg, rgba(237, 248, 255, .045), transparent 40%, rgba(255, 255, 255, .025));
 }
 .notch-shell[data-theme="liquid"] .detail-body {
   background: transparent;

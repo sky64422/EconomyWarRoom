@@ -6,6 +6,10 @@ const OPACITY_MIN = 0.35;
 /** Intervals between min and max. */
 export const OPACITY_INTERVALS =
   (OPACITY_MAX_PCT - OPACITY_MIN_PCT) / OPACITY_STEP_PCT;
+const LIQUID_MID_SLIDER = 0.5;
+const LIQUID_MID_STRENGTH = 0.15;
+const LIQUID_REFERENCE_SLIDER = 0.7;
+const LIQUID_REFERENCE_STRENGTH = 0.25;
 
 export function snapOpacityPct(pct: number): number {
   const clamped = Math.min(OPACITY_MAX_PCT, Math.max(OPACITY_MIN_PCT, pct));
@@ -42,11 +46,17 @@ export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
   const accent = Math.min(1, Math.max(0.36, o * 0.96 + 0.02));
   const chrome = Math.min(1, Math.max(0.28, o * 0.9 + 0.04));
   const tint = chrome;
+  const normalized = (o - OPACITY_MIN) / (1 - OPACITY_MIN);
+  const liquid = normalized <= LIQUID_MID_SLIDER
+    ? normalized / LIQUID_MID_SLIDER * LIQUID_MID_STRENGTH
+    : normalized <= LIQUID_REFERENCE_SLIDER
+      ? LIQUID_MID_STRENGTH + (normalized - LIQUID_MID_SLIDER) / (LIQUID_REFERENCE_SLIDER - LIQUID_MID_SLIDER) * (LIQUID_REFERENCE_STRENGTH - LIQUID_MID_STRENGTH)
+      : LIQUID_REFERENCE_STRENGTH + (normalized - LIQUID_REFERENCE_SLIDER) / (1 - LIQUID_REFERENCE_SLIDER) * (1 - LIQUID_REFERENCE_STRENGTH);
 
   const root = document.documentElement;
   for (const el of [panel, root]) {
     el.style.setProperty("--panel-opacity", String(o));
-    el.style.setProperty("--liquid-opacity", String((o - OPACITY_MIN) / (1 - OPACITY_MIN)));
+    el.style.setProperty("--liquid-opacity", String(liquid));
     el.style.setProperty("--fg-opacity", String(fg));
     el.style.setProperty("--accent-opacity", String(accent));
     el.style.setProperty("--chrome-opacity", String(chrome));
