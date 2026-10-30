@@ -2,7 +2,15 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Current release:** **v0.4.10** on GitHub Releases.
+**Current release:** **v0.4.11** on GitHub Releases.
+
+## 0.4.11 — 2026-10-31
+
+### Fixed
+
+- Improve Liquid opacity response and bright-background text contrast without an added dark tint.
+- Prevent unblurred edges and flashing when detail sizes change.
+- Restore the notch's release animation after dragging.
 
 ## 0.4.10 — 2026-10-31
 
