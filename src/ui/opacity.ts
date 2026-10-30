@@ -1,10 +1,11 @@
-/** Opacity scrubber uses whole percent steps of 5 (35%…100%). */
-export const OPACITY_MIN_PCT = 35;
+/** Opacity scrubber uses whole percent steps of 5 (0%…100%). */
+export const OPACITY_MIN_PCT = 0;
 export const OPACITY_MAX_PCT = 100;
 export const OPACITY_STEP_PCT = 5;
-/** Intervals between min and max (35→40 … 95→100). */
+const OPACITY_MIN = 0.35;
+/** Intervals between min and max. */
 export const OPACITY_INTERVALS =
-  (OPACITY_MAX_PCT - OPACITY_MIN_PCT) / OPACITY_STEP_PCT; // 13
+  (OPACITY_MAX_PCT - OPACITY_MIN_PCT) / OPACITY_STEP_PCT;
 
 export function snapOpacityPct(pct: number): number {
   const clamped = Math.min(OPACITY_MAX_PCT, Math.max(OPACITY_MIN_PCT, pct));
@@ -12,14 +13,14 @@ export function snapOpacityPct(pct: number): number {
 }
 
 export function opacityToPct(o: number): number {
-  return snapOpacityPct(Math.round(o * 100));
+  return snapOpacityPct(Math.round((Math.min(1, Math.max(OPACITY_MIN, o)) - OPACITY_MIN) / (1 - OPACITY_MIN) * 100));
 }
 
 export function pctToOpacity(pct: number): number {
-  return snapOpacityPct(pct) / 100;
+  return Number((OPACITY_MIN + snapOpacityPct(pct) / 100 * (1 - OPACITY_MIN)).toFixed(3));
 }
 
-/** How many 5% steps above min (35% → 0, …, 100% → 13). */
+/** How many 5% steps above min. */
 export function opacityStepIndex(pct: number): number {
   return (snapOpacityPct(pct) - OPACITY_MIN_PCT) / OPACITY_STEP_PCT;
 }
@@ -36,7 +37,7 @@ export function meterFillPct(pct: number): number {
  * while glass fades.
  */
 export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
-  const o = Math.min(1, Math.max(0.35, opacity));
+  const o = Math.min(1, Math.max(OPACITY_MIN, opacity));
   const fg = Math.min(1, Math.max(0.4, o * 0.94 + 0.04));
   const accent = Math.min(1, Math.max(0.36, o * 0.96 + 0.02));
   const chrome = Math.min(1, Math.max(0.28, o * 0.9 + 0.04));
@@ -45,6 +46,7 @@ export function applyPanelOpacity(panel: HTMLElement, opacity: number): void {
   const root = document.documentElement;
   for (const el of [panel, root]) {
     el.style.setProperty("--panel-opacity", String(o));
+    el.style.setProperty("--liquid-opacity", String((o - OPACITY_MIN) / (1 - OPACITY_MIN)));
     el.style.setProperty("--fg-opacity", String(fg));
     el.style.setProperty("--accent-opacity", String(accent));
     el.style.setProperty("--chrome-opacity", String(chrome));

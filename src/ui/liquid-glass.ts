@@ -344,7 +344,10 @@ export function mountLiquidGlass(shell: HTMLElement, rail: HTMLElement, detail: 
         materialTheme = nextTheme;
         material = MATERIALS[nextTheme];
         for (const entry of entries) {
-          entry.effect = `${material.displacement === 0 ? "" : `url(#${entry.filter.id}) `}blur(${material.blur[entry.slot]}px) saturate(${material.saturation}) brightness(${material.brightness})`;
+          const blur = nextTheme === "liquid"
+            ? `calc(var(--liquid-opacity, .88) * ${entry.slot === 0 ? 14 : 24}px)`
+            : `${material.blur[entry.slot]}px`;
+          entry.effect = `${material.displacement === 0 ? "" : `url(#${entry.filter.id}) `}blur(${blur}) saturate(${material.saturation}) brightness(${material.brightness})`;
         }
       }
       enabled = value;
