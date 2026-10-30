@@ -2,7 +2,13 @@
 
 **Audience:** maintainers publishing Windows builds that clients can install **and** self-update.  
 **Companion:** [windows-dev.md](./windows-dev.md).  
-**Current release:** **v0.4.9** on GitHub Releases.
+**Current release:** **v0.4.10** on GitHub Releases.
+
+## 0.4.10 — 2026-10-31
+
+### Fixed
+
+- Liquid opacity changes background clarity and frosted glass intensity across the full slider range.
 
 ## 0.4.9 — 2026-10-25
 
