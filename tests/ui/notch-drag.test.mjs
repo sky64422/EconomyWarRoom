@@ -103,6 +103,51 @@ test('drag.cancel() invokes yield_notch_focus with forwardEscape: false', async 
   assert.ok(invocations.some(i => i.cmd === 'yield_notch_focus' && i.args?.forwardEscape === false));
 });
 
+test('normal pointer release plays the snap animation while unexpected loss cancels', async () => {
+  const listeners = {};
+  const captured = new Set();
+  const classes = new Set();
+  globalThis.window.addEventListener = () => {};
+  const rail = {
+    offsetWidth: 64,
+    addEventListener: (type, handler) => { listeners[type] = handler; },
+    setPointerCapture: id => captured.add(id),
+    hasPointerCapture: id => captured.has(id),
+    releasePointerCapture: id => captured.delete(id),
+    classList: {
+      toggle: (name, value) => value ? classes.add(name) : classes.delete(name),
+      add: name => classes.add(name), remove: name => classes.delete(name),
+    },
+  };
+  const finish = [];
+  const drag = mountNotchDrag(rail, () => ({ metrics: { drag_threshold: 5 } }), {
+    begin: async () => {}, finish: async (id, cancel) => finish.push([id, cancel]),
+    onStart: () => {}, onNotice: () => {}, fail: error => { throw error; },
+  });
+  const start = () => listeners.pointerdown({ button: 0, pointerId: 7, screenX: 100, screenY: 100, target: rail });
+  const notice = (id, active, finished) => ({ id, active, finished, error: null,
+    placement: { edge: 'right', monitor_hint: null, offset: .5 } });
+  start();
+  const id = drag.sessionId;
+  drag.notice(notice(id, true, false));
+  listeners.pointerup({ pointerId: 7 });
+  listeners.lostpointercapture({ pointerId: 7, buttons: 0 });
+  drag.notice(notice(id, true, true));
+  assert.equal(classes.has('is-snapped'), true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(finish.some(([itemId, cancel]) => itemId === id && cancel), false);
+  classes.delete('is-snapped');
+  start();
+  const cancelled = drag.sessionId;
+  drag.notice(notice(cancelled, true, false));
+  listeners.lostpointercapture({ pointerId: 7, buttons: 1 });
+  assert.equal(drag.sessionId, null);
+  start();
+  drag.notice(notice(drag.sessionId, false, true));
+  assert.equal(classes.has('is-snapped'), false);
+  drag.destroy();
+});
+
 test('mountNotchDrag Escape and PrintScreen keydown yield focus and forward Escape', async () => {
   invocations.length = 0;
   const windowListeners = [];

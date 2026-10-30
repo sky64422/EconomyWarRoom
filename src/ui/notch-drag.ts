@@ -52,6 +52,7 @@ export function createNotchDrag(handlers: DragHandlers) {
   return {
     get sessionId() { return sessionId; },
     get dragging() { return dragging; },
+    get pressedPointerId() { return pressed; },
     cancel() {
       if (sessionId === null && pressed === null) return;
       logCaptureEvent("DRAG", `cancel() called (sessionId=${sessionId}, pressed=${pressed})`);
@@ -173,6 +174,10 @@ export function mountNotchDrag(
       if (dragging) wasDragging = true;
     },
   });
+  const cancelDrag = () => {
+    wasDragging = false;
+    drag.cancel();
+  };
   const options = { signal: events.signal };
   rail.addEventListener("pointerdown", e => {
     if (e.button !== 0 || !getLayout()) return;
@@ -189,20 +194,20 @@ export function mountNotchDrag(
   }, options);
   rail.addEventListener("pointercancel", e => {
     logCaptureEvent("POINTER", `pointercancel id=${e.pointerId} -> cancel drag`);
-    drag.cancel();
+    cancelDrag();
   }, options);
   rail.addEventListener("lostpointercapture", e => {
-    logCaptureEvent("POINTER", `lostpointercapture id=${e.pointerId} buttons=${e.buttons} -> cancel drag`);
-    drag.cancel();
+    logCaptureEvent("POINTER", `lostpointercapture id=${e.pointerId} buttons=${e.buttons}`);
+    if (drag.pressedPointerId === e.pointerId) cancelDrag();
   }, options);
   window.addEventListener("blur", () => {
-    logCaptureEvent("FOCUS", "window blur -> drag.cancel()");
-    drag.cancel();
+    logCaptureEvent("FOCUS", "window blur during drag");
+    if (drag.pressedPointerId !== null) cancelDrag();
   }, options);
   window.addEventListener("keydown", e => {
     if (e.key === "Escape" || e.key === "PrintScreen") {
       logCaptureEvent("KEY", `${e.key} pressed -> drag.cancel() & yield focus`);
-      drag.cancel();
+      cancelDrag();
       (typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null)?.blur();
       void invoke("yield_notch_focus", { forwardEscape: e.key === "Escape" });
     } else if (e.key === "Alt" || (e.altKey && e.key === "`")) {
@@ -221,11 +226,13 @@ export function mountNotchDrag(
   return {
     get sessionId() { return drag.sessionId; },
     get dragging() { return drag.dragging; },
-    cancel: drag.cancel,
+    cancel: cancelDrag,
     finish: drag.finish,
     notice: drag.notice,
     destroy() {
       events.abort();
+      if (snapTimer) clearTimeout(snapTimer);
+      rail.classList.remove("is-snapped");
       drag.destroy();
     },
   };
